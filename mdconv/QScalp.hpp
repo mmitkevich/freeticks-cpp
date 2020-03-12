@@ -24,10 +24,10 @@ public:
 
     using OnRecord = std::function<void(const TickMessage&)>;
 
-    static void parse(std::string fname, OnRecord on_record);
-    void read(std::istream &input, OnRecord on_record);
+    static std::size_t parse(std::string fname, OnRecord on_record);
+    std::size_t read(std::istream &input, OnRecord on_record);
 private:
-    void read_ord_log(std::istream &input, TickMessage &e);
+    void read_ord_log(std::istream &input, OnRecord & on_record);
     static std::string read_string(std::istream& input);
     static std::int64_t read_leb128(std::istream& input);
     static std::int64_t read_uleb128(std::istream& input);

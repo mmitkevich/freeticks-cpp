@@ -1,3 +1,4 @@
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -10,7 +11,6 @@
 using namespace toolbox;
 
 void handler(const TickMessage& e) {
-    
     std::cout << e << std::endl;
 }
 
@@ -38,7 +38,10 @@ int main(int argc, char* argv[]) {
         opts.parse(argc, argv);
         if(input_format == "qsh") {
             for(auto& input_url: input_urls) {
-                QScalp::parse(input_url, handler);
+                auto start_ts = std::chrono::system_clock::now();
+                std::size_t count = QScalp::parse(input_url, handler);
+                auto elapsed = std::chrono::system_clock::now() - start_ts;
+                std::cout << "parsed "<<std::dec<<count<< " records in " << elapsed.count()/1e9 <<" s" << " at "<< (1e3*count/elapsed.count()) << " mio/s"<<std::endl;
             }
             
         }

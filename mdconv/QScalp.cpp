@@ -18,7 +18,7 @@ std::int64_t QScalp::read_leb128(std::istream &input) {
         shift += 7;
     }while(byte & 0x80);
 
-    if(byte & 0x40) {
+    if((byte & 0x40)!=0) {
         result |= ((-1ULL) << shift);
     }
     return result;
@@ -72,7 +72,8 @@ Ticks QScalp::read_datetime(std::istream& input) {
 }
 
 Ticks QScalp::read_grow_datetime(std::istream& input, Ticks previous) {
-    std::int64_t val = read_growing(input, previous.count()/100)*100;
+    std::int64_t pval = previous.count();
+    std::int64_t val = read_growing(input, pval/10000)*10000;
     return Ticks(val);
 }
 
@@ -87,7 +88,7 @@ void QScalp::read_header(std::istream& input) {
         throw std::runtime_error("only qscalp version 4 is supported");
     app = read_string(input);
     comment = read_string(input);
-    ts = frame_ts = ctime = read_datetime(input);
+    frame_ts = ctime = read_datetime(input);
     FT_TRACE("ctime: " << ctime.to_string())
     nstreams = read_byte(input);
     for(int i=0;i<nstreams;i++) {
@@ -121,25 +122,33 @@ std::uint16_t QScalp::read_uint16(std::istream& input) {
 bool QScalp::read_frame_header(std::istream& input) {
     if(input.eof())
         return false;
-    FT_TRACE("ofs "<<input.tellg());
-    frame_ts = read_grow_datetime(input, frame_ts);
+    FT_TRACE("ofs "<<input.tellg()<<" last frame ts "<<frame_ts);
+    ts = frame_ts = read_grow_datetime(input, frame_ts);
     if(nstreams>1)
         cur_stream = read_byte(input);
-    FT_TRACE("frame: frame_ts "<<ts.to_string()<< " cur_stream "<<std::hex<<cur_stream)
+    FT_TRACE("frame: frame_ts "<<frame_ts<< " cur_stream "<<std::hex<<cur_stream)
     return true;
 }
 
-void QScalp::read(std::istream &input, OnRecord on_record) {
-    read_header(input);
-    while(read_frame_header(input)) {
-        int stream_id = stream_ids[cur_stream];
-        TickMessage e {};
-        switch(stream_id) {
-            case OrdLog: read_ord_log(input, e); break;
-            default: throw std::runtime_error("invalid stream id");
+std::size_t QScalp::read(std::istream &input, OnRecord on_record) {
+    input.exceptions(std::ios::eofbit | std::ios::failbit | std::ios::badbit);
+    std::size_t count = 0;
+    try {
+        read_header(input);
+        while(read_frame_header(input)) {
+            int stream_id = stream_ids[cur_stream];
+            switch(stream_id) {
+                case OrdLog: read_ord_log(input, on_record); break;
+                default: throw std::runtime_error("invalid stream id");
+            }
+            count++;
         }
-        on_record(e);
+    }catch(std::ios_base::failure& fail) {
+        // rethrow everything except eof
+        if(input.bad())
+            throw (fail);
     }
+    return count;
 }
 enum PlazaFlags {
     PLAZA_ADD = 1<<2,
@@ -167,27 +176,25 @@ enum OrdLogFlags {
     OL_FILL_PRICE = 1<<6,
     OL_OPEN_INTEREST = 1<<7
 };
-void QScalp::read_ord_log(std::istream &input, TickMessage &e) {
+void QScalp::read_ord_log(std::istream &input, OnRecord &on_record) {
     int flags = read_byte(input);
     std::uint16_t plaza_flags = read_uint16(input);
+    TickMessage e{};
     e.flags = 0;
     FT_TRACE("flags 0x"<<std::hex<<flags<<" plaza_flags 0x"<<plaza_flags);
     if(plaza_flags & (PLAZA_ADD|PLAZA_MOVE|PLAZA_COUNTER)) {
         e.flags |= TickMessage::Place;
     }
-    if(plaza_flags & (PLAZA_CANCEL|PLAZA_CANCEL_GROUP|PLAZA_MOVE)) {
+    if(plaza_flags & (PLAZA_CANCEL|PLAZA_MOVE)) {
         e.flags |= TickMessage::Cancel;
     }
     if(plaza_flags & PLAZA_FILL) {
         e.flags |= TickMessage::Fill;
     }
-    if(e.flags==0) {
-        assert(false);
-    }
     if(flags & OL_TIMESTAMP) {
         ts = read_grow_datetime(input, ts);
         e.timestamp = e.exchange_timestamp = ts.to_time_point();
-        FT_TRACE("exchange_timestamp "<<e.timestamp)G
+        FT_TRACE("exchange_timestamp "<<e.timestamp)
     } else {
         e.timestamp = e.exchange_timestamp = ts.to_time_point();
     }
@@ -234,11 +241,16 @@ void QScalp::read_ord_log(std::istream &input, TickMessage &e) {
             e.open_interest = open_interest;
         }
     }
+    if(e.flags==0) {
+        std::cerr<<"UNKNOWN flags "<<std::hex<<flags<<" plaza "<<std::hex<<plaza_flags<<std::endl;
+    }else {
+        on_record(e);
+    }
 }
 
-void QScalp::parse(std::string fname, OnRecord on_record) {
+std::size_t QScalp::parse(std::string fname, OnRecord on_record) {
     FT_TRACE(format_time_point(std::chrono::system_clock::now()))
     std::ifstream ifs(fname);
     QScalp reader;    
-    reader.read(ifs, on_record);
+    return reader.read(ifs, on_record);
 }

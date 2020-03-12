@@ -308,6 +308,7 @@ class QshFile:
         return self.fileobj.tell() == os.fstat(self.fileobj.fileno()).st_size
 
     def read_frame_header(self):
+        print("last_fr_mill {}".format(self.last_frame_milliseconds))
         timestamp = self.read_growing_datetime(self.last_frame_milliseconds)
         self.last_frame_milliseconds = to_milliseconds(timestamp)
         timestamp = timestamp.replace(tzinfo=self.from_zone).astimezone(self.to_zone)
