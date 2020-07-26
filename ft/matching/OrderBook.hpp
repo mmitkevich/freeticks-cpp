@@ -11,6 +11,10 @@
 #include <cmath>
 #include <ostream>
 
+#define FT_NO_INLINE __attribute__((noinline)) 
+#define FT_LIKELY
+#define FT_UNLIKELY
+
 namespace ft { inline namespace matching {
 
 enum class Side:int {
@@ -47,7 +51,10 @@ public:
         return order.qty;
     }
     ssize_t to_long(PriceT price) {
-        return price * mpi_;
+        return price / mpi_;
+    }
+    PriceT to_price(ssize_t price_index) {
+        return price_index * mpi_;
     }
     std::size_t book_size() {
         return book_size_;
@@ -139,7 +146,8 @@ public:
         return active_qty;
     }
 
-    OrderT *place(OrderT &&order, OnFill on_fill = OnFill{}) {
+    FT_NO_INLINE
+    Node *place(Order &&order, OnFill on_fill = OnFill{}) {
         Qty active_qty = try_fill(order);
         if(active_qty==0)
             return nullptr;
@@ -151,7 +159,23 @@ public:
 
         return node;
     }
-    bool cancel(OrderT *order) {
+    bool cancel(Node *order) {
+        auto side = traits.side(*order);
+        auto shift = traits.to_long(order->price) - traits.to_long(low->price);
+        Level* level = get_shifted_level(low, shift);
+        level->erase(Level::s_iterator_to(*order));
+        Level*& best = get_best(side);
+        if(level==best && level->empty()) {
+            // scan new best
+            const Level* end = get_outlier(-side);
+            while(best!=end) {
+                best = get_shifted_level(best, -(ssize_t)side);
+                if(!best->empty())
+                    break;
+            }
+            if(best==end)
+                best = nullptr;
+        }
         pool.dealloc(order);
         return true;
     }
@@ -274,7 +298,7 @@ private:
             auto prc = traits.to_long(price);
             auto base_prc = traits.to_long(best->price);
             Level* lvl = get_level(best, prc - base_prc, side);
-            lvl->price = price;
+            //lvl->price = price;
             if(((ssize_t)side)*traits.compare(prc, base_prc)>0) {
                 best = lvl;
             }
@@ -284,12 +308,15 @@ private:
             auto base_prc = traits.to_long(opp_best->price);
             auto prc = traits.to_long(price);
             best = get_level(opp_best, prc - base_prc, side);
-            best->price = price;
+            //best->price = price;
             return *best;
         } else { // empty book
             // empty book
             best = &levels[levels.size()/2];
-            best->price = price;
+            // initialize prices of levels
+            for(Level& level: levels) {
+                level.price = traits.to_price(traits.to_long(price)+(&level-best));
+            }
             return *best;
         }
     }
@@ -308,6 +335,12 @@ private:
         ssize_t dest_index = (base_index + shift) % levels.size();
         return &levels[dest_index];
     }
+    Level* get_shifted_level(const Level* base, ssize_t shift) {
+        ssize_t base_index = base - levels.data();
+        base_index = (base_index + shift) % levels.size();
+        return &levels[base_index];
+    }
+
     const Level* get_shifted_level(const Level* base, ssize_t shift) const {
         ssize_t base_index = base - levels.data();
         base_index = (base_index + shift) % levels.size();
@@ -336,8 +369,10 @@ template<
 > 
 std::ostream& operator<<(std::ostream& os, const OrderBook<OrderT, OnFillT, OrderTraitsT> &book) {
     auto print = [&](Side side) {
-        os << "best "<<book.level_to_index(book.get_best(side))
-        << " out " << book.level_to_index(book.get_outlier(-side))<<"\n";
+        #if 0
+            os << "best "<<book.level_to_index(book.get_best(side))
+            << " out " << book.level_to_index(book.get_outlier(-side))<<"\n";
+        #endif
         for(auto& level : book.get_levels(side)) {
             os << book.level_to_index(&level)<<" [" << level.price << "]";
             for(auto& order : level) {

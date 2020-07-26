@@ -17,6 +17,7 @@ include_directories(
 add_subdirectory(../toolbox-cpp toolbox-cpp EXCLUDE_FROM_ALL)
 include_directories(../toolbox-cpp)
 set(tb_core_LIBRARY tb-core-static)
+set(tb_bm_LIBRARY tb-bm-static)
 
 find_package(Boost 1.67 REQUIRED COMPONENTS unit_test_framework)
 if(NOT "${Boost_UNIT_TEST_FRAMEWORK_LIBRARY_RELEASE}" MATCHES "\\.a$")
