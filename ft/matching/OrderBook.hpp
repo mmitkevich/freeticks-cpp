@@ -34,8 +34,8 @@ public:
     using Price=PriceT;
     using Qty=QtyT;
 
-    bool is_less(const PriceT &lhs, const PriceT &rhs) {
-        return lhs<rhs;
+    int compare(const PriceT &lhs, const PriceT &rhs) {
+        return lhs-rhs;
     }
     void print(std::ostream &os, Price &price) {
         os << (double) price/pow(10., exp10_);
@@ -173,7 +173,7 @@ public:
                 auto const & book = view_.book();
                 const Level* end = book.get_outlier(-side);
                 while(current_!=end) {
-                    current_ = book.get_shifted_level(current_, (ssize_t)side);
+                    current_ = book.get_shifted_level(current_, -(ssize_t)side);
                     if(!current_->empty())
                         return *this;
                 }
@@ -181,6 +181,9 @@ public:
             }
             bool operator!=(const LevelsViewIterator &rhs) {
                 return current_ != rhs.current_;
+            }
+            bool operator==(const LevelsViewIterator &rhs) {
+                return current_ == rhs.current_;
             }
             const LevelsView& view_;
             const Level* current_;
@@ -213,6 +216,23 @@ public:
     LevelsView get_levels(Side side) const {
         return LevelsView(*this, side);
     }
+
+    ssize_t level_to_index(const Level *lvl) const {
+        return lvl <0 ? (-1): (lvl - levels.data());
+    }
+
+    Level* get_best(Side side) const {
+       return best_level[side_to_index(side)];
+    }
+
+    /// get low/high level by side.
+    /// low/high levels contain all orders with price less or equal/greater or equal to the level price.
+    const Level* get_outlier(Side side) const {
+        ssize_t index = low - levels.data();
+        index = (index - side_to_index(side)) % levels.size();
+        return &levels[index];
+    }
+
 
     // OrdersContainer& get_orders() const
 private:
@@ -249,25 +269,28 @@ private:
         Level*& best = get_best(side);
         Level*& opp_best = get_best(-side);
 
-        if(!best && !opp_best) {
-            // empty book
-            best = &levels[levels.size()/2];
-            best->price = price;
-            return *best;
-        }else if(opp_best) {
+        if(/*FT_LIKELY*/(best)) {
+            // our not empty
+            auto prc = traits.to_long(price);
+            auto base_prc = traits.to_long(best->price);
+            Level* lvl = get_level(best, prc - base_prc, side);
+            lvl->price = price;
+            if(((ssize_t)side)*traits.compare(prc, base_prc)>0) {
+                best = lvl;
+            }
+            return *lvl;
+        } else if(opp_best) {
             // opposite side not empty
             auto base_prc = traits.to_long(opp_best->price);
             auto prc = traits.to_long(price);
             best = get_level(opp_best, prc - base_prc, side);
             best->price = price;
             return *best;
-        }else {
-            // our not empty
-            auto prc = traits.to_long(price);
-            auto base_prc = traits.to_long(best->price);
-            Level* lvl = get_level(best, prc - base_prc, side);
-            lvl->price = price;
-            return *lvl;
+        } else { // empty book
+            // empty book
+            best = &levels[levels.size()/2];
+            best->price = price;
+            return *best;
         }
     }
     /// shift level of side by offset given in shift, returning existing or new level of that side.
@@ -298,16 +321,6 @@ private:
     Level*& get_best(Side side) {
        return best_level[side_to_index(side)];
     }
-    Level* get_best(Side side) const {
-       return best_level[side_to_index(side)];
-    }
-    /// get low/high level by side.
-    /// low/high levels contain all orders with price less or equal/greater or equal to the level price.
-    const Level* get_outlier(Side side) const {
-        ssize_t index = low - levels.data();
-        index = (index - side_to_index(side)) % levels.size();
-        return &levels[index];
-    }
 private:
     OrderTraits traits;
     ft::utils::Pool<Node> pool;
@@ -323,8 +336,10 @@ template<
 > 
 std::ostream& operator<<(std::ostream& os, const OrderBook<OrderT, OnFillT, OrderTraitsT> &book) {
     auto print = [&](Side side) {
+        os << "best "<<book.level_to_index(book.get_best(side))
+        << " out " << book.level_to_index(book.get_outlier(-side))<<"\n";
         for(auto& level : book.get_levels(side)) {
-            os << "[" << level.price << "]";
+            os << book.level_to_index(&level)<<" [" << level.price << "]";
             for(auto& order : level) {
                 os << order.qty << " ";
             }

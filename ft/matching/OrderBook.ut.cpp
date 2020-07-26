@@ -12,6 +12,7 @@ BOOST_AUTO_TEST_CASE(OrderBook1)
     OrderBook<> book;
     book.place({100, 10});
     book.place({101, 11});
+    book.place({101, 12});
     book.place({200, -20});
     book.place({201, -21});
 
