@@ -3,6 +3,9 @@
 #include <iomanip>
 #include <chrono>
 
+namespace ft {
+inline namespace utils {
+
 using BasicTicks = std::chrono::duration<std::int64_t,
     std::ratio_multiply<std::ratio<100>, std::nano>>;
 
@@ -51,3 +54,7 @@ inline std::ostream & operator<<(std::ostream& os, Ticks ticks) {
     os << ticks.to_time_point();
     return os;
 }
+
+} // namespace utils
+} // namespace ft
+

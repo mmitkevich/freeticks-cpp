@@ -3,7 +3,10 @@
 #include <chrono>
 #include <cstring>
 #include <fstream>
-#include "util/Trace.hpp"
+#include "ft/utils/Trace.hpp"
+
+using namespace ft;
+using namespace qscalp;
 
 std::int64_t QScalp::read_leb128(std::istream &input) {
     std::int64_t result = 0;

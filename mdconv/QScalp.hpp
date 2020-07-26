@@ -7,7 +7,9 @@
 #include <stdexcept>
 #include <iomanip>
 #include "TickMessage.hpp"
-#include "util/Ticks.hpp"
+#include "ft/utils/Ticks.hpp"
+namespace ft {
+inline namespace qscalp {
 
 class QScalp {
 public:
@@ -58,3 +60,6 @@ public:
     Qty open_interest {0};
     Identifier exchange_id;
 };
+
+} // ns qscalp
+} // ns ft

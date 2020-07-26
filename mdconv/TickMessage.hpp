@@ -1,8 +1,12 @@
 #pragma once
 
 #include <iostream>
-#include "util/Ticks.hpp"
+#include "ft/utils/Ticks.hpp"
 #include <cassert>
+
+namespace ft {
+inline namespace qscalp {
+namespace ftu = ft::utils;
 
 struct TickMessage {
     using Price = std::int64_t;
@@ -27,9 +31,9 @@ struct TickMessage {
     }
 
     std::int64_t flags;
-    TimeStamp timestamp; 
-    TimeStamp sender_timestamp;
-    TimeStamp exchange_timestamp;
+    ftu::TimeStamp timestamp; 
+    ftu::TimeStamp sender_timestamp;
+    ftu::TimeStamp exchange_timestamp;
     std::int64_t client_id {0};
     std::int64_t exchange_id {0};
     Price price {0};
@@ -55,3 +59,6 @@ inline std::ostream & operator<<(std::ostream& os, const TickMessage &e) {
     os << e.qty;
     return os;
 }
+
+} // namespace qscalp
+} // namespace ft

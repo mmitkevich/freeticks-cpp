@@ -9,6 +9,8 @@
 #include "QScalp.hpp"
 
 using namespace toolbox;
+using namespace ft;
+using namespace ft::qscalp;
 
 void handler(const TickMessage& e) {
     std::cout << e << std::endl;

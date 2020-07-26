@@ -12,4 +12,4 @@ add_executable(${app_NAME}
   ${app_SOURCES})
 
 target_link_libraries(${app_NAME}
-  ${toolbox_LIBRARY})
+  ${tb_core_LIBRARY})

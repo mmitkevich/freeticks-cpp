@@ -16,3 +16,16 @@
 
 #define BOOST_TEST_MAIN
 #include <boost/test/unit_test.hpp>
+#include "toolbox/sys/Log.hpp"
+
+struct FtUnitTests {
+    FtUnitTests() {
+        //TOOLBOX_INFO << "FtUnitTests";
+        set_log_level(toolbox::sys::Log::Debug);
+    }
+    ~FtUnitTests() {
+        //TOOLBOX_INFO << "~FtUnitTests";
+    }
+};
+
+BOOST_GLOBAL_FIXTURE( FtUnitTests );

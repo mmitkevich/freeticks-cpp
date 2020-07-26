@@ -1,8 +1,8 @@
-include_directories(SYSTEM
+include_directories(
   "${CMAKE_CURRENT_SOURCE_DIR}/contrib"
   "${PROJECT_SOURCE_DIR}/freeticks")
 
-set(lib_NAME freeticks)
+set(lib_NAME ft_core)
 
 set(lib_SOURCES
     matching/OrderBook.cpp
@@ -15,6 +15,7 @@ install(TARGETS ${lib_NAME}-static DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT
 
 set(test_SOURCES
     matching/OrderBook.ut.cpp
+    utils/Pool.ut.cpp
   )
 
 add_executable(${lib_NAME}-test
@@ -22,7 +23,7 @@ add_executable(${lib_NAME}-test
   Main.ut.cpp)
 
 target_link_libraries(${lib_NAME}-test
-  ${${lib_NAME}_LIBRARY} "${Boost_UNIT_TEST_FRAMEWORK_LIBRARY}" stdc++fs)
+  ${${lib_NAME}_LIBRARY} "${Boost_UNIT_TEST_FRAMEWORK_LIBRARY}" stdc++fs ${tb_core_LIBRARY})
 
 foreach(file ${test_SOURCES})
   get_filename_component(dir  "${file}" DIRECTORY)
