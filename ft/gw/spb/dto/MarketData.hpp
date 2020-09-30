@@ -1,10 +1,14 @@
 #pragma once
-#pragma once
 
+#include <boost/mp11/detail/mp_list.hpp>
+#include <cassert>
 #include <array>
-#include "SpbTypes.hpp"
 
-namespace ft::gw::spb {
+#include "Frame.hpp"
+
+#define SPB_ASSERT assert
+
+namespace ft::gw::spb::dto {
 
 struct Schema {
     struct UDP {
@@ -26,10 +30,10 @@ struct Snapshot: public Message<ID> {
 };
 
 template<typename SchemaT=Schema::UDP>
-using SnapshotStarted = Snapshot<12345, SchemaT>;
+using SnapshotStart = Snapshot<12345, SchemaT>;
 
 template<typename SchemaT=Schema::UDP>
-using SnapshotFinished = Snapshot<12312, SchemaT>;
+using SnapshotFinish = Snapshot<12312, SchemaT>;
 
 struct Side {
     enum Value:char {
@@ -74,7 +78,7 @@ struct Group {
     }
 
     ElementT& operator[](std::size_t index) {
-        FTASSERT(index>=0 && index<count);
+        SPB_ASSERT(index>=0 && index<count);
         return ((ElementT*)((char*)this+offset))[index];
     }
 };
@@ -85,11 +89,13 @@ struct AggrMsg: public Message<ID, SchemaT> {
     Group<SubAggr> aggr;
 };
 
-template<typename SchemaT>
-using AggrMsgOnline = AggrMsg<1111>;
-using AggrMsgSnapshot = AggrMsg<1112>;
+template<typename SchemaT=Schema::UDP>
+using AggrMsgOnline = AggrMsg<1111, SchemaT>;
 
-template<typename SchemaT>
+template<typename SchemaT=Schema::UDP>
+using AggrMsgSnapshot = AggrMsg<1112, SchemaT>;
+
+template<typename SchemaT=Schema::UDP>
 struct EmptyBook: public Message<15300, SchemaT> {
     MarketInstrument instrument;
 };

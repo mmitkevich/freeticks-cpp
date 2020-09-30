@@ -1,27 +1,12 @@
 #include <cstdint>
 #include <array>
 
-namespace ft::gw::spb {
+namespace ft::gw::spb::dto {
 
-struct Int2 {
-    uint16_t value = 0;
-    
-    constexpr Int2() {}
-    constexpr Int2(uint16_t rhs)
-    : value(rhs) {}
-};
-
-struct Int4 {
-    uint32_t value = 0;
-};
-
-struct Int1 {
-    uint8_t value = 0;
-};
-
-struct Int8 {
-    uint64_t value = 0;
-};
+using Int2 = std::uint16_t;
+using Int4 = std::uint32_t;
+using Int8 = std::uint64_t;
+using Int1 = std::uint8_t;
 
 struct Time8n {
     uint64_t value = 0;
@@ -45,6 +30,7 @@ using Seq = Int8;
 using MarketId = Int2;
 using InstrumentId = Int8;
 
+#pragma pack(push, 1)
 struct Frame {
     Size size;
     MsgId msgid;
@@ -53,6 +39,7 @@ struct Frame {
     Frame(MsgId msgid)
     : msgid(msgid) {}
 };
+#pragma pack(pop)
 
 struct MarketInstrument {
     MarketId marketid;

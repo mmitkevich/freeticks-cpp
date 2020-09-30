@@ -2,10 +2,11 @@ include_directories(
   "${CMAKE_CURRENT_SOURCE_DIR}/contrib"
   "${PROJECT_SOURCE_DIR}/freeticks")
 
-set(lib_NAME ft_core)
+set(lib_NAME ft-core)
 
 set(lib_SOURCES
     matching/OrderBook.cpp
+    gw/spb/MDParser.cpp
 )
 
 add_library(${lib_NAME}-static STATIC ${lib_SOURCES})
@@ -15,6 +16,7 @@ install(TARGETS ${lib_NAME}-static DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT
 
 set(test_SOURCES
     matching/OrderBook.ut.cpp
+    gw/spb/MDParser.ut.cpp
     utils/Pool.ut.cpp
   )
 
