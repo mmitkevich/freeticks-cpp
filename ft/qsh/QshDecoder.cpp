@@ -6,10 +6,6 @@
 
 using namespace ft::qsh;
 
-QshDecoder::QshDecoder(std::istream& input_stream)
-: input_stream_(input_stream)
-{}
-
 std::int64_t QshDecoder::read_leb128() {
     std::int64_t result = 0;
     int shift  = 0;
@@ -78,7 +74,7 @@ Ticks QshDecoder::read_datetime() {
 
 Ticks QshDecoder::read_grow_datetime(Ticks previous) {
     std::int64_t pval = previous.count();
-    std::int64_t val = read_growing(input_stream_, pval / 10000) * 10000;
+    std::int64_t val = read_growing(pval / 10000) * 10000;
     return Ticks(val);
 }
 
@@ -109,44 +105,42 @@ void QshDecoder::read_header() {
         throw std::runtime_error("only qscalp version 4 is supported");
     state_.app = read_string();
     state_.comment = read_string();
-    state_.frame_ts = state_.ctime = read_datetime(input_stream_);
+    state_.frame_ts = state_.ctime = read_datetime();
     FT_TRACE("ctime: " << state_.ctime.to_string())
-    state_.nstreams = read_byte(input);
+    state_.nstreams = read_byte();
     for(int i=0;i<state_.nstreams;i++) {
-        int stream_id = read_byte(input_stream_);
+        int stream_id = read_byte();
         if(stream_id != Stream::Messages) {
-            stream_ids[i] = stream_id;
+            state_.stream_ids[i] = stream_id;
             std::size_t stream_index =  (stream_id >> 4) - 1;
             if(stream_index<0 || stream_index>=7)
                 throw std::runtime_error("invalid stream id");
-            instruments[stream_index] = read_string(input);
-            FT_TRACE("stream 0x"<<std::hex<<stream_id<<" ins "<<instruments[stream_index]);
+            state_.instruments[stream_index] = read_string();
+            FT_TRACE("stream 0x"<<std::hex<<stream_id<<" ins "<<state_.instruments[stream_index]);
         }
     }
-    return state;
 }
 
 bool QshDecoder::read_frame_header() {
     if(input_stream_.eof())
         return false;
-    FT_TRACE("ofs "<<input_stream_.tellg()<<" last frame ts "<<frame_ts);
-    state_.ts = state_.frame_ts = read_grow_datetime(frame_ts);
+    FT_TRACE("ofs "<<input_stream_.tellg()<<" last frame ts "<<state_.frame_ts);
+    state_.ts = state_.frame_ts = read_grow_datetime(state_.frame_ts);
     if(state_.nstreams>1)
         state_.cur_stream = read_byte();
     FT_TRACE("frame: frame_ts "<<frame_ts<< " cur_stream "<<std::hex<<cur_stream)
     return true;
 }
 
-std::size_t QshDecoder::decode(std::input_stream) {
-    input_stream_ = input_stream;
+void QshDecoder::decode() {
     input_stream_.exceptions(std::ios::eofbit | std::ios::failbit | std::ios::badbit);
     total_count_ = 0;
     try {
         read_header();
         while(read_frame_header()) {
-            int stream_id = stream_ids[cur_stream];
+            int stream_id = state_.stream_ids[state_.cur_stream];
             switch(stream_id) {
-                case OrdLog: read_ord_log(); break;
+                case OrdLog: read_order_log(); break;
                 default: throw std::runtime_error("invalid stream id");
             }
             total_count_++;
@@ -158,10 +152,10 @@ std::size_t QshDecoder::decode(std::input_stream) {
     }
 }
 
-void QshDecoder::read_ord_log(std::istream &input) {
-    int flags = read_byte(input);
-    std::uint16_t plaza_flags = read_uint16(input);
-    TickMessage e{};
+void QshDecoder::read_order_log() {
+    int flags = read_byte();
+    std::uint16_t plaza_flags = read_uint16();
+    core::TickMessage e{};
     e.flags = 0;
     FT_TRACE("flags 0x"<<std::hex<<flags<<" plaza_flags 0x"<<plaza_flags);
     if(plaza_flags & (PLAZA_ADD|PLAZA_MOVE|PLAZA_COUNTER)) {
@@ -174,58 +168,59 @@ void QshDecoder::read_ord_log(std::istream &input) {
         e.flags |= TickMessage::Fill;
     }
     if(flags & OL_TIMESTAMP) {
-        ts = read_grow_datetime(input, ts);
-        e.timestamp = e.exchange_timestamp = ts.to_time_point();
+        state_.ts = read_grow_datetime(state_.ts);
+        e.timestamp = e.exchange_timestamp = state_.ts.to_time_point();
         FT_TRACE("exchange_timestamp "<<e.timestamp)
     } else {
-        e.timestamp = e.exchange_timestamp = ts.to_time_point();
+        e.timestamp = e.exchange_timestamp = state_.ts.to_time_point();
     }
     if(flags & OL_ID) {
         if(plaza_flags & PLAZA_ADD)
-            e.exchange_id = exchange_id = read_growing(input, exchange_id);
+            e.exchange_id = state_.exchange_id = read_growing(state_.exchange_id);
         else 
-            e.exchange_id = read_relative(input, exchange_id);
+            e.exchange_id = read_relative(state_.exchange_id);
         FT_TRACE("exchange_id "<<e.exchange_id)
     } else {
-        e.exchange_id = exchange_id;
+        e.exchange_id = state_.exchange_id;
     }
     if(flags&OL_PRICE) {
-        e.price = price = read_relative(input, price);
+        e.price = state_.price = read_relative(state_.price);
         FT_TRACE("price "<<e.price)
     } else {
-        e.price = price;
+        e.price = state_.price;
     }
     if(flags&OL_AMOUNT) {
-        e.qty = read_leb128(input);
+        e.qty = read_leb128();
         FT_TRACE("qty "<<e.qty)
     }
     if(plaza_flags & PLAZA_FILL) {
         if(flags&OL_AMOUNT_LEFT) {
-            e.qty_left = read_leb128(input);
+            e.qty_left = read_leb128();
             FT_TRACE("qty_left "<<e.qty_left)
         }
         if(flags&OL_FILL_ID) {
-            e.fill_id = fill_id = read_growing(input, fill_id);
+            e.fill_id = state_.fill_id = read_growing(state_.fill_id);
             FT_TRACE("trade_id "<<e.fill_id)
         } else {
-            e.fill_id = fill_id;
+            e.fill_id = state_.fill_id;
         }
         if(flags&OL_FILL_PRICE) {
-            e.fill_price = fill_price = read_relative(input, fill_price);
+            e.fill_price = state_.fill_price = read_relative(state_.fill_price);
             FT_TRACE("trade_price "<<e.fill_price)
         } else {
-            e.fill_price = fill_price;
+            e.fill_price = state_.fill_price;
         }
         if(flags&OL_OPEN_INTEREST) {
-            e.open_interest = open_interest = read_relative(input, open_interest);
+            e.open_interest = state_.open_interest = read_relative(state_.open_interest);
             FT_TRACE("open_interest "<<e.open_interest)
         } else {
-            e.open_interest = open_interest;
+            e.open_interest = state_.open_interest;
         }
     }
     if(e.flags==0) {
         std::cerr<<"UNKNOWN flags "<<std::hex<<flags<<" plaza "<<std::hex<<plaza_flags<<std::endl;
     }else {
-        messages(e);
+        if(on_tick_)
+            on_tick_(e);
     }
 }

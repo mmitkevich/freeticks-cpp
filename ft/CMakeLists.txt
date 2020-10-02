@@ -6,6 +6,7 @@ set(lib_NAME ft-core)
 
 set(lib_SOURCES
     matching/OrderBook.cpp
+    qsh/QshDecoder.cpp    
 )
 
 add_library(${lib_NAME}-static STATIC ${lib_SOURCES})
@@ -26,7 +27,7 @@ add_executable(${lib_NAME}-test
   Main.ut.cpp)
 
 target_link_libraries(${lib_NAME}-test
-  ${${lib_NAME}_LIBRARY} "${Boost_UNIT_TEST_FRAMEWORK_LIBRARY}" stdc++fs ${tb_core_LIBRARY} ${tb_bm_LIBRARY})
+  ${${lib_NAME}_LIBRARY} "${Boost_UNIT_TEST_FRAMEWORK_LIBRARY}" stdc++fs ${tb_core_LIBRARY} ${tb_bm_LIBRARY} ${ft_core_LIBRARY})
 
 foreach(file ${test_SOURCES})
   get_filename_component(dir  "${file}" DIRECTORY)

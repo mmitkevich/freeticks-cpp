@@ -20,8 +20,8 @@ public:
         // FIXME: dst_address instead of dst_host
         if((!dst_host_ ||  packet.dst_host() == dst_host_.value())
                 && (!dst_port_ || packet.dst_port() == dst_port_.value())) {
-            total_records_++;
-            TOOLBOX_INFO << packet;
+            total_count_++;
+            //TOOLBOX_INFO << packet;
             protocol_.decode({packet.data(), packet.size()});
         }
     }
@@ -51,11 +51,11 @@ public:
     {
         device_.run();
     }
-    std::size_t size() const { return total_records_; }
+    std::size_t total_count() const { return total_count_; }
 private:
     Protocol protocol_;
     toolbox::PcapDevice device_;
-    std::size_t total_records_{0};
+    std::size_t total_count_{0};
     std::optional<std::string> dst_host_;
     std::optional<std::uint32_t> dst_port_;
 };

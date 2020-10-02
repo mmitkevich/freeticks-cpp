@@ -6,18 +6,18 @@
 namespace ft {
 
 
-template<typename ReaderT>
+template<typename GatewayT>
 class Task
 {
 public:
-    Task(std::string_view taskid, ReaderT&& reader)
+    Task(std::string_view taskid, GatewayT&& gateway)
     : taskid_(taskid)
-    , reader_(reader)
+    , gateway_(gateway)
     {}
 
     template<typename HandlerT>
     void record(HandlerT handler) {
-        reader_.on_record(handler);
+        gateway_.on_record(handler);
     }
 
     bool match(std::string_view taskid) const {
@@ -33,23 +33,24 @@ public:
         auto start_ts = std::chrono::system_clock::now();
         auto finally = [&] {
             auto elapsed = std::chrono::system_clock::now() - start_ts;
-            TOOLBOX_INFO << taskid() << " parsed " << reader_.size()
+            auto count = gateway_.total_count();
+            TOOLBOX_INFO << taskid() << " parsed " << count
                 << " records in " << elapsed.count()/1e9 <<" s" 
-                << " at "<< (1e3*reader_.size()/elapsed.count()) << " mio/s";
+                << " at "<< (1e3*count/elapsed.count()) << " mio/s";
         };
         try {
-            reader_.input(input);            
-            reader_.filter(opts.filter);
-            reader_.run();
+            gateway_.input(input);            
+            gateway_.filter(opts.filter);
+            gateway_.run();
             finally();            
         }catch(std::runtime_error &e) {
             finally();
-            TOOLBOX_INFO << "'" << reader_.input() << "' " << e.what();
+            TOOLBOX_INFO << "'" << gateway_.input() << "' " << e.what();
             throw;
         }
     }
 private:
-    ReaderT reader_;
+    GatewayT gateway_;
     std::string taskid_;
 };
 

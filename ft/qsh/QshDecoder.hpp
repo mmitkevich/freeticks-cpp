@@ -13,12 +13,13 @@
 #include "ft/core/TickMessage.hpp"
 
 namespace ft::qsh {
-
+using Ticks = ftu::Ticks;
 class QshDecoder
 {
 public:
     using TickSlot = ft::core::TickSlot;
-
+    using TickMessage = ft::core::TickMessage;
+    
     enum Stream {
         Quotes          = 0x10,
         Deals           = 0x20,
@@ -60,7 +61,6 @@ public:
     using Qty = std::int64_t;
     using Price = std::int64_t;
     using Identifier = std::int64_t;
-    using Ticks = ftu::Ticks;
     
     struct State {
         std::string app;
@@ -80,16 +80,20 @@ public:
     };
 
 public:
+    QshDecoder(std::istream& input_stream)
+    : input_stream_(input_stream)
+    {}
+
     /// setup tick listener
     void tick(TickSlot on_tick) { on_tick_ = on_tick; }
     
     /// decode stream until EOF
-    void decode(std::istream& input_stream);
+    void decode();
 
     /// return total number of records decoded
     std::size_t total_count() const { return total_count_; }
 private:
-    void read_ord_log();
+    void read_order_log();
     void read_header();
     bool read_frame_header();
     std::string read_string();

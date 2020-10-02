@@ -42,6 +42,7 @@ include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 find_package(PCAP)
 
 add_subdirectory(ft)
+set(ft_core_LIBRARY ft-core-static)
 add_subdirectory(mdconv)
 
 
