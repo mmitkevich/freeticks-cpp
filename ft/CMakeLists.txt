@@ -6,7 +6,6 @@ set(lib_NAME ft-core)
 
 set(lib_SOURCES
     matching/OrderBook.cpp
-    gw/spb/MDParser.cpp
 )
 
 add_library(${lib_NAME}-static STATIC ${lib_SOURCES})
@@ -14,9 +13,11 @@ set_target_properties(${lib_NAME}-static PROPERTIES OUTPUT_NAME ${lib_NAME})
 target_link_libraries(${lib_NAME}-static pthread)
 install(TARGETS ${lib_NAME}-static DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT static)
 
+set(ft_core_LIBRARY ft-core-static)
+
 set(test_SOURCES
     matching/OrderBook.ut.cpp
-    gw/spb/MDParser.ut.cpp
+    spb/SpbDecoder.ut.cpp
     utils/Pool.ut.cpp
   )
 
@@ -32,5 +33,3 @@ foreach(file ${test_SOURCES})
   get_filename_component(name "${file}" NAME_WE)
   add_test(NAME ${dir}::${name}Suite COMMAND ${lib_NAME}-test -l error -t ${name}Suite)
 endforeach()
-
-

@@ -17,7 +17,7 @@
 
 namespace ft { inline namespace matching {
 
-enum class Side:int {
+enum class Side : int {
     Buy     =   1,
     Sell    =   -1
 };

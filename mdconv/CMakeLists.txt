@@ -5,11 +5,12 @@ include_directories(PRIVATE
   "${PROJECT_SOURCE_DIR}")
 
 set(app_SOURCES
-    QScalp.cpp
     MdConv.cpp)
 
 add_executable(${app_NAME}
   ${app_SOURCES})
 
 target_link_libraries(${app_NAME}
-  ${tb_core_LIBRARY})
+  ${tb_core_LIBRARY}
+  ${ft_LIBRARY}
+  ${PCAP_LIBRARY})

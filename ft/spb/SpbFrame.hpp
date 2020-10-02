@@ -1,7 +1,8 @@
-#include <cstdint>
-#include <array>
+#pragma once
 
-namespace ft::gw::spb::dto {
+#include "ft/utils/Common.hpp"
+
+namespace ft::spb {
 
 using Int2 = std::uint16_t;
 using Int4 = std::uint32_t;
@@ -41,7 +42,7 @@ struct Frame {
 };
 #pragma pack(pop)
 
-struct MarketInstrument {
+struct Instrument {
     MarketId marketid;
     InstrumentId insturmentid;
 };
@@ -71,4 +72,5 @@ struct Header {
     Time8n system_time;
     Int2 source_id;
 };
-}
+
+} // ns

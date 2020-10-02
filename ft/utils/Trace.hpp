@@ -7,3 +7,7 @@
 #else
 #define FT_TRACE(...)
 #endif
+
+#define FT_ASSERT assert
+
+namespace ft::utils {}

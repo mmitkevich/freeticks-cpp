@@ -1,16 +1,13 @@
 #pragma once
-
-#include <iostream>
+#include "ft/utils/Common.hpp"
 #include "ft/utils/Ticks.hpp"
-#include <cassert>
 
-namespace ft {
-inline namespace qscalp {
-namespace ftu = ft::utils;
+namespace ft::core {
 
 struct TickMessage {
     using Price = std::int64_t;
     using Qty = std::int64_t;
+ 
     enum Type {
         Unknown = 0,
         Place  = 1<<0,
@@ -60,5 +57,7 @@ inline std::ostream & operator<<(std::ostream& os, const TickMessage &e) {
     return os;
 }
 
-} // namespace qscalp
-} // namespace ft
+using TickSignal = tbu::Signal<const core::TickMessage&>;
+using TickSlot = tbu::Signal<const core::TickMessage&>;
+
+} // namespace
