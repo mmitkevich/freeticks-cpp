@@ -1,5 +1,6 @@
 #pragma once
 #include "ft/utils/Common.hpp"
+#include "ft/utils/StringUtils.hpp"
 #include "toolbox/net/Pcap.hpp"
 
 namespace ft::pcap {
@@ -11,9 +12,10 @@ public:
 public:
     PcapMdGateway(Protocol&& protocol)
     : protocol_(protocol)
-    {
-        device_.packet(tbu::bind<&PcapMdGateway::on_packet>(this));
-    }
+    {}
+    PcapMdGateway(const PcapMdGateway& rhs) = delete;
+    PcapMdGateway(PcapMdGateway&& rhs) = delete;
+
     Protocol& protocol() {   return protocol_; }
     void on_packet(const tb::PcapPacket& packet)
     {
@@ -21,7 +23,7 @@ public:
         if((!dst_host_ ||  packet.dst_host() == dst_host_.value())
                 && (!dst_port_ || packet.dst_port() == dst_port_.value())) {
             total_count_++;
-            //TOOLBOX_INFO << packet;
+            TOOLBOX_DEBUG << packet << " | " << ftu::to_hex({packet.data(), packet.size()});
             protocol_.decode({packet.data(), packet.size()});
         }
     }
@@ -49,6 +51,7 @@ public:
     }
     void run()
     {
+        device_.packet(tbu::bind<&PcapMdGateway::on_packet>(this));
         device_.run();
     }
     std::size_t total_count() const { return total_count_; }
