@@ -60,9 +60,10 @@ public:
             ('o',   "output",       tbu::Value{opts.output}.default_value("./out"),                           "output path")
             ('i',   "inputs",       tbu::Value{opts.inputs}.multitoken().required(),                          "input paths");
 
+        using SpbUdpMdGateway = pcap::PcapMdGateway<spb::SpbUdpProtocol>;
         auto tasks = make_task_set(
-            Task("spb", pcap::PcapMdGateway{spb::SpbUdpProtocol{}}),
-            Task("qsh", qsh::QshMdGateway{})
+            Task("spb", std::make_unique<SpbUdpMdGateway>(spb::SpbUdpProtocol())),
+            Task("qsh", std::make_unique<qsh::QshMdGateway>())
         );
 
         try {

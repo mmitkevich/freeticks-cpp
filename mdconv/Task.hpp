@@ -10,10 +10,12 @@ template<typename GatewayT>
 class Task
 {
 public:
-    Task(std::string_view taskid, GatewayT&& gateway)
+    Task(std::string_view taskid, std::unique_ptr<GatewayT> gateway)
     : taskid_(taskid)
-    , gateway_(gateway)
+    , gateway_(std::move(gateway))
     {}
+
+    GatewayT &gateway() { return *gateway_; }
 
     template<typename HandlerT>
     void record(HandlerT handler) {
@@ -33,24 +35,24 @@ public:
         auto start_ts = std::chrono::system_clock::now();
         auto finally = [&] {
             auto elapsed = std::chrono::system_clock::now() - start_ts;
-            auto count = gateway_.total_count();
+            auto count = gateway().total_count();
             TOOLBOX_INFO << taskid() << " parsed " << count
                 << " records in " << elapsed.count()/1e9 <<" s" 
                 << " at "<< (1e3*count/elapsed.count()) << " mio/s";
         };
         try {
-            gateway_.input(input);            
-            gateway_.filter(opts.filter);
-            gateway_.run();
+            gateway().input(input);            
+            gateway().filter(opts.filter);
+            gateway().run();
             finally();            
         }catch(std::runtime_error &e) {
             finally();
-            TOOLBOX_INFO << "'" << gateway_.input() << "' " << e.what();
+            TOOLBOX_INFO << "'" << gateway().input() << "' " << e.what();
             throw;
         }
     }
 private:
-    GatewayT gateway_;
+    std::unique_ptr<GatewayT> gateway_;
     std::string taskid_;
 };
 
