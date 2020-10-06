@@ -43,7 +43,7 @@ BOOST_AUTO_TEST_CASE(Parser)
     std::size_t n_snapshot_start = 0;
     auto on_snapshot_start = [&](const typename Udp::SnapshotStart& msg) {
         if constexpr (!BENCH) {
-            TOOLBOX_INFO << "SnapshotStart("<<msg.frame.msgid<<", update_seq=" << msg.update_seq << ")";
+            TOOLBOX_INFO << "SnapshotStart("<<msg.base.frame.msgid<<", update_seq=" << msg.update_seq << ")";
         }
         n_snapshot_start++;
     };
@@ -51,7 +51,7 @@ BOOST_AUTO_TEST_CASE(Parser)
     std::size_t n_snapshot_finish = 0;    
     auto on_snapshot_finish = [&](const typename Udp::SnapshotFinish& msg) {
         if constexpr (!BENCH) {
-            TOOLBOX_INFO << "SnapshotFinish("<<msg.frame.msgid<<", update_seq=" << msg.update_seq << ")";
+            TOOLBOX_INFO << "SnapshotFinish("<<msg.base.frame.msgid<<", update_seq=" << msg.update_seq << ")";
         }
         n_snapshot_finish++;
     };

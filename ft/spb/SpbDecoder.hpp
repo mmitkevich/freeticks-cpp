@@ -36,9 +36,9 @@ public:
 
             Base::for_each([&](auto &cb) {
                 using CB = std::decay_t<decltype(cb)>;
-                if(CB::Message::msgid == frame.msgid) {
+                if(CB::Message::Base::msgid == frame.msgid) {
                     found = true;
-                    TOOLBOX_DEBUG << "["<<(ptr-data.begin())<<".."<<(ptr+frame.size-data.begin())<<"] found msgid "<<frame.msgid;
+                    TOOLBOX_DEBUG << "["<<(ptr-data.begin())<<".."<<(ptr+frame.size-data.begin())<<"] msgid "<<frame.msgid << (cb ? "":" - skipped");
                     if(cb)
                         cb(*reinterpret_cast<const typename CB::Message*>(ptr));
                 }

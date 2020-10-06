@@ -2,11 +2,12 @@
 #include "ft/utils/Common.hpp"
 
 #include "SpbFrame.hpp"
+#include <ostream>
 
 #define SPB_ASSERT assert
 
 namespace ft::spb {
-
+#pragma pack(push, 1)
 struct SpbUdp
 {
     using Header = MdHeader;
@@ -19,12 +20,22 @@ struct Message
     Frame frame {ID};
     using Header = typename TraitsT::Header;
     Header header;
+
+    friend std::ostream& operator<<(std::ostream& os, const Message& self) {
+        os << self.frame;
+        return os;
+    }
 };
 
 template<uint16_t ID, typename TraitsT>
-struct Snapshot: public Message<ID, TraitsT>
+struct Snapshot
 {
+    using Base = Message<ID, TraitsT>;
+    Base base;
     Int8 update_seq;
+    friend std::ostream& operator<<(std::ostream& os, const Snapshot& self) {
+        return os<<self.base;
+    }
 };
 
 struct Side
@@ -63,6 +74,7 @@ struct SubAggr
     Time8n time;
 };
 
+
 template<typename ElementT>
 struct Group
 {
@@ -75,14 +87,28 @@ struct Group
         return count;
     }
     const ElementT* begin() const {
-        return ((ElementT*)((char*)this)+offset);
+        char *p = (char*)this + offset;
+        return (ElementT*)p;
     }
     const ElementT* end() const {
-        return ((ElementT*)((char*)this)+offset)+count;
+        char *p = (char*)this + offset;
+        return (ElementT*)p + count;
     }
-    ElementT& operator[](std::size_t index) {
+    const ElementT& operator[](std::size_t index) const {
         SPB_ASSERT(index>=0 && index<count);
-        return ((ElementT*)((char*)this)+offset)[index];
+        char *p = (char*)this + offset;
+        return ((ElementT*)p)[index];
+    }
+    friend std::ostream& operator<<(std::ostream&os, const Group& self) {
+        os << self.count<<"#[";
+        std::size_t i=0;
+        for(const auto& e: self) {
+            if(i++>0)
+                os << ", "; 
+            os << e;
+        }
+        os << "]";
+        return os;
     }
 };
 
@@ -91,17 +117,54 @@ struct Group
 template<uint16_t ID, typename TraitsT>
 struct AggrMsg: public Message<ID, TraitsT>
 {
-    Instrument instrument;
-    Group<SubAggr> aggr;
+    Instrument instrument_;
+    Group<SubAggr> aggr_;
+
+    Instrument& instrument() { return instrument_; }
+    Group<SubAggr>& aggr() { return aggr_; }
 };
 
+#define FT_BEGIN_ENUM_OSTREAM(Type) 
+#define FT_ENUM_OSTREAM(Type, Value) case Type::Value: os << #Value; break;
+#define FT_END_ENUM_OSTREAM(Type) } return os; } 
 struct SubBest {
+    enum class Type: Int1 {
+        Buy = 1,
+        Sell = 2,
+        Deal = 3
+    };
+    friend auto& operator<<(std::ostream& os, const Type& self) {
+        switch(self) {
+            case Type::Buy: return os << "Buy";
+            case Type::Sell: return os << "Sell";
+            case Type::Deal: return os << "Deal";
+        }
+        return os << (std::int64_t) self;
+    }
+    enum class Flag: Int1 {
+        Update = 0,
+        New = 1
+    };
+    friend auto& operator<<(std::ostream& os, const Flag& self) {
+        switch(self) {
+            case Flag::Update: return os << "Update";
+            case Flag::New: return os << "New";
+        }
+        return os << (std::int64_t) self;
+    }
     Dec8 price;
-    Int1 type;
-    Int1 flag;
+    Type type;
+    Flag flag;
     Int4 amount;
-    Time8n time;    
+    Time8n time;   
+
+    friend std::ostream& operator<<(std::ostream& os, const SubBest& self) {
+        os << "{price:"<<self.price<<",amount:"<<self.amount<<",type:"<<self.type<<",flag:"<<self.flag<<",time:'"<<self.time<<"'}";
+        return os;
+    } 
 };
+
+static_assert(sizeof(SubBest)==22);
 
 template<typename TraitsT>
 struct SpbSchema 
@@ -113,14 +176,22 @@ struct SpbSchema
     using AggrMsgOnline = AggrMsg<1111, TraitsT>;
     using AggrMsgSnapshot = AggrMsg<1112, TraitsT>;
 
-    struct EmptyBook: Message<15300, TraitsT>
+    struct EmptyBook
     {
+        using Base = Message<15300, TraitsT>;
+        Base base;
         Instrument instrument;
     };
-    struct PriceSnapshot : Message<7653, TraitsT>
+    struct PriceSnapshot
     {
+        using Base = Message<7653, TraitsT>;
+        Base base;
         Instrument instrument;    
         Group<SubBest> sub_best;
+        friend std::ostream& operator<<(std::ostream& os, const PriceSnapshot& self) {
+            os << self.base << " ins "<<self.instrument<<" sub_best "<<self.sub_best;
+            return os;
+        }
     };
 
     // Declare type list for messages
@@ -130,6 +201,7 @@ struct SpbSchema
     >;
 };
 
+#pragma pack(pop)
 
 
 } // ns
