@@ -27,10 +27,10 @@ struct TickMessage {
         return Unknown;
     }
 
-    std::int64_t flags;
-    ftu::TimeStamp timestamp; 
-    ftu::TimeStamp sender_timestamp;
-    ftu::TimeStamp exchange_timestamp;
+    std::int64_t flags {};
+    ftu::TimeStamp timestamp {}; 
+    ftu::TimeStamp sender_timestamp {};
+    ftu::TimeStamp exchange_timestamp {};
     std::int64_t client_id {0};
     std::int64_t exchange_id {0};
     Price price {0};
