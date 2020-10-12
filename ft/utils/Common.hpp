@@ -12,13 +12,20 @@
 #include <boost/mp11/tuple.hpp>
 
 #include "toolbox/sys/Log.hpp"
+#include "toolbox/util/Enum.hpp"
 
 #include "Trace.hpp"
 #include "Signal.hpp"
 
-namespace mp = boost::mp11;
 
-namespace ftu = ft::utils;
+namespace toolbox {
+    inline namespace util{}
+    inline namespace net{}
+}
 
 namespace tb = toolbox;
-namespace tbu = toolbox::util;
+
+namespace mp = boost::mp11;
+namespace ftu = ft::utils;
+namespace tbu = tb::util;
+namespace tbn = tb::net;

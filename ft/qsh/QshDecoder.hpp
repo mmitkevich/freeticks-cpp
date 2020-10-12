@@ -1,6 +1,9 @@
 #pragma once
 #include "../utils/Common.hpp"
-
+#include "ft/core/StreamStats.hpp"
+#include "toolbox/util/Slot.hpp"
+#include "toolbox/net/Packet.hpp"
+#include <csignal>
 #include <ctime>
 #include <fstream>
 #include <functional>
@@ -8,18 +11,19 @@
 #include <stdexcept>
 #include <iomanip>
 #include <string_view>
-
-#include "ft/utils/Ticks.hpp"
-#include "ft/core/TickMessage.hpp"
+#include "ft/utils/TimeUtils.hpp"
+#include "ft/core/Tick.hpp"
+#include "toolbox/util.hpp"
 
 namespace ft::qsh {
-using Ticks = ftu::Ticks;
+using Tick = ft::core::Tick;
+using Timestamp = typename Tick::Timestamp;
+
 class QshDecoder
 {
 public:
-    using TickSlot = ft::core::TickSlot;
-    using TickMessage = ft::core::TickMessage;
-    
+    using Base = tbu::Signal<const Tick&>;
+
     enum Stream {
         Quotes          = 0x10,
         Deals           = 0x20,
@@ -58,40 +62,37 @@ public:
         OL_OPEN_INTEREST = 1<<7
     };
 
-    using Qty = std::int64_t;
-    using Price = std::int64_t;
-    using Identifier = std::int64_t;
+    using Qty = typename Tick::Qty;
+    using Price = typename Tick::Price;
+    using ExchangeId = typename Tick::ExchangeId;
     
     struct State {
         std::string app;
         std::string comment;
-        Ticks ctime {0};
+        ftu::HundredNanos ctime {0};
         int nstreams {0};
         std::size_t cur_stream {0};
         std::array<std::string, 7> instruments;
         std::array<int, 7> stream_ids;
-        Ticks frame_ts {0};
-        Ticks ts {0};
+        ftu::HundredNanos frame_ts {0};
+        ftu::HundredNanos ts {0};
         Price price {0};
-        Identifier fill_id {0};
+        ExchangeId fill_id {0};
         Price fill_price {0};
         Qty open_interest {0};
-        Identifier exchange_id;
+        ExchangeId exchange_id;
     };
 
 public:
-    QshDecoder(std::istream& input_stream)
+    QshDecoder(std::istream& input_stream, core::StreamStats& stats)
     : input_stream_(input_stream)
+    , stats_(stats)
     {}
 
-    /// setup tick listener
-    void tick(TickSlot on_tick) { on_tick_ = on_tick; }
+    tbu::Signal<const Tick&> &signals() { return signals_; }
     
     /// decode stream until EOF
-    void decode();
-
-    /// return total number of records decoded
-    std::size_t total_count() const { return total_count_; }
+    void run();
 private:
     void read_order_log();
     void read_header();
@@ -101,15 +102,15 @@ private:
     std::int64_t read_uleb128();
     std::int64_t read_growing(std::int64_t previous);
     std::int64_t read_relative(std::int64_t previous);
-    Ticks read_datetime();
-    Ticks read_grow_datetime(Ticks previous);
+    ftu::HundredNanos read_datetime();
+    ftu::HundredNanos read_grow_datetime(ftu::HundredNanos previous);
     int read_byte();
     std::uint16_t read_uint16();
 private:
     State state_;
     std::istream& input_stream_;
-    TickSlot on_tick_;
-    std::size_t total_count_{};
+    core::StreamStats& stats_;
+    tbu::Signal<const Tick& > signals_;
 };
 
 }

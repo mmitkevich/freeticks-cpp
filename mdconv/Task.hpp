@@ -1,7 +1,6 @@
 #pragma once
 #include "ft/utils/Common.hpp"
 #include <chrono>
-#include "ft/core/TickMessage.hpp"
 
 namespace ft {
 
@@ -34,11 +33,12 @@ public:
     void run(std::string_view input, const OptionsT &opts) {
         auto start_ts = std::chrono::system_clock::now();
         auto finally = [&] {
+            gateway().report(std::cout);
             auto elapsed = std::chrono::system_clock::now() - start_ts;
-            auto count = gateway().total_count();
-            TOOLBOX_INFO << taskid() << " parsed " << count
-                << " records in " << elapsed.count()/1e9 <<" s" 
-                << " at "<< (1e3*count/elapsed.count()) << " mio/s";
+            auto total_received = gateway().stats().total_received;
+            TOOLBOX_INFO << taskid() << " received " << total_received
+                << " in " << elapsed.count()/1e9 <<" s" 
+                << " at "<< (1e3*total_received/elapsed.count()) << " mio/s";
         };
         try {
             gateway().input(input);            

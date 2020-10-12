@@ -4,32 +4,37 @@
 #include "SpbSchema.hpp"
 #include "SpbDecoder.hpp"
 #include "SpbBestPriceStream.hpp"
-#include <sstream>
+#include "SpbInstrumentStream.hpp"
+
 
 namespace ft::spb {
 
-template<typename SchemaT>
-class SpbProtocol
+template<
+typename SchemaT,
+typename BinaryPacketT,
+typename DecoderT = SpbDecoder<spb::Frame, SchemaT, BinaryPacketT>
+> class SpbProtocol
 {
 public:
+    using This = SpbProtocol<SchemaT, BinaryPacketT, DecoderT>;
     using Schema = SchemaT;
+    using BinaryPacket = BinaryPacketT;
     using TypeList = typename Schema::TypeList;     // TODO: consider merging typelist from BestPriceStream, OrderBookStream
-    using Decoder = SpbDecoder<Frame, TypeList>;
-    using BestPriceStream = SpbBestPriceStream<Schema>;
+    using Decoder = DecoderT;
+    using BestPriceStream = SpbBestPriceStream<Decoder>;
+    using InstrumentStream = SpbInstrumentStream<Decoder>;
 public:
-    void decode(std::string_view data) { decoder_.decode(data); }
+    Decoder& decoder() { return decoder_; }
+    auto& stats() {return decoder().stats(); }
+    void on_packet(BinaryPacket e) { decoder_.on_packet(e); }
     BestPriceStream& bestprice() { return bestprice_; }
-    auto& decoder() { return decoder_; }
-    std::string to_string(const Instrument& ins) {
-        std::stringstream ss;
-        ss << ins.insturmentid << "_" << ins.marketid;
-        return ss.str();
-    }
 private:
     Decoder decoder_;
-    BestPriceStream bestprice_ {*this};
+    BestPriceStream bestprice_ {decoder_};
+    InstrumentStream instrument_ {decoder_};
 };
 
-using SpbUdpProtocol = SpbProtocol<SpbSchema<SpbUdp>>;
+template<typename BinaryPacketT>
+using SpbUdpProtocol = SpbProtocol<SpbSchema<SpbUdp>, BinaryPacketT>;
 
 }

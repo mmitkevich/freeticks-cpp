@@ -1,66 +1,168 @@
 #pragma once
+#include "ft/core/StreamStats.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/utils/StringUtils.hpp"
+#include "ft/core/MdGateway.hpp"
+
+#include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Pcap.hpp"
+#include "toolbox/sys/Time.hpp"
+#include <ostream>
+#include <string_view>
+#include <unordered_map>
 
 namespace ft::pcap {
 
-template<typename ProtocolT>
-class PcapMdGateway {
+template<typename FnT>
+class Throttled {
 public:
+    Throttled(FnT fn)
+    : fn_(std::forward<FnT>(fn))
+    {}
+    void set_interval(toolbox::Duration val) {
+        duration_ = val;
+    }
+    template<typename ...ArgsT>
+    void operator()(ArgsT&&...args) {
+        auto now = toolbox::MonoClock::now();
+        bool is_time = now - last_time_ > duration_;
+        if(is_time) {
+            fn_(args...);
+            last_time_ = now;            
+        }
+    }
+protected:
+    FnT fn_;
+    toolbox::MonoTime last_time_ {};
+    toolbox::Duration duration_ {};
+};
+
+inline constexpr bool ft_stats_enabled() {
+    return true;
+};
+
+template<typename DerivedT>
+class BasicStats : public core::StreamStats {
+public:
+    static constexpr bool enabled() { return true; }
+
+    BasicStats() {
+        auto dur = 
+        #ifdef TOOLBOX_DEBUG        
+            toolbox::Seconds(10);
+        #else
+            toolbox::Hours(1);
+        #endif
+        report_.set_interval(dur);
+    }
+
+    void report(std::ostream& os) {
+        if constexpr(DerivedT::enabled())
+            report_(os);
+    }
+    template<typename ...ArgsT>
+    void on_received(ArgsT...args) { 
+        if constexpr(DerivedT::enabled())
+            total_received++;
+    }
+    template<typename ...ArgsT>
+    void on_accepted(ArgsT...args) { 
+        if constexpr(DerivedT::enabled())
+            total_accepted++;
+    }
+    void on_idle() {
+        report(std::cerr);
+    }
+protected:
+    Throttled<toolbox::Slot<std::ostream&>> report_{ toolbox::bind<&DerivedT::on_report>(static_cast<DerivedT*>(this)) };
+};
+
+class PcapStats: public BasicStats<PcapStats> {
+public:
+    using Base = BasicStats<PcapStats>;
+    using DstStat = std::unordered_map<tbn::IpEndpoint, std::size_t>;
+public:
+    using Base::Base;
+    using Base::report;
+    using Base::on_accepted;
+    using Base::on_received;
+    static constexpr bool enabled() { return ft_stats_enabled(); }    
+
+public:
+    void on_report(std::ostream& os) {
+        os << "dst_stat:" << std::endl;
+        for(auto& [k,v]: dst_stat_) {
+            os <<  std::setw(12) << v << "    " << k << std::endl;
+        }
+    }
+    void on_accepted(const tb::PcapPacket& pkt) { 
+        if constexpr(enabled()) {
+            Base::on_accepted();
+            const auto& dst = pkt.dst();
+            auto current = dst_stat_[dst];
+            dst_stat_[dst] = current + 1;
+        }
+    }    
+protected:
+    DstStat dst_stat_;
+};
+
+template<typename ProtocolT, typename FilterT=toolbox::HostPortFilters, typename StatsT = PcapStats>
+class PcapMdGateway : public core::MdGateway {
+public:
+    using Base = core::MdGateway;
     using Protocol = ProtocolT;
+    using Stats = StatsT;
 public:
-    PcapMdGateway(Protocol&& protocol)
-    : protocol_(protocol)
+    template<typename...ArgsT>
+    PcapMdGateway(ArgsT...args)
+    : protocol_(std::forward<ArgsT>(args)...)
     {}
     PcapMdGateway(const PcapMdGateway& rhs) = delete;
     PcapMdGateway(PcapMdGateway&& rhs) = delete;
 
     Protocol& protocol() {   return protocol_; }
-    void on_packet(const tb::PcapPacket& packet)
-    {
-        // FIXME: dst_address instead of dst_host
-        if((!dst_host_ ||  packet.dst_host() == dst_host_.value())
-                && (!dst_port_ || packet.dst_port() == dst_port_.value())) {
-            total_count_++;
-            TOOLBOX_DEBUG << packet << " | " << ftu::to_hex({packet.data(), packet.size()});
-            protocol_.decode({packet.data(), packet.size()});
-        }
+    toolbox::PcapDevice& device() { return device_; }
+    
+    void filter(const FilterT& filter) {
+        filter_ = filter;
+        TOOLBOX_INFO << "PcapMdGateway::filter("<<filter_<<")";
     }
-    template<typename FilterT>
-    void filter(const FilterT& flt)
-    {
-        dst_host(flt.dst_host);
-        dst_port(flt.dst_port);
-    }
-    void dst_host(std::optional<std::string_view> dst_host) 
-    {
-        dst_host_ = dst_host;
-    }
-    void dst_port(std::optional<uint64_t> dst_port)
-    {
-        dst_port_ = dst_port;
-    }
-    void input(std::string_view input) 
-    {
+    void input(std::string_view input) {
+        Base::input(input);
         device_.input(input);
     }
-    std::string_view input()
-    {
-        return device_.input();
-    }
-    void run()
-    {
-        device_.packet(tbu::bind<&PcapMdGateway::on_packet>(this));
+    using Base::input;
+    void run() override {
+        device_.packets().connect(tbu::bind<&PcapMdGateway::on_packet_>(this));
         device_.run();
     }
-    std::size_t total_count() const { return total_count_; }
+    void report(std::ostream& os) override {
+        protocol_.stats().report(os);
+        stats_.report(os);
+    }
+    void on_idle() {
+        report(std::cerr);
+    }
+private:
+    void on_packet_(const tb::PcapPacket& pkt) {
+        switch(pkt.protocol().protocol()) {
+            case IPPROTO_TCP: case IPPROTO_UDP: {
+                stats_.on_received(pkt);
+                if(filter_(pkt)) {
+                    stats_.on_accepted(pkt);
+                    protocol_.on_packet(pkt);
+                    on_idle();      
+                }
+        } break;
+            default: break; // ignore
+        }
+    }
 private:
     Protocol protocol_;
     toolbox::PcapDevice device_;
-    std::size_t total_count_{0};
-    std::optional<std::string> dst_host_;
-    std::optional<std::uint32_t> dst_port_;
+    Stats stats_;
+    FilterT filter_;
 };
 
 } // ft::md

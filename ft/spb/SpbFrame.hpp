@@ -1,7 +1,11 @@
 #pragma once
 
 #include "ft/utils/Common.hpp"
+#include "ft/utils/StringUtils.hpp"
 #include "toolbox/sys/Time.hpp"
+#include <cstring>
+#include <string>
+#include <string_view>
 
 namespace ft::spb {
 
@@ -61,28 +65,48 @@ struct Frame {
     : msgid(msgid) {}
     
     friend std::ostream& operator<<(std::ostream& os, const Frame& self) {
-        os << "msgid "<<self.msgid<<" seq "<<self.seq;
+        os << "msgid:"<<self.msgid<<",seq:"<<self.seq;
         return os;
     }
 };
 static_assert(sizeof(Frame)==12);
 
-struct Instrument {
+struct MarketInstrumentId {
     MarketId marketid;
     InstrumentId insturmentid;
-    friend std::ostream& operator<<(std::ostream& os, const Instrument& self) {
-        os << self.insturmentid << "_" << self.marketid;
+    friend std::ostream& operator<<(std::ostream& os, const MarketInstrumentId& self) {
+        os << "["<<self.insturmentid << "," << self.marketid <<"]";
         return os;
     }
 };
-static_assert(sizeof(Instrument)==6);
+static_assert(sizeof(MarketInstrumentId)==6);
 
 struct MdHeader {
     Time8n system_time;
     Int2 sourceid;
+    friend std::ostream& operator<<(std::ostream& os, const MdHeader& self) {
+        return os << "system_time:'" << self.system_time<<"'"<<",sourceid:"<<self.sourceid;
+    }
 };
 
 static_assert(sizeof(MdHeader)==10);
+
+template<std::size_t length>
+class Characters {
+    char value[length+1] {};
+public:
+    constexpr Characters() = default;
+    constexpr Characters(const char* value) : value(value) {}
+    constexpr std::size_t capacity() const { return length; }
+    constexpr std::size_t size() const { return std::char_traits<char>::length(value);}
+    constexpr std::string_view str() const { return std::string_view(value, size()); }
+    std::wstring wstr() const { return ft::utils::to_wstring(str()); }
+    constexpr const char* c_str() const { return value; }
+
+    friend auto& operator<<(std::ostream& os, const Characters& self) {
+        return os << self.str();
+    }
+};
 
 using ClOrderId = std::array<char, 16>;
 using UserId = std::array<char, 16>;

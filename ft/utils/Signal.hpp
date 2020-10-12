@@ -9,10 +9,10 @@ namespace ft::utils {
 namespace tbu = toolbox::util;
 namespace mp = boost::mp11;
 
-template<typename MessageT> 
-struct Signal : public tbu::Signal<const MessageT&> {
-    using Base = tbu::Signal<const MessageT&>;
-    using Message = MessageT;
+template<typename T> 
+struct Signal : public tbu::Signal<T> {
+    using Base = tbu::Signal<T>;
+    using value_type = T;
     using Base::Base;
     using Base::operator();
     using Base::operator bool;
@@ -20,7 +20,7 @@ struct Signal : public tbu::Signal<const MessageT&> {
     using Base::disconnect;
 };
 
-template<typename TypeListT>
+template<typename TypeListT, std::size_t size=1>
 struct SignalTuple 
 {
     template<typename...Args>
@@ -28,13 +28,13 @@ struct SignalTuple
     : impl_(std::forward<Args>(args)...) {}
 
     template<typename T>
-    void connect(tbu::BasicSlot<const T&> fn)
+    void connect(tbu::BasicSlot<T> fn)
     {
         std::get< mp::mp_find<TypeListT, T>::value >(impl_).connect(fn);
     }
     
     template<typename T>
-    void disconnect(tbu::BasicSlot<const T&> fn)
+    void disconnect(tbu::BasicSlot<T> fn)
     {
         std::get< mp::mp_find<TypeListT, T>::value >(impl_).disconnect(fn);
     }    

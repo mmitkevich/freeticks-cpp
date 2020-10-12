@@ -6,7 +6,8 @@ set(lib_NAME ft-core)
 
 set(lib_SOURCES
     matching/OrderBook.cpp
-    qsh/QshDecoder.cpp    
+    qsh/QshDecoder.cpp
+    utils/StringUtils.cpp
 )
 
 add_library(${lib_NAME}-static STATIC ${lib_SOURCES})

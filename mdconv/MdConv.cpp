@@ -6,6 +6,7 @@
 #include <string_view>
 #include <boost/mp11.hpp>
 
+#include "toolbox/net/Pcap.hpp"
 #include "toolbox/util/Finally.hpp"
 #include "toolbox/util/Options.hpp"
 #include "toolbox/sys/Log.hpp"
@@ -29,17 +30,14 @@ namespace tb = toolbox;
 
 class MdConv {
 public:
-    struct MdFilter {
-        std::optional<std::string> dst_host;
-        std::optional<std::uint32_t> dst_port;
-    };
     struct MdOptions {
         int log_level = 0;
         std::string input_format;
         std::string output_format;
         std::vector<std::string> inputs;
-        std::optional<std::string> output;
-        MdFilter filter;
+        tb::optional<std::string> output;
+        toolbox::HostPortFilters filter;
+        int max_packet_count{0};
     };
 public:
     int main(int argc, char* argv[]) {
@@ -49,20 +47,25 @@ public:
         bool help = false;
         
         tb::set_log_level(tb::Log::Debug);
-
+        opts.filter.tcp = false;
         parser
             ('h',  "help",          tbu::Switch{help},                                                        "print help")
             ('v',   "verbose",      tbu::Value{opts.log_level},                                               "log level")
             ('I',   "input_format", tbu::Value{opts.input_format}.default_value(      "csv"),                 "input format")
             ('O',   "output_format",tbu::Value{opts.output_format}.default_value(     "csv"),                 "output format")
-            ('d',   "dst_host",     tbu::Value{opts.filter.dst_host},                                         "destination host")
-            ('p',   "dst_port",     tbu::Value{opts.filter.dst_port},                                         "destination port")
+            ('d',   "dst_host",     tbu::Value{opts.filter.dst.host},                                         "destination host")
+            ('p',   "dst_port",     tbu::Value{opts.filter.dst.port},                                         "destination port")
             ('o',   "output",       tbu::Value{opts.output}.default_value("./out"),                           "output path")
-            ('i',   "inputs",       tbu::Value{opts.inputs}.multitoken().required(),                          "input paths");
+            ('i',   "inputs",       tbu::Value{opts.inputs}.multitoken().required(),                          "input paths")
+            ('m',   "max_packet",   tbu::Value{opts.max_packet_count},                                        "max packet");
 
-        using SpbUdpMdGateway = pcap::PcapMdGateway<spb::SpbUdpProtocol>;
+        using SpbProtocol = spb::SpbUdpProtocol<tbn::PcapPacket>;
+        using SpbMdGateway = pcap::PcapMdGateway<SpbProtocol>;
+        auto spb = std::make_unique<SpbMdGateway>();
+        //if(opts.max_packet_count!=0)
+        //    spb->device().max_packet_count(opts.max_packet_count);
         auto tasks = make_task_set(
-            Task("spb", std::make_unique<SpbUdpMdGateway>(spb::SpbUdpProtocol())),
+            Task<SpbMdGateway>("spb", std::move(spb)),
             Task("qsh", std::make_unique<qsh::QshMdGateway>())
         );
 

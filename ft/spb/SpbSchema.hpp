@@ -3,6 +3,7 @@
 
 #include "SpbFrame.hpp"
 #include <ostream>
+#include <sstream>
 
 #define SPB_ASSERT assert
 
@@ -22,7 +23,7 @@ struct Message
     Header header;
 
     friend std::ostream& operator<<(std::ostream& os, const Message& self) {
-        os << self.frame;
+        os << self.frame<<","<<self.header;
         return os;
     }
 };
@@ -100,11 +101,11 @@ struct Group
         return ((ElementT*)p)[index];
     }
     friend std::ostream& operator<<(std::ostream&os, const Group& self) {
-        os << self.count<<"#[";
+        os << "[";
         std::size_t i=0;
         for(const auto& e: self) {
             if(i++>0)
-                os << ", "; 
+                os << ","; 
             os << e;
         }
         os << "]";
@@ -117,10 +118,10 @@ struct Group
 template<uint16_t ID, typename TraitsT>
 struct AggrMsg: public Message<ID, TraitsT>
 {
-    Instrument instrument_;
+    MarketInstrumentId instrument_;
     Group<SubAggr> aggr_;
 
-    Instrument& instrument() { return instrument_; }
+    MarketInstrumentId& instrument() { return instrument_; }
     Group<SubAggr>& aggr() { return aggr_; }
 };
 
@@ -133,7 +134,7 @@ struct SubBest {
         Sell = 2,
         Deal = 3
     };
-    friend auto& operator<<(std::ostream& os, const Type& self) {
+    friend std::ostream& operator<<(std::ostream& os, const Type& self) {
         switch(self) {
             case Type::Buy: return os << "Buy";
             case Type::Sell: return os << "Sell";
@@ -145,7 +146,7 @@ struct SubBest {
         Update = 0,
         New = 1
     };
-    friend auto& operator<<(std::ostream& os, const Flag& self) {
+    friend std::ostream& operator<<(std::ostream& os, const Flag& self) {
         switch(self) {
             case Flag::Update: return os << "Update";
             case Flag::New: return os << "New";
@@ -166,6 +167,41 @@ struct SubBest {
 
 static_assert(sizeof(SubBest)==22);
 
+struct InstrumentStatus {
+    enum class TradingStatus: Int1
+    {
+        Halt        = 2,
+        Trading     = 17,
+        NoTrading   = 18,
+        Close       = 102,
+        ClosePeriod = 103,
+        DiscreteAuction = 107,
+        Open        = 118,
+        FixedPriceAuction = 120
+    };
+    friend std::ostream& operator<<(std::ostream& os, const TradingStatus& self) {
+        switch(self) {
+            case TradingStatus::Halt: return os << "Halt";
+            case TradingStatus::Trading: return os << "Trading";
+            case TradingStatus::NoTrading: return os << "NoTrading";
+            case TradingStatus::Close: return os << "Close";
+            case TradingStatus::ClosePeriod: return os << "ClosePeriod";
+            case TradingStatus::DiscreteAuction: return os << "DiscreteAuction";
+            case TradingStatus::Open: return os << "Open";
+            case TradingStatus::FixedPriceAuction: return os << "FixedPriceAuction";
+        }
+        return os << (int) self;
+    }
+    TradingStatus trading_status;
+    Int1 suspend_status;
+    Int1 routing_status;
+    Int1 reason;
+
+    friend std::ostream& operator<<(std::ostream& os, const InstrumentStatus& self) {
+        return os << "trading_status:" << self.trading_status;
+    }
+};
+
 template<typename TraitsT>
 struct SpbSchema 
 {
@@ -180,23 +216,71 @@ struct SpbSchema
     {
         using Base = Message<15300, TraitsT>;
         Base base;
-        Instrument instrument;
+        MarketInstrumentId instrument;
     };
     struct PriceSnapshot
     {
         using Base = Message<7653, TraitsT>;
         Base base;
-        Instrument instrument;    
+        MarketInstrumentId instrument;    
         Group<SubBest> sub_best;
         friend std::ostream& operator<<(std::ostream& os, const PriceSnapshot& self) {
-            os << self.base << " ins "<<self.instrument<<" sub_best "<<self.sub_best;
+            os << self.base << ",instrument_id:"<<self.instrument<<",sub_best:"<<self.sub_best;
             return os;
+        }
+    };
+    struct InstrumentSnapshot
+    {
+        using Base = Message<973, TraitsT>;
+        Base base;
+        InstrumentId instrument_id;
+        Characters<32> symbol;
+        Characters<64> desc;
+        Characters<128> desc_ru;
+        InstrumentStatus status;
+        Characters<3> type_;
+        enum class Type: Int4 {
+            Future = 'f',
+            TplusN = 't',
+            Option = 'o',
+            Repo = 'r',
+            PR = ('r'<<8)|'p',
+            Swap = ('s'<<8)|'w',
+            CalendarSpread = 'c',
+            DVP = ('d'<<16)|('v'<<8)|'p'
+        };
+        Type type() const { return *(Type*)type_.c_str(); }
+        enum class AuctionDir: Int1 {
+            Direct = 0,
+            Inverse = 1
+        };
+        AuctionDir auction_dir;
+        Dec8 price_increment;
+        Dec8 step_price;
+        Int2 legs_count;
+        Int2 trade_mode_id;
+
+        friend std::ostream& operator<<(std::ostream& os, const InstrumentSnapshot& self) {
+            //std::wcout << self.symbol.wstr() << std::endl;//<<"|"<<self.desc_ru.str() << std::endl;
+
+            return os   << self.base 
+                << ",instrument_id:"<<self.instrument_id
+                << ",symbol:'" << self.symbol.str() <<"'"
+                << ",desc:'" << self.desc.str() <<"'"
+                << ",desc_ru:'" << self.desc.str() <<"'"
+                << ",status:{" << self.status << "}"
+                << ",type:'" << self.type_ <<"'"
+                << ",auction_dir:" << (int)self.auction_dir<<"'"
+                << ",price_increment:" << self.price_increment
+                << ",step_price:" << self.step_price
+                << ",legs_count:" << self.legs_count
+                << ",trade_mode_id:" << self.trade_mode_id;
         }
     };
 
     // Declare type list for messages
     using TypeList = mp::mp_list<
-        SnapshotStart, SnapshotFinish, PriceSnapshot
+        SnapshotStart, SnapshotFinish, PriceSnapshot, InstrumentSnapshot
         //,AggrMsgOnline, AggrMsgSnapshot, EmptyBook
     >;
 };

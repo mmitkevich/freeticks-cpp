@@ -1,57 +1,95 @@
 #pragma once
 
+#include "ft/pcap/PcapMdGateway.hpp"
 #include "ft/utils/Common.hpp"
+#include "toolbox/net/Packet.hpp"
+#include <iomanip>
+#include <unordered_map>
 
 namespace ft::spb {
 
 class Frame;
 
-template<typename FrameT, typename TypeListT>
-class SpbDecoder : public ftu::SignalTuple<TypeListT>
-{
-    using Base = ftu::SignalTuple<TypeListT>;
+class SpbDecoderStats: public pcap::BasicStats<SpbDecoderStats> {
 public:
-    using TypeList = TypeListT;
-    using Frame = FrameT;
+    using Base = pcap::BasicStats<SpbDecoderStats>;
+    using MsgId = uint32_t;
+    using MsgStats = std::unordered_map<MsgId, std::size_t>;
 public:
-    
-    using Base::Base;
-    using Base::connect;
-    using Base::disconnect;
+    void on_report(std::ostream& os) {
+        std::size_t n = values_.size();
+        os <<"msg_stat, distinct:"<<n<<std::endl;
+        for(auto& [k,v]: values_) {
+            os << std::setw(12) << v << "    " << k << std::endl;
+        }
+    }
+    void on_received(const Frame& frame) {
+        Base::on_received();
+        auto current = values_[frame.msgid];
+        values_[frame.msgid] = current+1;
+    }
+protected:
+    MsgStats values_;
+};
 
-    void decode(std::string_view data) {
-        auto ptr = data.begin();
-        auto end = data.end();
+template<typename FrameT, typename SchemaT, typename BinaryPacketT>
+class SpbDecoder
+{
+public:
+    using TypeList = typename SchemaT::TypeList;
+    using BinaryPacket = BinaryPacketT;
+    using Schema = SchemaT;
+
+    template<typename MessageT> 
+    using TypedPacket = tbn::TypedPacket<MessageT, BinaryPacket>;
+
+    // signals tuple
+    using TypedPacketSignals = ftu::SignalTuple<mp::mp_transform<TypedPacket, TypeList> >;
+
+public:
+    SpbDecoder(const SpbDecoder&) = delete;
+    SpbDecoder(SpbDecoder&&) = delete;
+    SpbDecoder(){}
+    TypedPacketSignals& signals() { return signals_; }
+    void on_packet(BinaryPacket packet) {
+        const char* begin = packet.data();
+        const char* ptr = begin;
+        const char* end = begin + packet.size();
         while(ptr < end) {
             const Frame &frame = *reinterpret_cast<const Frame*>(ptr);
 
             FT_ASSERT(frame.size>=0);
             
             if(frame.size<=0) {
-                TOOLBOX_DEBUG << "["<<(ptr-data.begin())<<"] invalid size "<<frame.size;
+                TOOLBOX_DEBUG << "["<<(ptr-begin)<<"] invalid size "<<frame.size;
                 break;
             }
 
-            bool found = false;
+            stats_.on_received(frame);
 
-            Base::for_each([&](auto &cb) {
+            bool found = false;
+            signals_.for_each([&](auto &cb) {
                 using CB = std::decay_t<decltype(cb)>;
-                if(CB::Message::Base::msgid == frame.msgid) {
+                using Message = typename CB::value_type::value_type;
+                if(!found && Message::Base::msgid == frame.msgid) {
                     found = true;
-                    TOOLBOX_DEBUG << "["<<(ptr-data.begin())<<".."<<(ptr+frame.size-data.begin())<<"] msgid "<<frame.msgid << (cb ? "":" - skipped");
-                    if(cb)
-                        cb(*reinterpret_cast<const typename CB::Message*>(ptr));
+                    stats_.on_accepted(frame);
+                    //TOOLBOX_DEBUG << "["<<(ptr-data.begin())<<".."<<(ptr+frame.size-data.begin())<<"] msgid "<<frame.msgid << (cb ? "":" - skipped");
+                    if(cb) {
+                        cb(packet);
+                    }
                 }
             });
             if(!found) {
-                TOOLBOX_DEBUG << "["<<(ptr-data.begin())<<"] unknown msgid "<<frame.msgid;
+                //TOOLBOX_DEBUG << "["<<(ptr-data.begin())<<"] unknown msgid "<<frame.msgid;
             }
             ptr += sizeof(Frame) + frame.size;
         }
     }
-   
+    SpbDecoderStats& stats() { return stats_; }
 private:
-
+    TypedPacketSignals signals_;
+    SpbDecoderStats stats_;
 };
 
 }
