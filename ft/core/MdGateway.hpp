@@ -11,14 +11,27 @@ using EndpointsFilter = toolbox::net::EndpointsFilter;
 
 class IMdGateway {
 public:
+    enum State:int {
+        Stopped,
+        Starting,
+        Started,
+        Stopping,
+        Failed
+    };
     virtual ~IMdGateway() = default;
-    virtual void run() = 0;
-    virtual void report(std::ostream& os) = 0;
-    virtual core::StreamStats& stats() = 0;
-    virtual void url(std::string_view url) = 0;
-    virtual std::string url() const = 0;
+    /// 
     virtual void start() = 0;
     virtual void stop() = 0;
+    /// print gateway diagnostics to stream
+    virtual void report(std::ostream& os) = 0;
+    /// get gateway stats. TODO: return Json object to generalize and stabilize API
+    virtual core::StreamStats& stats() = 0;
+    
+    /// configure from Json
+    //virtual void configure(std::string config) = 0;
+    /// set connection url.
+    virtual void url(std::string_view url) = 0;
+    virtual std::string url() const = 0;
     virtual void filter(const EndpointsFilter& filter) = 0;
 };
 
@@ -27,7 +40,6 @@ class MdGateway : public IMdGateway {
 public:
     MdGateway(std::unique_ptr<ImplT> &&impl)
     : impl_(std::move(impl)) {}
-    void run() override { impl_->run(); }
     void report(std::ostream& os) override { impl_->report(os); }
     core::StreamStats& stats() override { return impl_->stats(); }
     void url(std::string_view url) override { impl_->url(url); }

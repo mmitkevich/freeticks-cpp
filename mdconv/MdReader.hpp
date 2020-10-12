@@ -28,7 +28,7 @@ public:
         try {
             gateway().url(input);            
             gateway().filter(opts.filter);
-            gateway().run();
+            gateway().start();
             finally();            
         }catch(std::runtime_error &e) {
             finally();

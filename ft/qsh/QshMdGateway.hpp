@@ -15,6 +15,7 @@ public:
     /// setup filter
     template<typename FilterT>
     void filter(const FilterT &flt) {}
+    void start() { run(); }
     /// read input file
     void run() {
         std::ifstream input_stream(url_);

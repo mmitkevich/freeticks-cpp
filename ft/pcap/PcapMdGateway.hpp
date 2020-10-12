@@ -132,7 +132,7 @@ public:
         device_.input(url);
     }
     std::string url() const { return device_.input(); }
-    
+    void start() { run(); }
     void run() {
         device_.packets().connect(tbu::bind<&PcapMdGateway::on_packet_>(this));
         device_.run();
