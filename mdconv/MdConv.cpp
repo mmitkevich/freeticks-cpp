@@ -16,7 +16,7 @@
 
 #include "ft/spb/SpbProtocol.hpp"
 
-#include "Task.hpp"
+#include "MdReader.hpp"
 
 
 namespace ft {
@@ -61,17 +61,14 @@ public:
 
         using SpbProtocol = spb::SpbUdpProtocol<tbn::PcapPacket>;
         using SpbMdGateway = pcap::PcapMdGateway<SpbProtocol>;
-        auto spb = std::make_unique<SpbMdGateway>();
-        //if(opts.max_packet_count!=0)
-        //    spb->device().max_packet_count(opts.max_packet_count);
-        auto tasks = make_task_set(
-            Task<SpbMdGateway>("spb", std::move(spb)),
-            Task("qsh", std::make_unique<qsh::QshMdGateway>())
+        auto readers = make_md_readers(
+            MdReader("spb", std::make_unique<SpbMdGateway>()),
+            MdReader("qsh", std::make_unique<qsh::QshMdGateway>())
         );
 
         try {
             parser.parse(argc, argv);
-            tasks.run(opts.input_format, opts);
+            readers.run(opts.input_format, opts);
         } catch(std::runtime_error &e) {
             std::cerr << e.what() << std::endl;
             help = true;
