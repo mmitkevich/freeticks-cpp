@@ -7,9 +7,6 @@
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Pcap.hpp"
 #include "toolbox/sys/Time.hpp"
-#include <ostream>
-#include <string_view>
-#include <unordered_map>
 
 namespace ft::pcap {
 
@@ -80,7 +77,7 @@ protected:
 class PcapStats: public BasicStats<PcapStats> {
 public:
     using Base = BasicStats<PcapStats>;
-    using DstStat = std::unordered_map<tbn::IpEndpoint, std::size_t>;
+    using DstStat = utils::FlatMap<tbn::IpEndpoint, std::size_t>;
 public:
     using Base::Base;
     using Base::report;
@@ -107,10 +104,10 @@ protected:
     DstStat dst_stat_;
 };
 
-template<typename ProtocolT, typename FilterT=toolbox::HostPortFilters, typename StatsT = PcapStats>
-class PcapMdGateway : public core::MdGateway {
+template<typename ProtocolT, typename FilterT=toolbox::EndpointsFilter, typename StatsT = PcapStats>
+class PcapMdGateway : public core::BasicMdGateway<PcapMdGateway<ProtocolT, FilterT, StatsT>> {
 public:
-    using Base = core::MdGateway;
+    using Base = core::BasicMdGateway<PcapMdGateway<ProtocolT, FilterT, StatsT>>;
     using Protocol = ProtocolT;
     using Stats = StatsT;
 public:
@@ -124,20 +121,23 @@ public:
     Protocol& protocol() {   return protocol_; }
     toolbox::PcapDevice& device() { return device_; }
     
+    Stats& stats() { return stats_; }
+
     void filter(const FilterT& filter) {
         filter_ = filter;
         TOOLBOX_INFO << "PcapMdGateway::filter("<<filter_<<")";
     }
-    void input(std::string_view input) {
-        Base::input(input);
-        device_.input(input);
+    void url(std::string_view url) {
+        Base::url(url);
+        device_.input(url);
     }
-    using Base::input;
-    void run() override {
+    std::string url() const { return device_.input(); }
+    
+    void run() {
         device_.packets().connect(tbu::bind<&PcapMdGateway::on_packet_>(this));
         device_.run();
     }
-    void report(std::ostream& os) override {
+    void report(std::ostream& os) {
         protocol_.stats().report(os);
         stats_.report(os);
     }

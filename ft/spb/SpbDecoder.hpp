@@ -14,7 +14,7 @@ class SpbDecoderStats: public pcap::BasicStats<SpbDecoderStats> {
 public:
     using Base = pcap::BasicStats<SpbDecoderStats>;
     using MsgId = uint32_t;
-    using MsgStats = std::unordered_map<MsgId, std::size_t>;
+    using MsgStats = utils::FlatMap<MsgId, std::size_t>;
 public:
     void on_report(std::ostream& os) {
         std::size_t n = values_.size();

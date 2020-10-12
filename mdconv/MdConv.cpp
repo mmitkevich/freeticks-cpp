@@ -6,16 +6,19 @@
 #include <string_view>
 #include <boost/mp11.hpp>
 
+#include "ft/core/MdGateway.hpp"
 #include "toolbox/net/Pcap.hpp"
 #include "toolbox/util/Finally.hpp"
 #include "toolbox/util/Options.hpp"
 #include "toolbox/sys/Log.hpp"
+#include "toolbox/net/EndpointFilter.hpp"
 
 #include "ft/pcap/PcapMdGateway.hpp"
 #include "ft/qsh/QshMdGateway.hpp"
 
 #include "ft/spb/SpbProtocol.hpp"
 
+#include "ft/utils/Factory.hpp"
 #include "MdReader.hpp"
 
 
@@ -36,7 +39,7 @@ public:
         std::string output_format;
         std::vector<std::string> inputs;
         tb::optional<std::string> output;
-        toolbox::HostPortFilters filter;
+        toolbox::EndpointsFilter filter;
         int max_packet_count{0};
     };
 public:
@@ -61,18 +64,23 @@ public:
 
         using SpbProtocol = spb::SpbUdpProtocol<tbn::PcapPacket>;
         using SpbMdGateway = pcap::PcapMdGateway<SpbProtocol>;
-        auto readers = make_md_readers(
-            MdReader("spb", std::make_unique<SpbMdGateway>()),
-            MdReader("qsh", std::make_unique<qsh::QshMdGateway>())
-        );
-
+        
+        auto factory = ftu::Factory<core::IMdGateway, core::MdGateway>::of(
+            ftu::HeapAllocated<SpbMdGateway>        ("spb"), 
+            ftu::HeapAllocated<qsh::QshMdGateway>   ("qsh"));
+          
         try {
             parser.parse(argc, argv);
-            readers.run(opts.input_format, opts);
-        } catch(std::runtime_error &e) {
+            std::unique_ptr<core::IMdGateway> gw = factory(opts.input_format);
+            for(auto& input: opts.inputs) {
+                auto reader = MdReader<core::IMdGateway&>(*gw);
+                reader(input, opts);
+            }
+        }catch(std::runtime_error& e) {
             std::cerr << e.what() << std::endl;
             help = true;
         }
+
         if(help) {
             std::cerr << std::endl << parser << std::endl;   
         }

@@ -10,4 +10,3 @@
 
 #define FT_ASSERT assert
 
-namespace ft::utils {}
