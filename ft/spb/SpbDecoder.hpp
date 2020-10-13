@@ -5,6 +5,7 @@
 #include "toolbox/net/Packet.hpp"
 #include <iomanip>
 #include <unordered_map>
+#include "ft/spb/SpbFrame.hpp"
 
 namespace ft::spb {
 

@@ -65,9 +65,17 @@ public:
         using SpbProtocol = spb::SpbUdpProtocol<tbn::PcapPacket>;
         using SpbMdGateway = pcap::PcapMdGateway<SpbProtocol>;
         
-        auto factory = ftu::Factory<core::IMdGateway, core::MdGateway>::of(
-            ftu::HeapAllocated<SpbMdGateway>        ("spb"), 
-            ftu::HeapAllocated<qsh::QshMdGateway>   ("qsh"));
+        using MdGwFactory = ftu::Factory<core::IMdGateway, core::MdGateway>;
+
+        auto factory = MdGwFactory::unique_ptr(
+            ftu::IdFn {"spb", [&] {
+                auto gw = std::make_unique<SpbMdGateway>();
+                gw->device().max_packet_count(opts.max_packet_count);
+                return gw;
+            }}, 
+            ftu::IdFn {"qsh", [&] {
+                return std::make_unique<qsh::QshMdGateway>();
+            }});
           
         try {
             parser.parse(argc, argv);

@@ -5,17 +5,20 @@
 #include "toolbox/net/Packet.hpp"
 #include "ft/spb/SpbSchema.hpp"
 #include "ft/spb/SpbDecoder.hpp"
+#include "ft/core/Instrument.hpp"
+
 namespace ft::spb {
 namespace tbn = toolbox::net;
 
 
-template<typename DecoderT>
+template<typename ProtocolT>
 class SpbBestPriceStream : public core::TickStream
 {
 public:
     using Base = core::TickStream;
-    using This = SpbBestPriceStream<DecoderT>;
-    using Decoder = DecoderT;
+    using This = SpbBestPriceStream<ProtocolT>;
+    using Protocol = ProtocolT;
+    using Decoder = typename Protocol::Decoder;
     using Schema = typename Decoder::Schema;
     // supported messages
     using SnapshotStart = typename Schema::SnapshotStart;
@@ -27,37 +30,53 @@ public:
     template<typename MessageT>
     using TypedPacket = typename Decoder::template TypedPacket<MessageT>;
 public:
-    SpbBestPriceStream(Decoder& decoder)
-    :   decoder_(decoder) {
+    SpbBestPriceStream(Protocol& protocol)
+    :   protocol_(protocol) {
         connect();
     }
     ~SpbBestPriceStream() {
         disconnect();
     }
-    Decoder& decoder() { return decoder_; } 
+    Decoder& decoder() { return protocol_.decoder(); } 
 protected:
     void connect() {
-        decoder_.signals().connect(tbu::bind<&This::on_snapshot_start>(this));
-        decoder_.signals().connect(tbu::bind<&This::on_snapshot_finish>(this));
-        decoder_.signals().connect(tbu::bind<&This::on_price_snapshot>(this));
+        decoder().signals().connect(tbu::bind<&This::on_snapshot_start>(this));
+        decoder().signals().connect(tbu::bind<&This::on_snapshot_finish>(this));
+        decoder().signals().connect(tbu::bind<&This::on_price_snapshot>(this));
     }
     void disconnect() {
-        decoder_.signals().disconnect(tbu::bind<&This::on_snapshot_start>(this));
-        decoder_.signals().disconnect(tbu::bind<&This::on_snapshot_finish>(this));
-        decoder_.signals().disconnect(tbu::bind<&This::on_price_snapshot>(this));
+        decoder().signals().disconnect(tbu::bind<&This::on_snapshot_start>(this));
+        decoder().signals().disconnect(tbu::bind<&This::on_snapshot_finish>(this));
+        decoder().signals().disconnect(tbu::bind<&This::on_price_snapshot>(this));
     }
 protected:
     void on_snapshot_start(TypedPacket<SnapshotStart> e) { }
     void on_snapshot_finish(TypedPacket<SnapshotFinish> e) { }
     void on_price_snapshot(TypedPacket<PriceSnapshot> e) {
         //TOOLBOX_INFO << e;
-        stats().total_received++;
-        if(stats().total_received % 100'000 == 0) {
-            TOOLBOX_INFO << "total_received:"<<stats().total_received<<", "<<e;
+        stats().on_received(e);
+        auto& snap = *e.data();
+        for(auto &best: snap.sub_best) {
+            core::Tick ti {};
+            ti.price = protocol_.price_scale().to_core(best.price);
+            ti.side = get_side(best);
+            ti.qty = core::Qty(best.amount);
+            if(ti.side!=core::TickSide::Invalid)
+                invoke(ti);
+        }
+        //if(stats().total_received % 100'000 == 0) {
+        //    TOOLBOX_INFO << "total_received:"<<stats().total_received<<", "<<e;
+        //}
+    }
+    static constexpr core::TickSide get_side(const SubBest& self) {  
+        switch(self.type) {
+            case SubBest::Type::Buy: return core::TickSide::Buy;
+            case SubBest::Type::Sell: return core::TickSide::Sell;
+            default: return core::TickSide::Invalid;
         }
     }
 private:
-    Decoder& decoder_;
+    Protocol& protocol_;
 };
 
 }

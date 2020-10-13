@@ -1,13 +1,16 @@
 #pragma once
+#include "ft/core/Tick.hpp"
 #include "ft/utils/Common.hpp"
 
 #include "SpbFrame.hpp"
 #include <ostream>
 #include <sstream>
+#include <type_traits>
 
 #define SPB_ASSERT assert
 
 namespace ft::spb {
+
 #pragma pack(push, 1)
 struct SpbUdp
 {
@@ -134,6 +137,7 @@ struct SubBest {
         Sell = 2,
         Deal = 3
     };
+   
     friend std::ostream& operator<<(std::ostream& os, const Type& self) {
         switch(self) {
             case Type::Buy: return os << "Buy";
@@ -198,7 +202,10 @@ struct InstrumentStatus {
     Int1 reason;
 
     friend std::ostream& operator<<(std::ostream& os, const InstrumentStatus& self) {
-        return os << "trading_status:" << self.trading_status;
+        return os << "trading_status:'" << self.trading_status << "'"
+        << ",suspend_status:"<<(int)self.suspend_status
+        << ",routing_status:"<<(int)self.routing_status
+        << ",reason:"<<(int)self.reason;
     }
 };
 
@@ -269,12 +276,32 @@ struct SpbSchema
                 << ",desc:'" << self.desc.str() <<"'"
                 << ",desc_ru:'" << self.desc.str() <<"'"
                 << ",status:{" << self.status << "}"
-                << ",type:'" << self.type_ <<"'"
-                << ",auction_dir:" << (int)self.auction_dir<<"'"
+                << ",type:'" << self.type() <<"=" << self.type_ <<"'"
+                << ",auction_dir:'" << self.auction_dir<<"'"
                 << ",price_increment:" << self.price_increment
                 << ",step_price:" << self.step_price
                 << ",legs_count:" << self.legs_count
                 << ",trade_mode_id:" << self.trade_mode_id;
+        }
+        friend std::ostream& operator<<(std::ostream& os, const AuctionDir& self) {
+            switch(self) {
+                case AuctionDir::Direct: return os<<"Direct";
+                case AuctionDir::Inverse: return os<<"Inverse";
+                default: return os << tbu::unbox(self);
+            }
+        }
+        friend std::ostream& operator<<(std::ostream& os, const Type& self) {
+            switch(self) {
+                case Type::Future: return os<< "Future";
+                case Type::TplusN: return os<<"T+N";
+                case Type::Option: return os<<"Option";
+                case Type::Repo: return os<<"Repo";
+                case Type::PR: return os<<"pr";
+                case Type::Swap: return os<<"Swap";
+                case Type::CalendarSpread: return os<<"CalendarSpread";
+                case Type::DVP: return os<<"dvp";
+                default: return os << tbu::unbox(self);
+            }
         }
     };
 

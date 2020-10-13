@@ -175,19 +175,19 @@ void QshDecoder::read_order_log() {
     }
     if(flags & OL_TIMESTAMP) {
         state_.ts = read_grow_datetime(state_.ts);
-        d.timestamp = d.exchange_timestamp = Timestamp(state_.ts);
+        d.timestamp = d.server_timestamp = Timestamp(state_.ts);
         FT_TRACE("exchange_timestamp "<<e.timestamp)
     } else {
-        d.timestamp = d.exchange_timestamp = Timestamp(state_.ts);
+        d.timestamp = d.server_timestamp = Timestamp(state_.ts);
     }
     if(flags & OL_ID) {
         if(plaza_flags & PLAZA_ADD)
-            d.exchange_id = state_.exchange_id = read_growing(state_.exchange_id);
+            d.server_id = state_.exchange_id = read_growing(state_.exchange_id);
         else 
-            d.exchange_id = read_relative(state_.exchange_id);
+            d.server_id = read_relative(state_.exchange_id);
         FT_TRACE("exchange_id "<<e.exchange_id)
     } else {
-        d.exchange_id = state_.exchange_id;
+        d.server_id = state_.exchange_id;
     }
     if(flags&OL_PRICE) {
         d.price = state_.price = read_relative(state_.price);
@@ -201,7 +201,7 @@ void QshDecoder::read_order_log() {
     }
     if(plaza_flags & PLAZA_FILL) {
         if(flags&OL_AMOUNT_LEFT) {
-            d.qty_left = read_leb128();
+            d.qty_active = read_leb128();
             FT_TRACE("qty_left "<<e.qty_left)
         }
         if(flags&OL_FILL_ID) {

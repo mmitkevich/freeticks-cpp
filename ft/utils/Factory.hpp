@@ -3,27 +3,28 @@
 
 namespace ft::utils {
 
-template<typename ImplT>
-struct HeapAllocated {
-    std::string id;
-    HeapAllocated(std::string id)
-    : id(id){ }
+/// associate function with string name and call it lazily
+template<typename FnT>
+struct IdFn {
+    std::string_view id;
+    FnT fn;
+
+    constexpr IdFn(std::string_view id, FnT fn)
+    : id(id)
+    , fn(fn)
+    {}
     template<typename...ArgsT>
-    std::unique_ptr<ImplT> operator()(ArgsT...args) {
-        return std::make_unique<ImplT>(std::forward<ArgsT>(args)...);
+    auto operator()(ArgsT...args) {
+        return fn(std::forward<ArgsT>(args)...);
     }
 };
 
-template<class InterfaceT, template<typename ImplT> typename AdapterT>
-class Factory {
-public:
-    using Interface = InterfaceT;
-   
-    template<typename... FactoriesT>
-    class MultipleUniqueFactory {
+namespace detail {
+    template<class InterfaceT,  template<typename ImplT> typename AdapterT, typename... FactoriesT>
+    class UniquePtr {
     public:
         template<typename...ArgsT>
-        MultipleUniqueFactory(ArgsT...args)
+        UniquePtr(ArgsT...args)
         : values_(std::forward<ArgsT>(args)...)
         {}
 
@@ -48,8 +49,13 @@ public:
     private:
         std::tuple<FactoriesT...> values_;
     };
+}
+template<class InterfaceT, template<typename ImplT> typename AdapterT>
+class Factory {
+public:
+    using Interface = InterfaceT;
 public:
     template<typename...FactoriesT>
-    static MultipleUniqueFactory<FactoriesT...> of(FactoriesT&&... args) { return MultipleUniqueFactory<FactoriesT...> {args...}; }
+    static auto unique_ptr(FactoriesT&&... args) { return detail::UniquePtr<Interface, AdapterT, FactoriesT...> {args...}; }
 };
 } // ft::utils

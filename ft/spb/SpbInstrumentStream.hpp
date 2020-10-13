@@ -4,39 +4,52 @@
 #include "ft/core/Tick.hpp"
 #include "ft/spb/SpbSchema.hpp"
 #include "ft/spb/SpbDecoder.hpp"
+#include "ft/core/Instrument.hpp"
+
 namespace ft::spb {
 
-template<typename DecoderT>
-class SpbInstrumentStream : public core::TickStream
+template<typename ProtocolT>
+class SpbInstrumentStream : public core::VenueInstrumentStream
 {
 public:
     using Base = core::Stream<core::Tick>;
-    using This = SpbInstrumentStream<DecoderT>;
-    using Decoder = DecoderT;
+    using This = SpbInstrumentStream<ProtocolT>;
+    using Protocol = ProtocolT;
+    using Decoder = typename Protocol::Decoder;
     using Schema = typename Decoder::Schema;
     using InstrumentSnapshot = typename Schema::InstrumentSnapshot;
     template<typename MessageT>
     using TypedPacket = typename Decoder::template TypedPacket<MessageT>;
 public:
-    SpbInstrumentStream(Decoder & decoder)
-    :   decoder_(decoder) {
+    SpbInstrumentStream(Protocol & protocol)
+    :   protocol_(protocol) {
         connect();
     }
     ~SpbInstrumentStream() {
         disconnect();
     }
+    Decoder& decoder() { return protocol_.decoder(); }
 protected:
     void connect() {
-        decoder_.signals().connect(tbu::bind<&This::on_instrument>(this));
+        decoder().signals().connect(tbu::bind<&This::on_instrument>(this));
     }
     void disconnect() {
-        decoder_.signals().disconnect(tbu::bind<&This::on_instrument>(this));
+        decoder().signals().disconnect(tbu::bind<&This::on_instrument>(this));
     }  
     void on_instrument(TypedPacket<InstrumentSnapshot> e) {
         TOOLBOX_INFO << e;
+        auto& snap = *e.data();
+        core::VenueInstrument vi;
+        vi.venue(protocol_.venue());
+        vi.exchange(protocol_.exchange());
+        vi.instrument().symbol(snap.symbol.str());
+        auto id = std::hash<std::string>{}(vi.venue_symbol());
+        vi.id(id);
+        vi.venue_instrument_id(snap.instrument_id);
+        invoke(vi);
     }
 private:
-    Decoder& decoder_;
+    Protocol& protocol_;
 };
 
 }

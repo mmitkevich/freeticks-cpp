@@ -5,14 +5,15 @@
 #include "toolbox/sys/Time.hpp"
 #include "toolbox/util/Slot.hpp"
 #include <cstdint>
+#include "ft/core/Identifiable.hpp"
 
 namespace ft::core {
 
 using Timestamp = toolbox::WallTime;
-using Price = std::int64_t;
 using Qty = std::int64_t;
-using ClientId = std::int64_t;
-using ExchangeId = std::int64_t;
+using Price = Qty;
+using ClientId = Identifier;
+using ExchangeId = Identifier;
 
 struct DefaultPolicy {
     using ExchangeId = ft::core::ExchangeId;
@@ -20,6 +21,7 @@ struct DefaultPolicy {
     using Price = ft::core::Price;
     using Qty = ft::core::Qty;
     using Timestamp = ft::core::Timestamp;
+    using VenueInstrumentId = ft::core::VenueInstrumentId;
 };
 
 enum class TickType : std::uint8_t {
@@ -30,15 +32,42 @@ enum class TickType : std::uint8_t {
     Fill    = 4
 };
 
+enum class TickSide: std::int8_t {
+    Invalid = 0,
+    Buy     = 1,
+    Sell    = -1,
+};
+
+static constexpr Price CorePriceMultiplier = 100'000'000;
+
+template<Price VenueMultiplier, Price CoreMultiplier=CorePriceMultiplier>
+struct PriceScale {
+    core::Price to_core(Price venue_price) { return venue_price * CoreMultiplier / VenueMultiplier; }
+    core::Price to_venue(Price core_price) { return core_price * VenueMultiplier / CoreMultiplier; }
+};
+
 template<typename PolicyT>
-struct BasicTick {
-public:
-    using Price = typename PolicyT::Price;
-    using Qty = typename PolicyT::Qty;
+struct BasicTickHeader {
     using ClientId = typename PolicyT::ClientId;
     using ExchangeId = typename PolicyT::ExchangeId;
     using Timestamp = typename PolicyT::Timestamp;
 
+    std::uint64_t flags {};
+    ClientId id {};
+    ExchangeId server_id {};
+    Timestamp timestamp {};         // client
+    Timestamp server_timestamp {};  // exchange
+};
+
+template<typename PolicyT>
+struct BasicTick : BasicTickHeader<PolicyT>{
+public:
+    using Base = BasicTickHeader<PolicyT>;
+    using Price = typename PolicyT::Price;
+    using Qty = typename PolicyT::Qty;
+    using ClientId = typename Base::ClientId;
+    using ExchangeId = typename Base::ExchangeId;
+    using Timestamp = typename Base::Timestamp;
 public:    
     TickType type() const {
         using namespace tbu::operators;
@@ -52,17 +81,17 @@ public:
         return TickType::Unknown;
     }
 public:
-    std::uint64_t flags {};
-    Timestamp timestamp {}; 
-    Timestamp sender_timestamp {};
-    Timestamp exchange_timestamp {};
-    ClientId client_id {};
-    ExchangeId exchange_id {};
+    using Base::flags;
+    using Base::id;
+    using Base::server_id;
+
+    VenueInstrumentId instrument_id;    
+    TickSide side {};
     Price price {};
     Qty qty {};
-    Qty qty_left {};
-    Price fill_price {};
+    Qty qty_active {};
     Qty fill_id {};
+    Price fill_price {};
     Qty open_interest {};
 };
 

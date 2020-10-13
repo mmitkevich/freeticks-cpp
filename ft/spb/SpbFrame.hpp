@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ft/core/Tick.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/utils/StringUtils.hpp"
 #include "toolbox/sys/Time.hpp"
@@ -44,6 +45,7 @@ struct Time4 {
 
 struct Dec8 {
     std::int64_t value;
+    operator core::Price() const { return value; }
     friend std::ostream& operator<<(std::ostream& os, const Dec8& self) {
         os << self.value/1e8;
         return os;
