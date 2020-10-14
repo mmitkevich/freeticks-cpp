@@ -9,6 +9,7 @@
 #include "ft/core/MdGateway.hpp"
 #include "toolbox/net/Pcap.hpp"
 #include "toolbox/util/Finally.hpp"
+#include "toolbox/util/Json.hpp"
 #include "toolbox/util/Options.hpp"
 #include "toolbox/sys/Log.hpp"
 #include "toolbox/net/EndpointFilter.hpp"
@@ -20,12 +21,13 @@
 
 #include "ft/utils/Factory.hpp"
 #include "MdReader.hpp"
-
+#include "toolbox/util/Json.hpp"
 
 namespace ft {
 
 namespace tbu = toolbox::util;
 namespace tb = toolbox;
+namespace tbj = toolbox::json;
 
 //void handler(const ft::api::TickMessage& e) {
 //    std::cout << e << std::endl;
@@ -66,6 +68,8 @@ public:
         using SpbMdGateway = pcap::PcapMdGateway<SpbProtocol>;
         
         using MdGwFactory = ftu::Factory<core::IMdGateway, core::MdGateway>;
+
+        toolbox::json::MutableDocument json; 
 
         auto factory = MdGwFactory::unique_ptr(
             ftu::IdFn {"spb", [&] {

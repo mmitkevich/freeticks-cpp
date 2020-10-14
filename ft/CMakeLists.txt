@@ -20,7 +20,6 @@ set(ft_core_LIBRARY ft-core-static)
 set(test_SOURCES
     matching/OrderBook.ut.cpp
     spb/SpbDecoder.ut.cpp
-    utils/Pool.ut.cpp
   )
 
 add_executable(${lib_NAME}-test

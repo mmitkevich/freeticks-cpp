@@ -1,6 +1,7 @@
 #include "OrderBook.hpp"
 #include <boost/test/unit_test.hpp>
 #include "toolbox/bm/Suite.hpp"
+#include "toolbox/sys/Log.hpp"
 #include <iostream>
 
 using namespace ft::matching;
