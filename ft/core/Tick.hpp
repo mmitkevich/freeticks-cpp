@@ -83,14 +83,7 @@ public:
 public:
     TickType type() const {
         using namespace tbu::operators;
-        if(flags & TickType::Place)
-            return TickType::Place;
-        else if(flags & TickType::Cancel)
-            return TickType::Cancel;
-        else if(flags & TickType::Fill)
-            return TickType:: Fill;
-        assert(false);
-        return TickType::Unknown;
+        return (TickType)(flags & 0xFF);
     }
     void type(TickType type) {
         flags = (flags & ~(0xFF)) | (std::uint8_t) type;
@@ -116,15 +109,17 @@ using TickSlot = TickSignal::Slot;
 
 template<typename PolicyT>
 inline std::ostream & operator<<(std::ostream& os, const BasicTick<PolicyT> &e) {
-    os << "ts:'" << toolbox::sys::put_time(e.timestamp)<<"'";
-    os << ",sts:'" << toolbox::sys::put_time(e.server_timestamp)<<"'";
+    os << "sts:'" << toolbox::sys::put_time<toolbox::Nanos>(e.server_timestamp)<<"'";
+    os << ",cts-sts:" << (e.timestamp-e.server_timestamp).count();
     os << ",vi:" << e.venue_instrument_id;
     os << ",t:'";
     switch(e.type()) {
         case TickType::Place: os << "Place"; break;
         case TickType::Cancel: os << "Cancel"; break;
         case TickType::Fill: os << "Fill"; break;
-        default: assert(false);
+        case TickType::Update: os << "Update"; break;
+        case TickType::Clear: os << "Clear"; break;
+        default: os << tbu::unbox(e.type()); break;
     }
     os << "'";
     os << ",price:" << PolicyT::instance().price_conv().to_double(e.price);

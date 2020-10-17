@@ -60,7 +60,7 @@ protected:
             core::Tick ti {};
             ti.type(core::TickType::Update);
             ti.venue_instrument_id = snap.instrument.instrument_id;
-            ti.timestamp = core::WallClock::now();
+            ti.timestamp = e.recv_timestamp();
             ti.server_timestamp = snap.base.header.system_time.wall_time();
             ti.price = protocol_.price_conv().to_core(best.price);
             ti.side = get_side(best);
