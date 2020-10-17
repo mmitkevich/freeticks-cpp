@@ -6,7 +6,7 @@
 #include "ft/spb/SpbSchema.hpp"
 #include "ft/spb/SpbDecoder.hpp"
 #include "ft/core/Instrument.hpp"
-
+#include "toolbox/sys/Time.hpp"
 namespace ft::spb {
 namespace tbn = toolbox::net;
 
@@ -58,7 +58,11 @@ protected:
         auto& snap = *e.data();
         for(auto &best: snap.sub_best) {
             core::Tick ti {};
-            ti.price = protocol_.price_scale().to_core(best.price);
+            ti.type(core::TickType::Update);
+            ti.venue_instrument_id = snap.instrument.instrument_id;
+            ti.timestamp = core::WallClock::now();
+            ti.server_timestamp = snap.base.header.system_time.wall_time();
+            ti.price = protocol_.price_conv().to_core(best.price);
             ti.side = get_side(best);
             ti.qty = core::Qty(best.amount);
             if(ti.side!=core::TickSide::Invalid)

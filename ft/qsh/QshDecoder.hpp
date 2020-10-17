@@ -1,5 +1,6 @@
 #pragma once
 #include "../utils/Common.hpp"
+#include "ft/core/Instrument.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "toolbox/util/Slot.hpp"
 #include "toolbox/net/Packet.hpp"
@@ -22,8 +23,6 @@ using Timestamp = typename Tick::Timestamp;
 class QshDecoder
 {
 public:
-    using Base = tbu::Signal<const Tick&>;
-
     enum Stream {
         Quotes          = 0x10,
         Deals           = 0x20,
@@ -84,12 +83,13 @@ public:
     };
 
 public:
-    QshDecoder(std::istream& input_stream, core::StreamStats& stats)
-    : input_stream_(input_stream)
-    , stats_(stats)
-    {}
+    void input(std::istream &is) {
+        input_stream_ = &is;
+    }
+    std::istream& input_stream(){ return *input_stream_;}
 
-    tbu::Signal<const Tick&> &signals() { return signals_; }
+    core::TickStream& ticks() { return ticks_; }
+    core::VenueInstrumentStream& instruments() { return instruments_; }
     
     /// decode stream until EOF
     void run();
@@ -108,9 +108,9 @@ private:
     std::uint16_t read_uint16();
 private:
     State state_;
-    std::istream& input_stream_;
-    core::StreamStats& stats_;
-    tbu::Signal<const Tick& > signals_;
+    std::istream* input_stream_;
+    core::TickStream ticks_;
+    core::VenueInstrumentStream instruments_;
 };
 
 }

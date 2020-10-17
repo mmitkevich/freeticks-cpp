@@ -1,12 +1,16 @@
 #pragma once
+#include "ft/core/Instrument.hpp"
+#include "ft/core/Parameterized.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/utils/StringUtils.hpp"
 #include "ft/core/MdGateway.hpp"
 
 #include "toolbox/net/Endpoint.hpp"
+#include "toolbox/net/EndpointFilter.hpp"
 #include "toolbox/net/Pcap.hpp"
 #include "toolbox/sys/Time.hpp"
+#include <netinet/in.h>
 
 namespace ft::pcap {
 
@@ -104,31 +108,46 @@ protected:
     DstStat dst_stat_;
 };
 
-template<typename ProtocolT, typename FilterT=toolbox::EndpointsFilter, typename StatsT = PcapStats>
-class PcapMdGateway : public core::BasicMdGateway<PcapMdGateway<ProtocolT, FilterT, StatsT>> {
+template<typename ProtocolT>
+class PcapMdGateway : public core::BasicMdGateway<PcapMdGateway<ProtocolT>> {
 public:
-    using Base = core::BasicMdGateway<PcapMdGateway<ProtocolT, FilterT, StatsT>>;
+    using Base = core::BasicMdGateway<PcapMdGateway<ProtocolT>>;
     using Protocol = ProtocolT;
-    using Stats = StatsT;
+    using Stats = PcapStats;
 public:
     template<typename...ArgsT>
     PcapMdGateway(ArgsT...args)
     : protocol_(std::forward<ArgsT>(args)...)
     {}
-    PcapMdGateway(const PcapMdGateway& rhs) = delete;
-    PcapMdGateway(PcapMdGateway&& rhs) = delete;
+
 
     Protocol& protocol() {   return protocol_; }
     toolbox::PcapDevice& device() { return device_; }
     
     Stats& stats() { return stats_; }
 
-    void filter(const FilterT& filter) {
-        filter_ = filter;
-        TOOLBOX_INFO << "PcapMdGateway::filter("<<filter_<<")";
+    // dispatch parameters
+    void on_parameters_updated(const core::Parameters& params) {
+        filter(params["filter"]);
+    }
+    void filter(const core::Parameters& params) {
+        // if protocols configuration not specified all protocols will be used
+        // protocols supported are only tcp and udp
+        if(params["protocols"].is_null()) {
+            filter_.tcp = true;
+            filter_.udp = true;
+        } else {
+            for(auto &p: params["protocols"]) {
+                if(p == "udp")
+                    filter_.udp = true;
+                else if(p == "tcp")
+                    filter_.tcp = true;
+            }
+        }
+        params["dst"].copy(filter_.destinations);
+        params["src"].copy(filter_.sources);
     }
     void url(std::string_view url) {
-        Base::url(url);
         device_.input(url);
     }
     std::string url() const { return device_.input(); }
@@ -144,6 +163,13 @@ public:
     void on_idle() {
         report(std::cerr);
     }
+    core::TickStream& ticks(core::StreamType streamtype) {
+        return protocol_.ticks(streamtype);
+    }
+    core::VenueInstrumentStream& instruments(core::StreamType streamtype) {
+        return protocol_.instruments(streamtype);
+    }
+
 private:
     void on_packet_(const tb::PcapPacket& pkt) {
         switch(pkt.protocol().protocol()) {
@@ -162,7 +188,7 @@ private:
     Protocol protocol_;
     toolbox::PcapDevice device_;
     Stats stats_;
-    FilterT filter_;
+    toolbox::EndpointsFilter filter_;
 };
 
 } // ft::md

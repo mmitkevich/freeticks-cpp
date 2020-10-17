@@ -1,4 +1,5 @@
 #pragma once
+#include "ft/utils/Common.hpp"
 #include "toolbox/util/Pool.hpp"
 #include <boost/intrusive/circular_list_algorithms.hpp>
 #include <boost/intrusive/list.hpp>
@@ -10,9 +11,6 @@
 #include <cmath>
 #include <ostream>
 
-#define FT_NO_INLINE __attribute__((noinline)) 
-#define FT_LIKELY
-#define FT_UNLIKELY
 
 namespace ft { inline namespace matching {
 

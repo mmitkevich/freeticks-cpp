@@ -37,7 +37,7 @@ protected:
         decoder().signals().disconnect(tbu::bind<&This::on_instrument>(this));
     }  
     void on_instrument(TypedPacket<InstrumentSnapshot> e) {
-        TOOLBOX_INFO << e;
+        //TOOLBOX_INFO << e;
         auto& snap = *e.data();
         core::VenueInstrument vi;
         vi.venue(protocol_.venue());

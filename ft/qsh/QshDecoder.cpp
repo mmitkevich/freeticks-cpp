@@ -13,7 +13,7 @@ std::int64_t QshDecoder::read_leb128() {
     int shift  = 0;
     int byte;
     do {
-        byte = input_stream_.get();
+        byte = input_stream().get();
         if(byte == EOF) {
             throw std::runtime_error("EOF in read_leb128");
         }
@@ -32,7 +32,7 @@ std::int64_t QshDecoder::read_uleb128() {
     int shift  = 0;
     int byte;
     do {
-        byte = input_stream_.get();
+        byte = input_stream().get();
         if(byte == EOF) {
             throw std::runtime_error("EOF in read_uleb128");
         }
@@ -50,8 +50,8 @@ std::int64_t QshDecoder::read_relative(std::int64_t previous) {
 std::string QshDecoder::read_string() {
     std::int64_t size = read_uleb128();
     std::string result(size, '\0');
-    input_stream_.read(result.data(), size);
-    if(input_stream_.fail())
+    input_stream().read(result.data(), size);
+    if(input_stream().fail())
         throw std::runtime_error("EOF in read_string");
     return result;
 }
@@ -68,8 +68,8 @@ std::int64_t QshDecoder::read_growing(std::int64_t previous) {
 
 ftu::HundredNanos QshDecoder::read_datetime() {
     std::int64_t val;
-    input_stream_.read((char*)&val, sizeof(val));
-    if(input_stream_.fail())
+    input_stream().read((char*)&val, sizeof(val));
+    if(input_stream().fail())
         throw std::runtime_error("EOF in read_datetime");
     return ftu::HundredNanos(val);
 }
@@ -82,7 +82,7 @@ ftu::HundredNanos QshDecoder::read_grow_datetime(ftu::HundredNanos previous) {
 
 
 int QshDecoder::read_byte() {
-    int byte = input_stream_.get();
+    int byte = input_stream().get();
     if(byte == EOF)
         throw std::runtime_error("EOF in read_byte");
     return byte;
@@ -90,19 +90,19 @@ int QshDecoder::read_byte() {
 
 std::uint16_t QshDecoder::read_uint16() {
     std::int16_t val;
-    input_stream_.read((char*)&val, sizeof(val));
-    if(input_stream_.fail())
+    input_stream().read((char*)&val, sizeof(val));
+    if(input_stream().fail())
         throw std::runtime_error("EOF in read_datetime");
     return val;
 }
 
 void QshDecoder::read_header() {
     char buf[19];
-    input_stream_.read(buf, sizeof(buf));
-    if(input_stream_.fail() || 
+    input_stream().read(buf, sizeof(buf));
+    if(input_stream().fail() || 
         0!=std::memcmp("MdGateway History Data", buf, sizeof(buf)))
         throw std::runtime_error("not qscalp file");
-    int v = input_stream_.get();
+    int v = input_stream().get();
     if(v!=4)
         throw std::runtime_error("only qscalp version 4 is supported");
     state_.app = read_string();
@@ -124,9 +124,9 @@ void QshDecoder::read_header() {
 }
 
 bool QshDecoder::read_frame_header() {
-    if(input_stream_.eof())
+    if(input_stream().eof())
         return false;
-    FT_TRACE("ofs "<<input_stream_.tellg()<<" last frame ts "<<state_.frame_ts);
+    FT_TRACE("ofs "<<input_stream().tellg()<<" last frame ts "<<state_.frame_ts);
     state_.ts = state_.frame_ts = read_grow_datetime(state_.frame_ts);
     if(state_.nstreams>1)
         state_.cur_stream = read_byte();
@@ -135,8 +135,7 @@ bool QshDecoder::read_frame_header() {
 }
 
 void QshDecoder::run() {
-    input_stream_.exceptions(std::ios::eofbit | std::ios::failbit | std::ios::badbit);
-    stats_.total_received = 0;
+    input_stream().exceptions(std::ios::eofbit | std::ios::failbit | std::ios::badbit);
     try {
         read_header();
         while(read_frame_header()) {
@@ -145,11 +144,11 @@ void QshDecoder::run() {
                 case OrdLog: read_order_log(); break;
                 default: throw std::runtime_error("invalid stream id");
             }
-            stats_.total_received++;
+            ticks().stats().on_received();
         }
     }catch(std::ios_base::failure& fail) {
         // rethrow everything except eof
-        if(input_stream_.bad())
+        if(input_stream().bad())
             throw fail;
     }
 }
@@ -226,7 +225,7 @@ void QshDecoder::read_order_log() {
     if(d.flags==0) {
         TOOLBOX_WARNING<<"qsh: unknown flags "<<std::hex<<flags<<" plaza "<<std::hex<<plaza_flags;
     }else {
-        stats_.total_accepted++;
-        signals_.invoke(d);
+        ticks().stats().on_accepted();
+        ticks().invoke(d);
     }
 }

@@ -62,7 +62,8 @@ public:
             FT_ASSERT(frame.size>=0);
             
             if(frame.size<=0) {
-                TOOLBOX_DEBUG << "["<<(ptr-begin)<<"] invalid size "<<frame.size;
+                //TOOLBOX_DEBUG << "["<<(ptr-begin)<<"] invalid size "<<frame.size;
+                stats_.on_bad(frame);
                 break;
             }
 

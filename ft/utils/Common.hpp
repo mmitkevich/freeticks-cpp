@@ -12,6 +12,7 @@
 #include <boost/mp11/algorithm.hpp>
 #include <boost/mp11/tuple.hpp>
 
+#include "toolbox/Config.h"
 #include "toolbox/sys/Log.hpp"
 #include "toolbox/util/Enum.hpp"
 #include "toolbox/util/RobinHood.hpp"
@@ -19,6 +20,10 @@
 #include "Trace.hpp"
 #include "Signal.hpp"
 
+#define FT_NO_INLINE __attribute__((noinline)) 
+#define FT_ALWAYS_INLINE __attribute__((always_inline))
+#define FT_LIKELY(x) (x)
+#define FT_UNLIKELY(x) (x)
 
 
 namespace toolbox {

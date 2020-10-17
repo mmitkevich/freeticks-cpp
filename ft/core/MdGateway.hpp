@@ -1,12 +1,13 @@
 #pragma once
 
+#include "ft/core/Instrument.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/StreamStats.hpp"
+#include "ft/core/Parameterized.hpp"
+#include "ft/core/Tick.hpp"
+#include "ft/utils/Common.hpp"
 #include <exception>
 #include <string_view>
-#include "toolbox/util/Json.hpp"
-#include "toolbox/util/Slot.hpp"
-
 
 namespace toolbox { namespace net { struct EndpointsFilter; }}
 
@@ -24,70 +25,103 @@ enum GatewayState:int {
 using ExceptionPtr = const std::exception*;
 using GatewayStateSignal = tbu::Signal<GatewayState, GatewayState, ExceptionPtr>;
 
-class IMdGateway {
+namespace streams {
+    constexpr static const char* BestPrice = "BestPrice";
+    constexpr static const char* Instrument = "Instrument";
+};
+
+using StreamType = const char*;
+
+class IMdGateway : public IParameterized {
 public:
     
     virtual ~IMdGateway() = default;
     /// 
     virtual void start() = 0;
     virtual void stop() = 0;
-    /// print gateway diagnostics to stream
-    virtual void report(std::ostream& os) const = 0;
-    /// get gateway stats. TODO: return Json object to generalize and stabilize API
-    virtual const core::StreamStats& stats() const = 0;
     
+    // set url
+    virtual void url(std::string_view url) = 0;
+    virtual std::string_view url() const = 0;
+
     virtual GatewayState state() const = 0;    
     virtual GatewayStateSignal& state_changed() = 0;
 
-    /// configure from Json
-    //virtual void configure(toolbox::json::Json) = 0;
+    virtual TickStream& ticks(StreamType streamtype) = 0;
 
-    /// set connection url.
-    virtual void url(std::string_view url) = 0;
-    virtual std::string url() const = 0;
-    virtual void filter(const EndpointsFilter& filter) = 0;
+    virtual VenueInstrumentStream& instruments(StreamType streamtype) = 0;
+
+    // very basic stats
+    virtual core::StreamStats& stats() = 0;
 };
+
 
 template<typename ImplT>
 class MdGateway : public IMdGateway {
 public:
     MdGateway(std::unique_ptr<ImplT> &&impl)
     : impl_(std::move(impl)) {}
-    void report(std::ostream& os) const override { impl_->report(os); }
-    const core::StreamStats& stats() const override { return impl_->stats(); }
-    void url(std::string_view url) override { impl_->url(url); }
-    std::string url() const override { return impl_->url(); }
+
     void start() override { impl_->start(); }
     void stop() override { impl_->stop(); }
-    void filter(const EndpointsFilter& filter) override { impl_->filter(filter); }
-    GatewayState state() const { return impl_->state(); }
+    
+    void url(std::string_view url) { impl_->url(url);}
+    std::string_view url() const { return impl_->url(); }
+
+    GatewayState state() const override { return impl_->state(); }
     GatewayStateSignal& state_changed() override { return impl_->state_changed(); };
+
+    core::StreamStats& stats() override { return impl_->stats(); }
+
+    void parameters(const Parameters& parameters, bool replace=false) override { impl_->parameters(parameters, replace); }
+    const Parameters& parameters() const override { return impl_->parameters(); }
+    ParametersSignal& parameters_updated() override { return impl_->parameters_updated(); }
+    
+    core::TickStream& ticks(StreamType streamtype) override { return impl_->ticks(streamtype); }
+    core::VenueInstrumentStream& instruments(StreamType streamtype) override { return impl_->instruments(streamtype); }
 private:
     std::unique_ptr<ImplT> impl_;
 };
 
+class GatewayBase {};
+
 template<typename DerivedT>
-class BasicMdGateway {
+class BasicMdGateway : public BasicParameterized<GatewayBase> {
+    using Base = BasicParameterized<GatewayBase>;
 public:
-    core::StreamStats& stats() { return static_cast<DerivedT*>(this)->stats(); }
-    /// set input (file path/url etc)
-    void url(std::string_view url) { url_ = url; }
-    std::string url() { return url_; }
+    BasicMdGateway() {
+        Base::parameters_updated().connect(tbu::bind<&DerivedT::on_parameters_updated>(static_cast<DerivedT*>(this)));
+    }
+    BasicMdGateway(const BasicMdGateway& rhs) = delete;
+    BasicMdGateway(BasicMdGateway&& rhs) = delete;
+
+    void on_parameters_updated(const Parameters& params) {
+        TOOLBOX_INFO << "BasicMdGateway::on_parameters_updated("<<"params="<<params<<")";
+    }
+
+    core::StreamStats& stats() { return impl().stats(); }
+    
     void start() {
         state(GatewayState::Starting);
         state(GatewayState::Started);
         try {
-            static_cast<DerivedT*>(this)->run();
+            impl().run();
         }catch(const std::exception& e) {
-            state_changed(GatewayState::Failed, &e);
+            state(GatewayState::Failed, &e);
         }
     }
+
     void stop() {
         state(GatewayState::Stopping);
         state(GatewayState::Stopped);
     }
-    void run() {}
-    void report(std::ostream& os) {}
+    //core::VenueInstrumentStream& instruments(StreamType streamtype)
+    //TickStream& ticks(StreamType streamtype);
+    //void run() {}
+    
+    //void url(std::string_view url) { impl().url(url); }
+    //std::string_view url() const { return impl().url(); }
+
     GatewayStateSignal& state_changed() { return state_changed_; }
     void state(GatewayState state, ExceptionPtr err=nullptr) {
         if(state != state_) {
@@ -97,8 +131,10 @@ public:
         }
     }
     GatewayState state() const { return state_; }
+private:
+    auto& impl() { return *static_cast<DerivedT*>(this); };
+    const auto& impl() const { return *static_cast<const DerivedT*>(this); };
 protected:
-    std::string url_;
     GatewayState state_{GatewayState::Stopped};
     GatewayStateSignal state_changed_;
 };

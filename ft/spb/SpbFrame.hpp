@@ -45,7 +45,7 @@ struct Time4 {
 
 struct Dec8 {
     std::int64_t value;
-    operator core::Price() const { return value; }
+    operator std::int64_t() const { return value; }
     friend std::ostream& operator<<(std::ostream& os, const Dec8& self) {
         os << self.value/1e8;
         return os;
@@ -74,10 +74,10 @@ struct Frame {
 static_assert(sizeof(Frame)==12);
 
 struct MarketInstrumentId {
-    MarketId marketid;
-    InstrumentId insturmentid;
+    MarketId market_id;
+    InstrumentId instrument_id;
     friend std::ostream& operator<<(std::ostream& os, const MarketInstrumentId& self) {
-        os << "["<<self.insturmentid << "," << self.marketid <<"]";
+        os << "["<<self.instrument_id << "," << self.market_id <<"]";
         return os;
     }
 };

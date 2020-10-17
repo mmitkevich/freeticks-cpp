@@ -7,9 +7,9 @@
 namespace ft::core {
 
 template<typename MessageT>
-class Stream : public tbu::Signal<MessageT>
+class Stream : public tbu::Signal<const MessageT&>
 {
-    using Base = tbu::Signal<MessageT>;
+    using Base = tbu::Signal<const MessageT&>;
 public:
     using Base::Base;
     using Base::connect;
