@@ -11,9 +11,9 @@ namespace ft::spb {
 
 class Frame;
 
-class SpbDecoderStats: public pcap::BasicStats<SpbDecoderStats> {
+class SpbDecoderStats: public core::BasicStats<SpbDecoderStats> {
 public:
-    using Base = pcap::BasicStats<SpbDecoderStats>;
+    using Base = core::BasicStats<SpbDecoderStats>;
     using MsgId = uint32_t;
     using MsgStats = utils::FlatMap<MsgId, std::size_t>;
 public:

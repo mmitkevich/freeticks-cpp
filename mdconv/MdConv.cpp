@@ -138,8 +138,7 @@ public:
 
     auto factory = MdGwFactory::unique_ptr(
         ftu::IdFn{"spb", [&] { return std::make_unique<SpbMdGateway>(); }},
-        ftu::IdFn{"qsh",
-                  [&] { return std::make_unique<qsh::QshMdGateway>(); }});
+        ftu::IdFn{"qsh", [&] { return std::make_unique<qsh::QshMdGateway>(); }});
 
     try {
       parser.parse(argc, argv);

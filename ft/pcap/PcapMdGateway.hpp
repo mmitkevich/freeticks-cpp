@@ -10,110 +10,20 @@
 #include "toolbox/net/EndpointFilter.hpp"
 #include "toolbox/net/Pcap.hpp"
 #include "toolbox/sys/Time.hpp"
-#include <netinet/in.h>
+//#include <netinet/in.h>
+
+#include "ft/core/EndpointStats.hpp"
 
 namespace ft::pcap {
 
-template<typename FnT>
-class Throttled {
-public:
-    Throttled(FnT fn)
-    : fn_(std::forward<FnT>(fn))
-    {}
-    void set_interval(toolbox::Duration val) {
-        duration_ = val;
-    }
-    template<typename ...ArgsT>
-    void operator()(ArgsT&&...args) {
-        auto now = toolbox::MonoClock::now();
-        bool is_time = now - last_time_ > duration_;
-        if(is_time) {
-            fn_(args...);
-            last_time_ = now;            
-        }
-    }
-protected:
-    FnT fn_;
-    toolbox::MonoTime last_time_ {};
-    toolbox::Duration duration_ {};
-};
 
-inline constexpr bool ft_stats_enabled() {
-    return true;
-};
-
-template<typename DerivedT>
-class BasicStats : public core::StreamStats {
-public:
-    static constexpr bool enabled() { return true; }
-
-    BasicStats() {
-        auto dur = 
-        #ifdef TOOLBOX_DEBUG        
-            toolbox::Seconds(10);
-        #else
-            toolbox::Hours(1);
-        #endif
-        report_.set_interval(dur);
-    }
-
-    void report(std::ostream& os) {
-        if constexpr(DerivedT::enabled())
-            report_(os);
-    }
-    template<typename ...ArgsT>
-    void on_received(ArgsT...args) { 
-        if constexpr(DerivedT::enabled())
-            total_received++;
-    }
-    template<typename ...ArgsT>
-    void on_accepted(ArgsT...args) { 
-        if constexpr(DerivedT::enabled())
-            total_accepted++;
-    }
-    void on_idle() {
-        report(std::cerr);
-    }
-protected:
-    Throttled<toolbox::Slot<std::ostream&>> report_{ toolbox::bind<&DerivedT::on_report>(static_cast<DerivedT*>(this)) };
-};
-
-class PcapStats: public BasicStats<PcapStats> {
-public:
-    using Base = BasicStats<PcapStats>;
-    using DstStat = utils::FlatMap<tbn::IpEndpoint, std::size_t>;
-public:
-    using Base::Base;
-    using Base::report;
-    using Base::on_accepted;
-    using Base::on_received;
-    static constexpr bool enabled() { return ft_stats_enabled(); }    
-
-public:
-    void on_report(std::ostream& os) {
-        os << "dst_stat:" << std::endl;
-        for(auto& [k,v]: dst_stat_) {
-            os <<  std::setw(12) << v << "    " << k << std::endl;
-        }
-    }
-    void on_accepted(const tb::PcapPacket& pkt) { 
-        if constexpr(enabled()) {
-            Base::on_accepted();
-            const auto& dst = pkt.dst();
-            auto current = dst_stat_[dst];
-            dst_stat_[dst] = current + 1;
-        }
-    }    
-protected:
-    DstStat dst_stat_;
-};
 
 template<typename ProtocolT>
 class PcapMdGateway : public core::BasicMdGateway<PcapMdGateway<ProtocolT>> {
 public:
     using Base = core::BasicMdGateway<PcapMdGateway<ProtocolT>>;
     using Protocol = ProtocolT;
-    using Stats = PcapStats;
+    using Stats = core::EndpointStats;
 public:
     template<typename...ArgsT>
     PcapMdGateway(ArgsT...args)
@@ -191,4 +101,4 @@ private:
     toolbox::EndpointsFilter filter_;
 };
 
-} // ft::md
+} // ft::pcap
