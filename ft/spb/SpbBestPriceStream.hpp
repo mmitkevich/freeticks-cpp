@@ -1,4 +1,5 @@
 #pragma once
+#include "ft/core/Parameterized.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/Tick.hpp"
@@ -38,6 +39,9 @@ public:
         disconnect();
     }
     Decoder& decoder() { return protocol_.decoder(); } 
+    void on_parameters_updated(const core::Parameters &params) {
+        
+    }
 protected:
     void connect() {
         decoder().signals().connect(tbu::bind<&This::on_snapshot_start>(this));
@@ -49,6 +53,7 @@ protected:
         decoder().signals().disconnect(tbu::bind<&This::on_snapshot_finish>(this));
         decoder().signals().disconnect(tbu::bind<&This::on_price_snapshot>(this));
     }
+  
 protected:
     void on_snapshot_start(TypedPacket<SnapshotStart> e) { }
     void on_snapshot_finish(TypedPacket<SnapshotFinish> e) { }

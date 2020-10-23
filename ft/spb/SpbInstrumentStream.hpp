@@ -29,13 +29,17 @@ public:
         disconnect();
     }
     Decoder& decoder() { return protocol_.decoder(); }
+    void on_parameters_updated(const core::Parameters &params) {
+        
+    }
 protected:
     void connect() {
         decoder().signals().connect(tbu::bind<&This::on_instrument>(this));
     }
     void disconnect() {
         decoder().signals().disconnect(tbu::bind<&This::on_instrument>(this));
-    }  
+    }
+
     void on_instrument(TypedPacket<InstrumentSnapshot> e) {
         //TOOLBOX_INFO << e;
         auto& snap = *e.data();

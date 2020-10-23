@@ -1,0 +1,6 @@
+{
+    "streams":[
+        { "stream":"bestprice", "urls": ["233.26.38.16:6016"] },
+        { "stream":"instrument", "urls": ["233.26.38.36:6036"] }],
+    "interface": "eno2"
+}

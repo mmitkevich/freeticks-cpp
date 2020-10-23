@@ -1,5 +1,6 @@
 #pragma once
 #include "ft/core/Instrument.hpp"
+#include "ft/core/Parameterized.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/spb/SpbFrame.hpp"
 #include "ft/utils/Common.hpp"
@@ -8,6 +9,8 @@
 #include "SpbBestPriceStream.hpp"
 #include "SpbInstrumentStream.hpp"
 #include <cstdint>
+#include <string_view>
+#include <vector>
 
 
 namespace ft::spb {
@@ -36,7 +39,17 @@ public:
     Decoder& decoder() { return decoder_; }
     auto& stats() {return decoder().stats(); }
     void on_packet(BinaryPacket e) { decoder_.on_packet(e); }
-    
+    void on_parameters_updated(const core::Parameters& params) {
+        for(auto e: params) {
+            auto name = e.value_or("stream", std::string{});
+            // TODO: move streams to tuple with automatic dispatch on stream name
+            if(name == "bestprice") {
+                bestprice_.on_parameters_updated(e);
+            } else if(name == "instrument") {
+                instruments_.on_parameters_updated(e);
+            }
+        }
+    }
     core::TickStream& bestprice() { return bestprice_; }
 
     std::string_view exchange() { return Exchange; }
@@ -49,7 +62,6 @@ public:
     core::VenueInstrumentStream& instruments(core::StreamType streamtype) {
         return  instruments_;
     }
-
 private:
     Decoder decoder_;
     BestPriceStream bestprice_ {*this};

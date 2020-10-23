@@ -6,13 +6,14 @@
 #include "ft/core/Parameterized.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/utils/Common.hpp"
+
+#include "ft/io/Reactor.hpp"
+
+
 #include <exception>
 #include <string_view>
 
-namespace toolbox { namespace net { struct EndpointsFilter; }}
-
 namespace ft::core {
-using EndpointsFilter = toolbox::net::EndpointsFilter;
 
 enum GatewayState:int {
     Stopped   = 0,
@@ -89,6 +90,8 @@ template<typename DerivedT>
 class BasicMdGateway : public BasicParameterized<GatewayBase> {
     using Base = BasicParameterized<GatewayBase>;
 public:
+    using State = GatewayState;
+public:
     BasicMdGateway() {
         Base::parameters_updated().connect(tbu::bind<&DerivedT::on_parameters_updated>(static_cast<DerivedT*>(this)));
     }
@@ -136,7 +139,7 @@ private:
     const auto& impl() const { return *static_cast<const DerivedT*>(this); };
 protected:
     GatewayState state_{GatewayState::Stopped};
-    GatewayStateSignal state_changed_;
+    GatewayStateSignal state_changed_; 
 };
 
 

@@ -7,6 +7,7 @@
 #include <sstream>
 #include <utility>
 #include <memory>
+#include <atomic>
 
 #include <boost/mp11/list.hpp>
 #include <boost/mp11/algorithm.hpp>

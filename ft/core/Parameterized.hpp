@@ -27,7 +27,7 @@ public:
     /// update parameters. when replace==true, old parameters are cleared
     void parameters(const Parameters& parameters, bool replace=false) { 
         // FIXME: merge?
-        toolbox::json::copy(parameters, parameters_);
+        MutableParameters::copy(parameters, parameters_);
         parameters_updated_.invoke(parameters_);
     }
     /// retrieve current parameters
