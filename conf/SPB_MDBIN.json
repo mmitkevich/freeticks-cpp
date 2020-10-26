@@ -1,6 +1,8 @@
 {
-    "streams":[
-        { "stream":"bestprice", "urls": ["233.26.38.16:6016"] },
-        { "stream":"instrument", "urls": ["233.26.38.36:6036"] }],
+    "streams":[                                                   // channel A,            channel B
+        { "stream":"bestprice",     "type": "snapshot",     "urls": ["233.26.38.16:6016", "233.26.38.144:6144"] },
+        { "stream":"bestprice",     "type": "update",       "urls": ["233.26.38.17:6017", "233.26.38.145:6145"],    "recovery": "BEX.TOB" },
+        { "stream":"instrument",    "type": "snapshot",     "urls": ["233.26.38.36:6036", "233.26.38.164:6164"] },
+        { "stream":"instrument",    "type": "update",       "urls": ["233.26.38.37:6037", "233.26.38.165:6165"] } ],
     "interface": "eno2"
 }

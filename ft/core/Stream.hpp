@@ -20,4 +20,14 @@ protected:
     core::StreamStats stats_;
 };
 
+
+template<typename SequenceId, typename BaseT>
+class SequencedStream : public BaseT {
+public:
+    SequenceId sequence() { return sequence_; }
+    void sequence(SequenceId val) { sequence_ = val; }
+protected:
+    SequenceId sequence_{};
+};
+
 };

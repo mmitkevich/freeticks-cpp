@@ -41,11 +41,10 @@ public:
     void on_packet(BinaryPacket e) { decoder_.on_packet(e); }
     void on_parameters_updated(const core::Parameters& params) {
         for(auto e: params) {
-            auto name = e.value_or("stream", std::string{});
-            // TODO: move streams to tuple with automatic dispatch on stream name
-            if(name == "bestprice") {
+            auto strm = e.value_or("stream", std::string{});
+            if(strm == "bestprice") {
                 bestprice_.on_parameters_updated(e);
-            } else if(name == "instrument") {
+            } else if(strm == "instrument") {
                 instruments_.on_parameters_updated(e);
             }
         }

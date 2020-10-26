@@ -41,7 +41,7 @@ public:
     std::size_t size() const { return buf_.size(); }
 
     void connect() {
-        assert(socket.empty());
+        assert(socket_.empty());
         std::error_code ec {};
         socket_ = Socket(endpoint_.protocol(), ec);
         if(ec)
@@ -59,11 +59,11 @@ public:
         }
         if(ec)
             throw std::system_error{tb::make_sys_error(ec.value()), "mcast_join_group"};            
-        assert(!socket.empty());
+        assert(!socket_.empty());
         sub_recv_ = reactor_.subscribe(socket_.get(), tb::EpollIn, tb::bind<&This::on_recv>(this));
     }
     void disconnect() {
-        assert(!socket.empty());
+        assert(!socket_.empty());
         std::error_code ec {};
             if(!if_name_.empty()) {
             socket_.leave_group(src().address(), if_name_.data(), ec);
@@ -163,14 +163,14 @@ public:
     }
 
     void disconnect() {
-        TOOLBOX_INFO << "Disconnecting "<< connections_.size() << " connections";        
+        TOOLBOX_INFO << "Disconnecting "<< connections_.size() << " endpoints on interface '"<<if_name_<<"'";
         for(auto &c : connections_) {
             c.disconnect();
         }
     }
 
     void connect() {
-        TOOLBOX_INFO << "Connecting "<< connections_.size() << " endpoints";        
+        TOOLBOX_INFO << "Connecting "<< connections_.size() << " endpoints on interface '"<<if_name_<<"'";
         for(auto& c : connections_) {
             c.connect();
         }     

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ft/core/Stream.hpp"
+#include "ft/core/Tick.hpp"
 #include "ft/pcap/PcapMdGateway.hpp"
 #include "ft/utils/Common.hpp"
 #include "toolbox/net/Packet.hpp"
@@ -10,6 +12,11 @@
 namespace ft::spb {
 
 class Frame;
+
+class SpbTickStream : public core::SequencedStream<spb::Seq, core::TickStream>
+{
+
+};
 
 class SpbDecoderStats: public core::BasicStats<SpbDecoderStats> {
 public:
@@ -32,6 +39,7 @@ public:
 protected:
     MsgStats values_;
 };
+
 
 template<typename FrameT, typename SchemaT, typename BinaryPacketT>
 class SpbDecoder

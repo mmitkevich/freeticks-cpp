@@ -13,7 +13,7 @@ namespace tbn = toolbox::net;
 
 
 template<typename ProtocolT>
-class SpbBestPriceStream : public core::TickStream
+class SpbBestPriceStream : public SpbTickStream
 {
 public:
     using Base = core::TickStream;
@@ -58,9 +58,9 @@ protected:
     void on_snapshot_start(TypedPacket<SnapshotStart> e) { }
     void on_snapshot_finish(TypedPacket<SnapshotFinish> e) { }
     void on_price_snapshot(TypedPacket<PriceSnapshot> e) {
+        auto& snap = *e.data();
         //TOOLBOX_INFO << e;
         stats().on_received(e);
-        auto& snap = *e.data();
         for(auto &best: snap.sub_best) {
             core::Tick ti {};
             ti.type(core::TickType::Update);
