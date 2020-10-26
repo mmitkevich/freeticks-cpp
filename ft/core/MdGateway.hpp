@@ -63,7 +63,7 @@ public:
     MdGateway(std::unique_ptr<ImplT> &&impl)
     : impl_(std::move(impl)) {}
 
-    void start() override { impl_->start(); }
+void start() override { impl_->start(); }
     void stop() override { impl_->stop(); }
     
     void url(std::string_view url) { impl_->url(url);}

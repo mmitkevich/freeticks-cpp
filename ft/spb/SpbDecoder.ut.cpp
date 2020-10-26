@@ -1,3 +1,4 @@
+#include "ft/spb/SpbBestPriceStream.hpp"
 #include "ft/spb/SpbFrame.hpp"
 #include "ft/utils/Common.hpp"
 
@@ -49,7 +50,7 @@ BOOST_AUTO_TEST_CASE(Parser)
     auto on_snapshot_start = [&](SpbDecoder::TypedPacket<SpbSchema::SnapshotStart> pkt) {
         auto& msg = *pkt.data();
         if constexpr (!BENCH) {
-            TOOLBOX_INFO << "SnapshotStart("<<msg.base.frame.msgid<<", update_seq=" << msg.update_seq << ")";
+            TOOLBOX_INFO << "SnapshotStart("<<msg.frame.msgid<<", update_seq=" << msg.update_seq << ")";
         }
         n_snapshot_start++;
     };
@@ -58,22 +59,19 @@ BOOST_AUTO_TEST_CASE(Parser)
     auto on_snapshot_finish = [&](SpbDecoder::TypedPacket<SpbSchema::SnapshotStart> pkt) {
         auto& msg = *pkt.data();
         if constexpr (!BENCH) {
-            TOOLBOX_INFO << "SnapshotFinish("<<msg.base.frame.msgid<<", update_seq=" << msg.update_seq << ")";
+            TOOLBOX_INFO << "SnapshotFinish("<<msg.frame.msgid<<", update_seq=" << msg.update_seq << ")";
         }
         n_snapshot_finish++;
     };
     
-   
-    SpbDecoder decoder;
-    decoder.signals().connect(tbu::bind(&on_snapshot_start));
-    decoder.signals().connect(tbu::bind(&on_snapshot_finish));
-
+    SpbProtocol protocol;
+    
     char msg[] = 
         "\x04\x00\x39\x30"
         "\x04\x00\x18\x30";
 
     maybe_bench("parser", 1000*BENCH, [&] {
-        decoder.on_packet(BinaryPacket(msg, sizeof(msg)-1));
+        protocol.decoder().on_packet(BinaryPacket(msg, sizeof(msg)-1));
     });
     TOOLBOX_INFO << "snapshot_start "<<n_snapshot_start<<" snapshot_finish "<<n_snapshot_finish;
 }

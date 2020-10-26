@@ -5,9 +5,12 @@
 #include "ft/pcap/PcapMdGateway.hpp"
 #include "ft/utils/Common.hpp"
 #include "toolbox/net/Packet.hpp"
+#include <boost/mp11/algorithm.hpp>
+#include <boost/mp11/list.hpp>
 #include <iomanip>
 #include <unordered_map>
 #include "ft/spb/SpbFrame.hpp"
+#include "toolbox/util/Tuple.hpp"
 
 namespace ft::spb {
 
@@ -40,8 +43,9 @@ protected:
     MsgStats values_;
 };
 
+template<typename MessageT> constexpr bool spb_msgid_v = MessageT::msgid;
 
-template<typename FrameT, typename SchemaT, typename BinaryPacketT>
+template<typename FrameT, typename SchemaT, typename BinaryPacketT, typename StreamsTuple>
 class SpbDecoder
 {
 public:
@@ -51,15 +55,12 @@ public:
 
     template<typename MessageT> 
     using TypedPacket = tbn::TypedPacket<MessageT, BinaryPacket>;
-
-    // signals tuple
-    using TypedPacketSignals = ftu::SignalTuple<mp::mp_transform<TypedPacket, TypeList> >;
-
 public:
     SpbDecoder(const SpbDecoder&) = delete;
     SpbDecoder(SpbDecoder&&) = delete;
-    SpbDecoder(){}
-    TypedPacketSignals& signals() { return signals_; }
+    SpbDecoder(StreamsTuple&& streams)
+        : streams_(streams) { }
+    
     void on_packet(BinaryPacket packet) {
         const char* begin = packet.data();
         const char* ptr = begin;
@@ -78,17 +79,17 @@ public:
             stats_.on_received(frame);
 
             bool found = false;
-            signals_.for_each([&](auto &cb) {
-                using CB = std::decay_t<decltype(cb)>;
-                using Message = typename CB::value_type::value_type;
-                if(!found && Message::Base::msgid == frame.msgid) {
-                    found = true;
-                    stats_.on_accepted(frame);
-                    //TOOLBOX_DEBUG << "["<<(ptr-data.begin())<<".."<<(ptr+frame.size-data.begin())<<"] msgid "<<frame.msgid << (cb ? "":" - skipped");
-                    if(cb) {
-                        cb(packet);
+            tb::tuple_for_each(streams_, [&](auto &stream) {
+                using Stream = std::decay_t<decltype(stream)>;
+                using TypeList = typename Stream::TypeList;//Message = typename CB::value_type::value_type;
+
+                mp::mp_for_each<TypeList>([&](auto &&message) {
+                    using Message = std::decay_t<decltype(message)>;
+                    if(!found && Message::msgid == frame.msgid) {
+                        stats_.on_accepted(frame);
+                        stream.on_packet(TypedPacket<Message>(packet));
                     }
-                }
+                });
             });
             if(!found) {
                 //TOOLBOX_DEBUG << "["<<(ptr-data.begin())<<"] unknown msgid "<<frame.msgid;
@@ -98,7 +99,7 @@ public:
     }
     SpbDecoderStats& stats() { return stats_; }
 private:
-    TypedPacketSignals signals_;
+    StreamsTuple streams_;
     SpbDecoderStats stats_;
 };
 

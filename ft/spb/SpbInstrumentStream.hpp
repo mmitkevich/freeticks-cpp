@@ -18,29 +18,21 @@ public:
     using Decoder = typename Protocol::Decoder;
     using Schema = typename Decoder::Schema;
     using InstrumentSnapshot = typename Schema::InstrumentSnapshot;
+    using TypeList = mp::mp_list<InstrumentSnapshot>;
     template<typename MessageT>
     using TypedPacket = typename Decoder::template TypedPacket<MessageT>;
 public:
     SpbInstrumentStream(Protocol & protocol)
-    :   protocol_(protocol) {
-        connect();
-    }
-    ~SpbInstrumentStream() {
-        disconnect();
-    }
+    :   protocol_(protocol)
+    {}
+    SpbInstrumentStream(const SpbInstrumentStream&)=delete;
+    SpbInstrumentStream(SpbInstrumentStream&&)=delete;
+    ~SpbInstrumentStream()
+    {}
     Decoder& decoder() { return protocol_.decoder(); }
-    void on_parameters_updated(const core::Parameters &params) {
-        
-    }
-protected:
-    void connect() {
-        decoder().signals().connect(tbu::bind<&This::on_instrument>(this));
-    }
-    void disconnect() {
-        decoder().signals().disconnect(tbu::bind<&This::on_instrument>(this));
-    }
-
-    void on_instrument(TypedPacket<InstrumentSnapshot> e) {
+    void on_parameters_updated(const core::Parameters &params) {}
+    static constexpr std::string_view name() { return "instruments"; }
+    void on_packet(TypedPacket<InstrumentSnapshot> e) {
         //TOOLBOX_INFO << e;
         auto& snap = *e.data();
         core::VenueInstrument vi;

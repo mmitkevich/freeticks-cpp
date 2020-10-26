@@ -32,10 +32,8 @@ struct Message
 };
 
 template<uint16_t ID, typename TraitsT>
-struct Snapshot
+struct Snapshot : Message<ID, TraitsT>
 {
-    using Base = Message<ID, TraitsT>;
-    Base base;
     Int8 update_seq;
     friend std::ostream& operator<<(std::ostream& os, const Snapshot& self) {
         return os<<self.base;
@@ -219,16 +217,12 @@ struct SpbSchema
     using AggrMsgOnline = AggrMsg<1111, TraitsT>;
     using AggrMsgSnapshot = AggrMsg<1112, TraitsT>;
 
-    struct EmptyBook
+    struct EmptyBook : Message<15300, TraitsT>
     {
-        using Base = Message<15300, TraitsT>;
-        Base base;
         MarketInstrumentId instrument;
     };
-    struct PriceSnapshot
+    struct PriceSnapshot : Message<7653, TraitsT>
     {
-        using Base = Message<7653, TraitsT>;
-        Base base;
         MarketInstrumentId instrument;    
         Group<SubBest> sub_best;
         friend std::ostream& operator<<(std::ostream& os, const PriceSnapshot& self) {
@@ -236,10 +230,8 @@ struct SpbSchema
             return os;
         }
     };
-    struct InstrumentSnapshot
+    struct InstrumentSnapshot :  Message<973, TraitsT>
     {
-        using Base = Message<973, TraitsT>;
-        Base base;
         InstrumentId instrument_id;
         Characters<32> symbol;
         Characters<64> desc;

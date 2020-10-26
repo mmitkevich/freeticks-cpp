@@ -23,7 +23,7 @@ public:
     using Schema = typename Decoder::Schema;
     // supported messages
     using SnapshotStart = typename Schema::SnapshotStart;
-    using SnapshotFinish = typename Schema::SnapshotStart;
+    using SnapshotFinish = typename Schema::SnapshotFinish;
     using PriceSnapshot = typename Schema::PriceSnapshot;
     // list of supported messages
     using TypeList = mp::mp_list<SnapshotStart, SnapshotFinish, PriceSnapshot>;
@@ -32,32 +32,26 @@ public:
     using TypedPacket = typename Decoder::template TypedPacket<MessageT>;
 public:
     SpbBestPriceStream(Protocol& protocol)
-    :   protocol_(protocol) {
-        connect();
+    :   protocol_(protocol) 
+    {
     }
+    
+    SpbBestPriceStream(const SpbBestPriceStream&) = delete;
+    SpbBestPriceStream(SpbBestPriceStream&&) = delete;
+
     ~SpbBestPriceStream() {
-        disconnect();
     }
     Decoder& decoder() { return protocol_.decoder(); } 
     void on_parameters_updated(const core::Parameters &params) {
         
     }
-protected:
-    void connect() {
-        decoder().signals().connect(tbu::bind<&This::on_snapshot_start>(this));
-        decoder().signals().connect(tbu::bind<&This::on_snapshot_finish>(this));
-        decoder().signals().connect(tbu::bind<&This::on_price_snapshot>(this));
-    }
-    void disconnect() {
-        decoder().signals().disconnect(tbu::bind<&This::on_snapshot_start>(this));
-        decoder().signals().disconnect(tbu::bind<&This::on_snapshot_finish>(this));
-        decoder().signals().disconnect(tbu::bind<&This::on_price_snapshot>(this));
-    }
-  
-protected:
-    void on_snapshot_start(TypedPacket<SnapshotStart> e) { }
-    void on_snapshot_finish(TypedPacket<SnapshotFinish> e) { }
-    void on_price_snapshot(TypedPacket<PriceSnapshot> e) {
+    
+    static constexpr std::string_view name() { return "bestprice"; }
+
+public:
+    void on_packet(TypedPacket<SnapshotStart> e) { }
+    void on_packet(TypedPacket<SnapshotFinish> e) { }
+    void on_packet(TypedPacket<PriceSnapshot> e) {
         auto& snap = *e.data();
         //TOOLBOX_INFO << e;
         stats().on_received(e);
@@ -66,7 +60,7 @@ protected:
             ti.type(core::TickType::Update);
             ti.venue_instrument_id = snap.instrument.instrument_id;
             ti.timestamp = e.recv_timestamp();
-            ti.server_timestamp = snap.base.header.system_time.wall_time();
+            ti.server_timestamp = snap.header.system_time.wall_time();
             ti.price = protocol_.price_conv().to_core(best.price);
             ti.side = get_side(best);
             ti.qty = core::Qty(best.amount);
