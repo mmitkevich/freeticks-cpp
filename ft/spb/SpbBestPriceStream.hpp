@@ -27,7 +27,7 @@ public:
     
     // packet type meta function
     template<typename MessageT>
-    using TypedPacket = typename Base::template TypedPacket<MessageT>;
+    using SpbPacket = typename Base::template TypedPacket<MessageT>;
 
     // supported messages
     using SnapshotStart = typename Schema::SnapshotStart;
@@ -48,7 +48,7 @@ public:
         Base::on_parameters_updated(params);
     }
 
-    void on_packet(const TypedPacket<SnapshotStart>& pkt) { 
+    void on_packet(const SpbPacket<SnapshotStart>& pkt) { 
         auto &d = pkt.value();
         
         next_updates_snapshot_seq_ = d.update_seq;
@@ -79,7 +79,7 @@ public:
             <<", updates: { snapshot:"<<updates_snapshot_seq_<<", last:"<<updates_last_seq_ << ", front:"<<updates_front_seq() 
             <<", back:"<< updates_back_seq() << ", count:"<<updates_.size() <<" }";
     }
-    void on_packet(const TypedPacket<SnapshotFinish>& pkt) { 
+    void on_packet(const SpbPacket<SnapshotFinish>& pkt) { 
         auto &d = pkt.value();
         snapshot_last_seq_ = d.frame.seq;
         if(!snapshot_start_seq_) {
@@ -123,7 +123,7 @@ public:
         next_updates_snapshot_seq_ = invalid_snapshot_seq;
         // keep updates_snapshot_seq_+1 pointing to updates_ first element
     }
-    void on_packet(const TypedPacket<PriceSnapshot>& pkt) {
+    void on_packet(const SpbPacket<PriceSnapshot>& pkt) {
         // cache price snapshots
         auto &d = pkt.value();
         if(!snapshot_start_seq_)
@@ -138,7 +138,7 @@ public:
         }
         //on_price_packet(e);
     }
-    void on_packet(const TypedPacket<PriceOnline>& pkt) {
+    void on_packet(const SpbPacket<PriceOnline>& pkt) {
         auto& d = pkt.value();
         if(!updates_snapshot_seq_) { // no snapshot yet
             
