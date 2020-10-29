@@ -24,11 +24,12 @@ struct Message
     Frame frame {ID};
     using Header = typename TraitsT::Header;
     Header header;
-
     friend std::ostream& operator<<(std::ostream& os, const Message& self) {
-        os << self.frame<<","<<self.header;
-        return os;
+        return os<<self.frame<<","<<self.header;
     }
+
+    bool empty() const { return frame.msgid==0; }
+
 };
 
 template<uint16_t ID, typename TraitsT>
@@ -36,7 +37,7 @@ struct Snapshot : Message<ID, TraitsT>
 {
     Int8 update_seq;
     friend std::ostream& operator<<(std::ostream& os, const Snapshot& self) {
-        return os<<self.base;
+        return os<<self.frame<<","<<self.header<<",update_seq:"<<self.update_seq;
     }
 };
 
@@ -226,10 +227,20 @@ struct SpbSchema
         MarketInstrumentId instrument;    
         Group<SubBest> sub_best;
         friend std::ostream& operator<<(std::ostream& os, const PriceSnapshot& self) {
-            os << self.base << ",instrument_id:"<<self.instrument<<",sub_best:"<<self.sub_best;
+            os << self.frame<<","<<self.header<< ",instrument_id:"<<self.instrument<<",sub_best:"<<self.sub_best;
             return os;
         }
     };
+    struct PriceOnline : Message<7651, TraitsT>
+    {
+        MarketInstrumentId instrument;    
+        Group<SubBest> sub_best;
+        friend std::ostream& operator<<(std::ostream& os, const PriceOnline& self) {
+            os << self.frame<<","<<self.header<< ",instrument_id:"<<self.instrument<<",sub_best:"<<self.sub_best;
+            return os;
+        }
+    };
+
     struct InstrumentSnapshot :  Message<973, TraitsT>
     {
         InstrumentId instrument_id;
@@ -262,7 +273,7 @@ struct SpbSchema
         friend std::ostream& operator<<(std::ostream& os, const InstrumentSnapshot& self) {
             //std::wcout << self.symbol.wstr() << std::endl;//<<"|"<<self.desc_ru.str() << std::endl;
 
-            return os   << self.base 
+            return os  << self.frame<<","<<self.header
                 << ",instrument_id:"<<self.instrument_id
                 << ",symbol:'" << self.symbol.str() <<"'"
                 << ",desc:'" << self.desc.str() <<"'"
@@ -296,12 +307,6 @@ struct SpbSchema
             }
         }
     };
-
-    // Declare type list for messages
-    using TypeList = mp::mp_list<
-        SnapshotStart, SnapshotFinish, PriceSnapshot, InstrumentSnapshot
-        //,AggrMsgOnline, AggrMsgSnapshot, EmptyBook
-    >;
 };
 
 #pragma pack(pop)

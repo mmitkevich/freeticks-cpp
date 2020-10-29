@@ -1,5 +1,5 @@
 #pragma once
-#include "ft/core/Parameterized.hpp"
+#include "ft/core/Parameters.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/utils/Common.hpp"
 #include "QshDecoder.hpp"

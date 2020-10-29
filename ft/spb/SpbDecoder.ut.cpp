@@ -63,8 +63,8 @@ BOOST_AUTO_TEST_CASE(Parser)
         }
         n_snapshot_finish++;
     };
-    
-    SpbProtocol protocol;
+    core::Executor ex;
+    SpbProtocol protocol{ex};
     
     char msg[] = 
         "\x04\x00\x39\x30"

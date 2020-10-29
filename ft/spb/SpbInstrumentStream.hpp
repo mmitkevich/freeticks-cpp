@@ -1,51 +1,80 @@
 #pragma once
+#include "ft/core/Executor.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/spb/SpbSchema.hpp"
 #include "ft/spb/SpbDecoder.hpp"
 #include "ft/core/Instrument.hpp"
+#include "toolbox/util/Xml.hpp"
 
 namespace ft::spb {
 
 template<typename ProtocolT>
-class SpbInstrumentStream : public core::VenueInstrumentStream
+class SpbInstrumentStream : public BasicSpbStream<SpbInstrumentStream<ProtocolT>, ProtocolT, core::VenueInstrumentStream>
 {
 public:
-    using Base = core::Stream<core::Tick>;
     using This = SpbInstrumentStream<ProtocolT>;
-    using Protocol = ProtocolT;
-    using Decoder = typename Protocol::Decoder;
-    using Schema = typename Decoder::Schema;
+    using Base = BasicSpbStream<This, ProtocolT, core::VenueInstrumentStream>;
+    using Protocol = typename Base::Protocol;
+    using Decoder = typename Base::Decoder;
+    using Schema = typename Base::Schema;
+    template<typename MessageT>
+    using TypedPacket = typename Base::template TypedPacket<MessageT>;
+    
     using InstrumentSnapshot = typename Schema::InstrumentSnapshot;
     using TypeList = mp::mp_list<InstrumentSnapshot>;
-    template<typename MessageT>
-    using TypedPacket = typename Decoder::template TypedPacket<MessageT>;
+
 public:
-    SpbInstrumentStream(Protocol & protocol)
-    :   protocol_(protocol)
-    {}
-    SpbInstrumentStream(const SpbInstrumentStream&)=delete;
-    SpbInstrumentStream(SpbInstrumentStream&&)=delete;
-    ~SpbInstrumentStream()
-    {}
-    Decoder& decoder() { return protocol_.decoder(); }
-    void on_parameters_updated(const core::Parameters &params) {}
-    static constexpr std::string_view name() { return "instruments"; }
+    using Base::Base;
+    using Base::decoder;
+    using Base::invoke;
+    using Base::protocol;
+    using Base::executor;
+
+    static constexpr std::string_view name() { return "instrument"; }
+
     void on_packet(TypedPacket<InstrumentSnapshot> e) {
         //TOOLBOX_INFO << e;
         auto& snap = *e.data();
         core::VenueInstrument vi;
-        vi.venue(protocol_.venue());
-        vi.exchange(protocol_.exchange());
+        vi.venue(protocol().venue());
+        vi.exchange(protocol().exchange());
         vi.instrument().symbol(snap.symbol.str());
         auto id = std::hash<std::string>{}(vi.venue_symbol());
         vi.id(id);
         vi.venue_instrument_id(snap.instrument_id);
         invoke(vi);
     }
-private:
-    Protocol& protocol_;
+    
+    void on_parameters_updated(const core::Parameters& params) {
+        Base::on_parameters_updated(params);
+        std::string_view type = params["type"].get_string();
+        if(type == "snapshot.xml") {
+            for(auto e:params["urls"]) {
+                std::string url = std::string{e.get_string()};
+                executor().on_state(core::RunState::Started, [url, this] { snapshot_xml(url); });
+            }
+        }
+    }
+    void snapshot_xml(std::string_view path) {
+        tb::xml::Parser p;
+        tb::xml::MutableDocument d = p.parse_file(path);
+        core::VenueInstrument vi;
+        vi.venue(protocol().venue());
+        vi.exchange(protocol().exchange());
+        for(auto e:d.child("exchange").child("traded_instruments")) {
+            std::string_view sym = e.attribute("symbol").value();
+            std::string_view is_test = std::string_view(e.attribute("is_test").value());
+            vi.instrument().symbol(sym);
+            auto id = std::hash<std::string>{}(vi.venue_symbol());
+            vi.id(id);
+            std::int64_t vid = std::atoll(e.attribute("instrument_id").value());
+            vi.venue_instrument_id(vid);
+            if(is_test!="true")
+                invoke(vi);
+        }
+    }
 };
 
 }

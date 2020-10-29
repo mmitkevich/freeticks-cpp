@@ -64,7 +64,9 @@ struct Frame {
     Seq seq;
 
     Frame(MsgId msgid)
-    : msgid(msgid) {}
+    : msgid(msgid)
+    , seq(0)
+    , size(0) {}
     
     friend std::ostream& operator<<(std::ostream& os, const Frame& self) {
         os << "msgid:"<<self.msgid<<",seq:"<<self.seq;
@@ -117,9 +119,11 @@ struct UserHeader {
     ClOrderId clorder_id;
 };
 
+using SourceId = Int2;
+
 struct GateHeader {
     Time8n system_time;
-    Int2 source_id;
+    SourceId source_id;
     ClOrderId clorder_id;
     UserId user_id;
 };
@@ -128,7 +132,7 @@ struct Header {
     Int4 topic_id;
     Int8 topic_seq;
     Time8n system_time;
-    Int2 source_id;
+    SourceId source_id;
 };
 #pragma pack(pop)
 

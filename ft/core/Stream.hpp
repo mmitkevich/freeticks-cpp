@@ -6,28 +6,31 @@
 
 namespace ft::core {
 
+
+template<typename SequenceId>
+class Sequenced {
+public:
+    SequenceId sequence() const { return sequence_; }
+    void sequence(SequenceId val) { sequence_ = val; }
+protected:
+    SequenceId sequence_{};
+};
+
+
 template<typename MessageT>
-class Stream : public tbu::Signal<const MessageT&>
+class Stream : public tb::Signal<const MessageT&>, public Sequenced<std::uint64_t>
 {
-    using Base = tbu::Signal<const MessageT&>;
+    using Base = tb::Signal<const MessageT&>;
+    using Sequenced = Sequenced<std::uint64_t>;
 public:
     using Base::Base;
     using Base::connect;
     using Base::disconnect;
+    using Sequenced::sequence;
 
     core::StreamStats& stats() { return stats_; }
 protected:
-    core::StreamStats stats_;
-};
-
-
-template<typename SequenceId, typename BaseT>
-class SequencedStream : public BaseT {
-public:
-    SequenceId sequence() { return sequence_; }
-    void sequence(SequenceId val) { sequence_ = val; }
-protected:
-    SequenceId sequence_{};
+  core::StreamStats stats_;
 };
 
 };

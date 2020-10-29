@@ -1,6 +1,6 @@
 #pragma once
 #include "ft/core/Instrument.hpp"
-#include "ft/core/Parameterized.hpp"
+#include "ft/core/Parameters.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/utils/StringUtils.hpp"
@@ -23,11 +23,11 @@ class PcapMdGateway : public core::BasicMdGateway<PcapMdGateway<ProtocolT>> {
 public:
     using Base = core::BasicMdGateway<PcapMdGateway<ProtocolT>>;
     using Protocol = ProtocolT;
-    using Stats = core::EndpointStats;
+    using Stats = core::EndpointStats<tb::IpEndpoint>;
 public:
     template<typename...ArgsT>
     PcapMdGateway(ArgsT...args)
-    : protocol_(std::forward<ArgsT>(args)...)
+    : protocol_(*this, std::forward<ArgsT>(args)...)
     {}
 
 

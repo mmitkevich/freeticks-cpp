@@ -44,13 +44,13 @@ public:
         if constexpr(DerivedT::enabled())
             report_(os);
     }
-    template<typename ...ArgsT>
-    void on_received(ArgsT...args) { 
+    template<typename T>
+    void on_received(const T& packet) { 
         if constexpr(DerivedT::enabled())
             total_received++;
     }
-    template<typename ...ArgsT>
-    void on_accepted(ArgsT...args) { 
+    template<typename T>
+    void on_accepted(const T& packet) { 
         if constexpr(DerivedT::enabled())
             total_accepted++;
     }

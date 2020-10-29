@@ -1,6 +1,7 @@
 #pragma once
+#include "ft/core/Executor.hpp"
 #include "ft/core/Instrument.hpp"
-#include "ft/core/Parameterized.hpp"
+#include "ft/core/Parameters.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/spb/SpbFrame.hpp"
 #include "ft/utils/Common.hpp"
@@ -12,6 +13,7 @@
 #include <boost/mp11/algorithm.hpp>
 #include <boost/mp11/list.hpp>
 #include <cstdint>
+#include <sstream>
 #include <string_view>
 #include <vector>
 
@@ -53,18 +55,30 @@ public:
     using QtyConv = core::QtyConversion<std::int64_t, 1>;
 
     static constexpr std::string_view Exchange = "SPB";
-    static constexpr std::string_view Venue = "SPB_MDBIN";
+    static constexpr std::string_view Venue = Decoder::name();
 public:
-    SpbProtocol()
-    {}
+    SpbProtocol(core::Executor& executor)
+    : executor_(executor)
+    , decoder_(streams())
+    , bestprice_(*this)
+    , instruments_(*this) {}
+
     SpbProtocol(const SpbProtocol&) = delete;
     SpbProtocol(SpbProtocol&&) = delete;
+    
+    constexpr std::string_view name() {  return Decoder::name(); }
     
     StreamsTuple streams() { return StreamsTuple(bestprice_, instruments_); }
 
     Decoder& decoder() { return decoder_; }
     auto& stats() {return decoder().stats(); }
-    void on_packet(BinaryPacket e) { decoder_.on_packet(e); }
+    
+    void on_packet(const BinaryPacket& e) { 
+        decoder_.on_packet(e); 
+    }
+    
+    core::Executor& executor() { return executor_; }
+
     void on_parameters_updated(const core::Parameters& params) {
         for(auto e: params) {
             auto strm = e.value_or("stream", std::string{});
@@ -90,9 +104,10 @@ public:
         return  instruments();
     }
 private:
-    BestPriceStream bestprice_{*this};
-    InstrumentStream instruments_{*this};
-    Decoder decoder_{streams()};    
+    core::Executor& executor_;
+    Decoder decoder_;    
+    BestPriceStream bestprice_;
+    InstrumentStream instruments_;
 };
 
 template<typename BinaryPacketT>

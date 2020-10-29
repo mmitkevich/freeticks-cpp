@@ -9,7 +9,7 @@
 #include "ft/core/Instrument.hpp"
 #include "ft/core/InstrumentsCache.hpp"
 #include "ft/core/MdGateway.hpp"
-#include "ft/core/Parameterized.hpp"
+#include "ft/core/Parameters.hpp"
 #include "toolbox/net/EndpointFilter.hpp"
 #include "toolbox/net/Pcap.hpp"
 #include "toolbox/sys/Log.hpp"
@@ -52,11 +52,11 @@ public:
 public:
   core::IMdGateway &gateway() { return *gateway_; }
 
-  void on_state_changed(core::GatewayState state, core::GatewayState old_state,
+  void on_state_changed(core::RunState state, core::RunState old_state,
                         core::ExceptionPtr err) {
-    if (state == core::GatewayState::Failed && err)
+    if (state == core::RunState::Failed && err)
       std::cerr << "error: " << err->what();
-    if (state == core::GatewayState::Stopped) {
+    if (state == core::RunState::Stopped) {
       // gateway().report(std::cerr);
       auto elapsed = tbs::MonoClock::now() - start_timestamp_;
       auto total_received = gateway().stats().total_received;

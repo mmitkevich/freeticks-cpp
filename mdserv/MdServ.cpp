@@ -10,8 +10,8 @@
 #include "ft/core/Instrument.hpp"
 #include "ft/core/InstrumentsCache.hpp"
 #include "ft/core/MdGateway.hpp"
-#include "ft/core/Parameterized.hpp"
-#include "ft/io/Reactor.hpp"
+#include "ft/core/Parameters.hpp"
+#include "ft/core/Executor.hpp"
 
 #include "ft/mcast/McastMdGateway.hpp"
 
@@ -50,7 +50,7 @@ public:
   };
 
 public:
-  MdServ(io::Reactor& reactor)
+  MdServ(core::Reactor& reactor)
   : reactor_(reactor)
   {
       reactor_.state_changed().connect(tbu::bind<&This::on_reactor_state_changed>(this));
@@ -59,15 +59,16 @@ public:
   core::IMdGateway &gateway() { return *gateway_; }
   void gateway(std::unique_ptr<core::IMdGateway> gw) { gateway_ = std::move(gw); }
 
-  void on_state_changed(core::GatewayState state, core::GatewayState old_state,
+  void on_state_changed(core::RunState state, core::RunState old_state,
                         core::ExceptionPtr err) {
-    if (state == core::GatewayState::Failed && err)
+    std::cerr << "gateway state: "<<state;
+    if (state == core::RunState::Failed && err)
       std::cerr << "error: " << err->what();
-    if (state == core::GatewayState::Stopped) {
+    if (state == core::RunState::Stopped) {
       // gateway().report(std::cerr);
       auto elapsed = tbs::MonoClock::now() - start_timestamp_;
       auto total_received = gateway().stats().total_received;
-      TOOLBOX_INFO << " read " << total_received << " in "
+      std::cerr << " read " << total_received << " in "
                    << elapsed.count() / 1e9 << " s"
                    << " at " << (1e3 * total_received / elapsed.count())
                    << " mio/s";
@@ -77,9 +78,9 @@ public:
   void on_tick(const core::Tick &e) {
     // TOOLBOX_INFO << e;
     auto &ins = instruments_[e.venue_instrument_id];
-    if (!ins.empty()) {
-      std::cout << "sym:'" << ins.venue_symbol() << "'," << e << std::endl;
-    }
+    //if (!ins.empty()) {
+    //  std::cout << "sym:'" << ins.venue_symbol() << "'," << e << std::endl;
+    //}
   }
 
   void on_instrument(const core::VenueInstrument &e) {
@@ -111,13 +112,14 @@ public:
     gateway()
         .instruments(ft::core::streams::Instrument)
         .connect(tbu::bind<&This::on_instrument>(this));
+
     gateway().start();
     tb::ReactorRunner runner(reactor_);
     tb::wait_termination_signal();
   }
   
   void on_reactor_state_changed(tb::Reactor*reactor, tb::io::State state) {
-    TOOLBOX_INFO<<"Reactor state changed: "<<state;
+    TOOLBOX_INFO<<"reactor state: "<<state;
     switch(state) {
       case tb::io::State::Stopping: 
         gateway().stop();
@@ -149,7 +151,7 @@ public:
         return EXIT_SUCCESS;
       }
       if(!config_file.empty()) {
-        opts.parse_json_file(config_file);
+        opts.parse_file(config_file);
       }
 
       run(venue, opts);
@@ -165,12 +167,12 @@ private:
   tb::MonoTime start_timestamp_;
   std::unique_ptr<core::IMdGateway> gateway_;
   core::InstrumentsCache instruments_;
-  io::Reactor& reactor_;
+  core::Reactor& reactor_;
 };
 
 } // namespace ft
 
 int main(int argc, char *argv[]) {
-  ft::MdServ app(ft::io::current_reactor());
+  ft::MdServ app(ft::core::current_reactor());
   return app.main(argc, argv);
 }

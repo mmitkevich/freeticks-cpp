@@ -4,10 +4,12 @@
 
 namespace ft::core {
 
-class EndpointStats: public BasicStats<EndpointStats> {
+template<typename EndpointT>
+class EndpointStats: public BasicStats<EndpointStats<EndpointT>> {
+    using Base = BasicStats<EndpointStats<EndpointT>>;
 public:
-    using Base = BasicStats<EndpointStats>;
-    using DstStat = utils::FlatMap<tbn::IpEndpoint, std::size_t>;
+    using Endpoint = EndpointT;    
+    using DstStat = utils::FlatMap<Endpoint, std::size_t>;
 public:
     using Base::Base;
     using Base::report;

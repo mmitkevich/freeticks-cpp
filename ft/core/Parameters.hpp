@@ -24,6 +24,7 @@ public:
 template<class BaseT = IParameterized>
 class BasicParameterized : public BaseT {
 public:
+    using BaseT::BaseT;
     /// update parameters. when replace==true, old parameters are cleared
     void parameters(const Parameters& parameters, bool replace=false) { 
         // FIXME: merge?

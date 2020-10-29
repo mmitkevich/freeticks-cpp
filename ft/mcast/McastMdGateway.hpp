@@ -1,6 +1,6 @@
 #pragma once
-#include "ft/core/Parameterized.hpp"
-#include "ft/io/Reactor.hpp"
+#include "ft/core/Parameters.hpp"
+#include "ft/core/Executor.hpp"
 #include "ft/utils/Common.hpp"
 
 #include "toolbox/io/Buffer.hpp"
@@ -10,8 +10,10 @@
 #include "toolbox/net/EndpointFilter.hpp"
 #include "toolbox/net/McastSock.hpp"
 #include "toolbox/sys/Time.hpp"
+#include "toolbox/util/String.hpp"
 #include "ft/core/MdGateway.hpp"
 #include "ft/core/EndpointStats.hpp"
+#include "toolbox/net/Packet.hpp"
 #include <system_error>
 #include <vector>
 
@@ -36,8 +38,8 @@ public:
     Endpoint src() const { return endpoint_; }
     tb::WallTime recv_timestamp() const { return recv_timestamp_; }
 
-    char* data() { return (char*)buf_.data().data(); }
-    const char* data() const { return (char*)buf_.data().data(); }
+    //char* data() { return (char*)buf_.str().data(); }
+    const char* data() const { return (char*)buf_.str().data(); }
     std::size_t size() const { return buf_.size(); }
 
     void connect() {
@@ -80,10 +82,12 @@ public:
     void on_recv(tb::CyclTime now, int fd, unsigned events) {
         recv_timestamp_ = now.wall_time();
         std::size_t size = socket_.recv(buf_.prepare(4096), 0);
-        TOOLBOX_INFO<<"recv "<<size<<" bytes from "<<src();
+        buf_.commit(size);
         packet_(*this);
+        buf_.consume(size);
     }
     bool is_connected() const { return !socket_.empty(); }
+    tb::Signal<const This&> &packet() { return packet_; }
 private:
     tb::Signal<const This&> packet_;
     Endpoint endpoint_;
@@ -103,9 +107,10 @@ public:
     using Base = core::BasicMdGateway<McastMdGateway<ProtocolT>>;
     using This = McastMdGateway<ProtocolT>;
     using Protocol = ProtocolT;
-    using Stats = core::EndpointStats;
     using TransportProtocol = toolbox::UdpProtocol;
+    using Stats = core::EndpointStats<tb::BasicIpEndpoint<TransportProtocol>>;
     static constexpr TransportProtocol transport_protocol = TransportProtocol::v4();
+    using BinaryPacket = McastDgram;
     using Connection = McastDgram;
     using Socket = typename Connection::Socket;
     using Endpoint = typename Connection::Endpoint;
@@ -115,11 +120,12 @@ public:
 public:
     template<typename...ArgsT>
     McastMdGateway(tb::Reactor& reactor, ArgsT...args)
-    : reactor_(reactor)
-    , protocol_(std::forward<ArgsT>(args)...)
+    : Base(&reactor)
+    , protocol_(*this, std::forward<ArgsT>(args)...)
     {
         
     }
+    using Base::reactor;
 
     Protocol& protocol() {   return protocol_; }
     Connections& connections() { return connections_; }
@@ -132,11 +138,17 @@ public:
     Connections make_connections(const core::Parameters& params) {
         Connections conns;
         for(auto stream_p: params) {
-            for(auto e : stream_p["urls"]) {
-                std::string url = e.get_string().data();
-                Endpoint ep =  tbn::parse_ip_endpoint<TransportProtocol>(url, 0, AF_INET);
-                Connection c(reactor_, ep, if_name_);
-                conns.push_back(std::move(c));
+            std::string_view type = stream_p["type"].get_string();
+            using namespace std::literals::string_view_literals;
+            if(tb::ends_with(type, ".mcast"sv))
+            {
+                for(auto e : stream_p["urls"]) {
+                    std::string url = e.get_string().data();
+                    Endpoint ep =  tbn::parse_ip_endpoint<TransportProtocol>(url, 0, AF_INET);
+                    Connection c(reactor(), ep, if_name_);
+                    conns.push_back(std::move(c));
+                    conns.back().packet().connect(tb::bind<&This::on_packet>(this));
+                }
             }
         }
         return conns;
@@ -183,7 +195,12 @@ public:
     std::string_view url() const { return url_; }
 
     void start() {
+        state(State::Starting);
+        using namespace std::literals::chrono_literals;
+        idle_timer_ = reactor().timer(tb::MonoClock::now(), 10s, tb::Priority::Low, tb::bind<&This::on_idle_timer>(this));
         connect();
+        // FIXME: on_connected ?
+        state(State::Started);
     }
 
     void run() {
@@ -191,12 +208,18 @@ public:
     }
 
     void stop() {
+        state(State::Stopping);
         disconnect();
+        idle_timer_.cancel();
+        state(State::Stopped);
     }
    
     void report(std::ostream& os) {
         protocol_.stats().report(os);
         stats_.report(os);
+    }
+    void on_idle_timer(tb::CyclTime now, tb::Timer& timer) {
+        on_idle();
     }
     void on_idle() {
         report(std::cerr);
@@ -208,6 +231,12 @@ public:
         return protocol_.instruments(streamtype);
     }
 
+    void on_packet(const BinaryPacket& pkt) {
+        stats_.on_received(pkt);
+        stats_.on_accepted(pkt);
+        protocol_.on_packet(pkt);
+    }
+
 private:
     Connections connections_;
     std::string url_;
@@ -215,8 +244,7 @@ private:
     Protocol protocol_;
     Stats stats_;
     toolbox::EndpointsFilter filter_;
-    tbi::Reactor& reactor_;
-    std::atomic<bool> stop_ {false};       
+    tb::Timer idle_timer_; 
 };
 
 } // ft::mcasst
