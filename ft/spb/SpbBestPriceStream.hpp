@@ -27,7 +27,7 @@ public:
     
     // packet type meta function
     template<typename MessageT>
-    using SpbPacket = typename Base::template TypedPacket<MessageT>;
+    using SpbPacket = typename Base::template SpbPacket<MessageT>;
 
     // supported messages
     using SnapshotStart = typename Schema::SnapshotStart;
@@ -47,14 +47,16 @@ public:
     void on_parameters_updated(const core::Parameters &params) {
         Base::on_parameters_updated(params);
     }
+    template<typename PacketT>
+    void on_packet(const PacketT& pkt) {
+        on_message(pkt.value());
+    }
 
-    void on_packet(const SpbPacket<SnapshotStart>& pkt) { 
-        auto &d = pkt.value();
-        
-        next_updates_snapshot_seq_ = d.update_seq;
+    void on_message(const SnapshotStart& e) { 
+        next_updates_snapshot_seq_ = e.update_seq;
         if(!updates_snapshot_seq_)  // this is "base index" for our updates queue
             updates_snapshot_seq_ = next_updates_snapshot_seq_;
-        snapshot_start_seq_ = snapshot_last_seq_ = d.frame.seq;
+        snapshot_start_seq_ = snapshot_last_seq_ = e.frame.seq;
         assert(snapshot_start_seq_!=0);
         snapshot_.clear(); // we keep only new updates. If Start comes before prev Finish we effectively lost whole snapshot.
         TOOLBOX_DEBUG << name() << " SnapshotStart "
@@ -79,13 +81,12 @@ public:
             <<", updates: { snapshot:"<<updates_snapshot_seq_<<", last:"<<updates_last_seq_ << ", front:"<<updates_front_seq() 
             <<", back:"<< updates_back_seq() << ", count:"<<updates_.size() <<" }";
     }
-    void on_packet(const SpbPacket<SnapshotFinish>& pkt) { 
-        auto &d = pkt.value();
-        snapshot_last_seq_ = d.frame.seq;
+    void on_message(const SnapshotFinish& e) { 
+        snapshot_last_seq_ = e.frame.seq;
         if(!snapshot_start_seq_) {
             // Start was lost or we connected after Start before Finish
             on_bad_snapshot("finish without start");
-        } else if(d.update_seq!=next_updates_snapshot_seq_) { 
+        } else if(e.update_seq!=next_updates_snapshot_seq_) { 
             // Start was lost or next Start came before prev Finish (reordered)
             on_bad_snapshot("finish with wrong start");
         } else if(std::any_of(snapshot_.begin(), snapshot_.end(), [](auto &x) { return x.empty(); })) {
@@ -103,7 +104,7 @@ public:
         
             // give them snapshot. updates coming after snapshot should be merged
             for(auto &s: snapshot_) {
-                on_packet_online(s);
+                on_message_online(s);
             }
 
             if(updates_last_seq_<updates_snapshot_seq_) {
@@ -123,30 +124,29 @@ public:
         next_updates_snapshot_seq_ = invalid_snapshot_seq;
         // keep updates_snapshot_seq_+1 pointing to updates_ first element
     }
-    void on_packet(const SpbPacket<PriceSnapshot>& pkt) {
+    void on_message(const PriceSnapshot& e) {
         // cache price snapshots
-        auto &d = pkt.value();
         if(!snapshot_start_seq_)
         {
             //TOOLBOX_DEBUG<<"Snapshot without SnapshotStart, seq:"<<d.frame.seq;
         }else {
-            snapshot_last_seq_ = d.frame.seq;
+            snapshot_last_seq_ = e.frame.seq;
             // place in correct position
-            std::size_t index = d.frame.seq - snapshot_start_seq_;
+            std::size_t index = e.frame.seq - snapshot_start_seq_;
             snapshot_.resize(std::max(snapshot_.size(), index+1));
-            snapshot_[index] = pkt.value();
+            snapshot_[index] = e;
         }
         //on_price_packet(e);
     }
-    void on_packet(const SpbPacket<PriceOnline>& pkt) {
-        auto& d = pkt.value();
+    
+    void on_message(const PriceOnline& e) {
         if(!updates_snapshot_seq_) { // no snapshot yet
             
         } else {
-            if(d.frame.seq>=updates_snapshot_seq_+1) {
-                std::size_t index = d.frame.seq - updates_snapshot_seq_ - 1;
+            if(e.frame.seq>=updates_snapshot_seq_+1) {
+                std::size_t index = e.frame.seq - updates_snapshot_seq_ - 1;
                 updates_.resize(std::max(updates_.size(), index+1));
-                updates_[index] = d;
+                updates_[index] = e;
                 if(updates_last_seq_)
                     send_updates("Online");
             }
@@ -183,7 +183,7 @@ public:
             } else {
                 assert(u.frame.seq == updates_last_seq_+1);
                 updates_last_seq_++;
-                on_packet_online(u);
+                on_message_online(u);
                 result.nsent++;                
             }
         }
@@ -198,7 +198,7 @@ public:
         return result;
     }
     template<typename PriceOnlineT>
-    void on_packet_online(const PriceOnlineT& d)
+    void on_message_online(const PriceOnlineT& d)
     {
         //TOOLBOX_DEBUG << name()<<": "<<e;
         //stats().on_received(d); // FIXME

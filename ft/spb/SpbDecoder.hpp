@@ -52,7 +52,7 @@ public:
     using SequenceMultiplexor = typename Decoder::template SequenceMultiplexor<ImplT>;
     using Schema = typename Decoder::Schema;
     template<typename MessageT>
-    using TypedPacket = typename Decoder::template TypedPacket<MessageT>;
+    using SpbPacket = typename Decoder::template TypedPacket<MessageT>;
     using Multiplexor = SequenceMultiplexor<DerivedT>;
 public:
     BasicSpbStream(Protocol& protocol)

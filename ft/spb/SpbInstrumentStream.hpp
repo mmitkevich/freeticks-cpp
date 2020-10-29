@@ -20,7 +20,7 @@ public:
     using Decoder = typename Base::Decoder;
     using Schema = typename Base::Schema;
     template<typename MessageT>
-    using TypedPacket = typename Base::template TypedPacket<MessageT>;
+    using SpbPacket = typename Base::template SpbPacket<MessageT>;
     
     using InstrumentSnapshot = typename Schema::InstrumentSnapshot;
     using TypeList = mp::mp_list<InstrumentSnapshot>;
@@ -34,7 +34,7 @@ public:
 
     static constexpr std::string_view name() { return "instrument"; }
 
-    void on_packet(const TypedPacket<InstrumentSnapshot>& pkt) {
+    void on_packet(const SpbPacket<InstrumentSnapshot>& pkt) {
         //TOOLBOX_INFO << pkt;
         auto& d = pkt.value();
         core::VenueInstrument vi;
