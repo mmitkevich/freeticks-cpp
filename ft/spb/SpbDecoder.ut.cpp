@@ -43,12 +43,12 @@ void maybe_bench(const char*name, std::size_t N, F fn, Args...args) {
 BOOST_AUTO_TEST_CASE(Parser)
 {
     using SpbSchema = SpbSchema<SpbUdp>;
-    using BinaryPacket = tbn::BinaryPacket<IpEndpoint>;
+    using BinaryPacket = tb::BinaryPacket<tb::Header<IpEndpoint>>;
     using SpbProtocol = SpbProtocol<SpbSchema, BinaryPacket>;
     using SpbDecoder = typename  SpbProtocol::Decoder;
     std::size_t n_snapshot_start = 0;
     auto on_snapshot_start = [&](SpbDecoder::TypedPacket<SpbSchema::SnapshotStart> pkt) {
-        auto& msg = *pkt.data();
+        auto& msg = pkt.value();
         if constexpr (!BENCH) {
             TOOLBOX_INFO << "SnapshotStart("<<msg.frame.msgid<<", update_seq=" << msg.update_seq << ")";
         }
@@ -57,7 +57,7 @@ BOOST_AUTO_TEST_CASE(Parser)
 
     std::size_t n_snapshot_finish = 0;    
     auto on_snapshot_finish = [&](SpbDecoder::TypedPacket<SpbSchema::SnapshotStart> pkt) {
-        auto& msg = *pkt.data();
+        auto& msg = pkt.value();
         if constexpr (!BENCH) {
             TOOLBOX_INFO << "SnapshotFinish("<<msg.frame.msgid<<", update_seq=" << msg.update_seq << ")";
         }

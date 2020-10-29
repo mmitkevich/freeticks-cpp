@@ -82,10 +82,10 @@ public:
 
 private:
     void on_packet_(const tb::PcapPacket& pkt) {
-        switch(pkt.protocol().protocol()) {
+        switch(pkt.header().protocol().protocol()) {
             case IPPROTO_TCP: case IPPROTO_UDP: {
                 stats_.on_received(pkt);
-                if(filter_(pkt)) {
+                if(filter_(pkt.header())) {
                     stats_.on_accepted(pkt);
                     protocol_.on_packet(pkt);
                     on_idle();      

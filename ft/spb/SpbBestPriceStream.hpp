@@ -48,8 +48,8 @@ public:
         Base::on_parameters_updated(params);
     }
 
-    void on_packet(const TypedPacket<SnapshotStart>& e) { 
-        auto &d = *e.data();
+    void on_packet(const TypedPacket<SnapshotStart>& pkt) { 
+        auto &d = pkt.value();
         
         next_updates_snapshot_seq_ = d.update_seq;
         if(!updates_snapshot_seq_)  // this is "base index" for our updates queue
@@ -79,8 +79,8 @@ public:
             <<", updates: { snapshot:"<<updates_snapshot_seq_<<", last:"<<updates_last_seq_ << ", front:"<<updates_front_seq() 
             <<", back:"<< updates_back_seq() << ", count:"<<updates_.size() <<" }";
     }
-    void on_packet(const TypedPacket<SnapshotFinish>& e) { 
-        auto &d = *e.data();
+    void on_packet(const TypedPacket<SnapshotFinish>& pkt) { 
+        auto &d = pkt.value();
         snapshot_last_seq_ = d.frame.seq;
         if(!snapshot_start_seq_) {
             // Start was lost or we connected after Start before Finish
@@ -123,9 +123,9 @@ public:
         next_updates_snapshot_seq_ = invalid_snapshot_seq;
         // keep updates_snapshot_seq_+1 pointing to updates_ first element
     }
-    void on_packet(const TypedPacket<PriceSnapshot>& e) {
+    void on_packet(const TypedPacket<PriceSnapshot>& pkt) {
         // cache price snapshots
-        auto &d = *e.data();
+        auto &d = pkt.value();
         if(!snapshot_start_seq_)
         {
             //TOOLBOX_DEBUG<<"Snapshot without SnapshotStart, seq:"<<d.frame.seq;
@@ -134,12 +134,12 @@ public:
             // place in correct position
             std::size_t index = d.frame.seq - snapshot_start_seq_;
             snapshot_.resize(std::max(snapshot_.size(), index+1));
-            snapshot_[index] = *e.data();
+            snapshot_[index] = pkt.value();
         }
         //on_price_packet(e);
     }
-    void on_packet(const TypedPacket<PriceOnline>& e) {
-        auto& d = *e.data();
+    void on_packet(const TypedPacket<PriceOnline>& pkt) {
+        auto& d = pkt.value();
         if(!updates_snapshot_seq_) { // no snapshot yet
             
         } else {

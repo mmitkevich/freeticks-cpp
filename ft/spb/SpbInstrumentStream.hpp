@@ -34,16 +34,16 @@ public:
 
     static constexpr std::string_view name() { return "instrument"; }
 
-    void on_packet(TypedPacket<InstrumentSnapshot> e) {
-        //TOOLBOX_INFO << e;
-        auto& snap = *e.data();
+    void on_packet(const TypedPacket<InstrumentSnapshot>& pkt) {
+        //TOOLBOX_INFO << pkt;
+        auto& d = pkt.value();
         core::VenueInstrument vi;
         vi.venue(protocol().venue());
         vi.exchange(protocol().exchange());
-        vi.instrument().symbol(snap.symbol.str());
+        vi.instrument().symbol(d.symbol.str());
         auto id = std::hash<std::string>{}(vi.venue_symbol());
         vi.id(id);
-        vi.venue_instrument_id(snap.instrument_id);
+        vi.venue_instrument_id(d.instrument_id);
         invoke(vi);
     }
     

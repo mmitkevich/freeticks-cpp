@@ -109,18 +109,18 @@ public:
     using Schema = SchemaT;
     
     template<typename ImplT>
-    using SequenceMultiplexor = core::BasicSequencedMultiplexor<ImplT, typename BinaryPacket::Endpoint, std::uint64_t>;
+    using SequenceMultiplexor = core::BasicSequencedMultiplexor<ImplT, typename BinaryPacket::Header::Endpoint, std::uint64_t>;
 
     template<typename MessageT> 
-    class TypedPacket: public tb::TypedPacket<MessageT, BinaryPacket> {
-        using Base = tb::TypedPacket<MessageT, BinaryPacket>;
+    class TypedPacket: public tb::PacketView<MessageT, BinaryPacket> {
+        using Base = tb::PacketView<MessageT, BinaryPacket>;
     public:
         using Base::Base;
+        using Base::value;
         using Base::data;
         using Base::size;
-        using Base::src;
-        using Base::dst;
-        std::uint64_t sequence() const { return data()->frame.seq; }
+        using Base::header;
+        std::uint64_t sequence() const { return value().frame.seq; }
     };
 public:
     SpbDecoder(const SpbDecoder&) = delete;

@@ -14,6 +14,7 @@
 #include "ft/core/MdGateway.hpp"
 #include "ft/core/EndpointStats.hpp"
 #include "toolbox/net/Packet.hpp"
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -25,39 +26,40 @@ template<typename ProtocolT, typename SocketT>
 class BasicMcastDgram {
 public:
     using Endpoint = toolbox::BasicIpEndpoint<ProtocolT>;
+    using Header = toolbox::net::Header<Endpoint>;
     using Socket = SocketT;
     using This = BasicMcastDgram<ProtocolT, SocketT>;
 public:
     BasicMcastDgram(toolbox::Reactor& reactor, Endpoint ep, std::string_view if_name)
     : reactor_(reactor)
-    , endpoint_(ep)
+    , header_(ep, ep)
     , if_name_(if_name)
     {}
     
-    Endpoint dst() const { return endpoint_; }
-    Endpoint src() const { return endpoint_; }
-    tb::WallTime recv_timestamp() const { return recv_timestamp_; }
+    const Header& header() const { return header_; }
 
     //char* data() { return (char*)buf_.str().data(); }
     const char* data() const { return (char*)buf_.str().data(); }
     std::size_t size() const { return buf_.size(); }
+    std::string_view str() const { return buf_.str(); }
 
+    const Endpoint& endpoint() const { return header_.src(); }
     void connect() {
         assert(socket_.empty());
         std::error_code ec {};
-        socket_ = Socket(endpoint_.protocol(), ec);
+        socket_ = Socket(endpoint().protocol(), ec);
         if(ec)
             throw std::system_error{tb::make_sys_error(ec.value()), "mcast_socket"};
-        socket_.bind(src(), ec);
-        TOOLBOX_INFO << "bind '"<<endpoint_<<"', ec:"<<ec;
+        socket_.bind(endpoint(), ec);
+        TOOLBOX_INFO << "bind '"<<endpoint()<<"', ec:"<<ec;
         if(ec)
             throw std::system_error{tb::make_sys_error(ec.value()), "mcast_bind"};
         if(!if_name_.empty()) {
-            socket_.join_group(src().address(), if_name_.data(), ec);
-            TOOLBOX_INFO << "join_group '"<<src()<<"', if:'"<<if_name_<<"', ec:"<<ec;                
+            socket_.join_group(endpoint().address(), if_name_.data(), ec);
+            TOOLBOX_INFO << "join_group '"<<endpoint()<<"', if:'"<<if_name_<<"', ec:"<<ec;                
         } else {
-            socket_.join_group(src().address(), 0u, ec);
-            TOOLBOX_INFO << "join_group '"<<src()<<"', if:0, ec:"<<ec;                
+            socket_.join_group(endpoint().address(), 0u, ec);
+            TOOLBOX_INFO << "join_group '"<<endpoint()<<"', if:0, ec:"<<ec;                
         }
         if(ec)
             throw std::system_error{tb::make_sys_error(ec.value()), "mcast_join_group"};            
@@ -68,11 +70,11 @@ public:
         assert(!socket_.empty());
         std::error_code ec {};
             if(!if_name_.empty()) {
-            socket_.leave_group(src().address(), if_name_.data(), ec);
-            TOOLBOX_INFO << "leave_group '"<<src()<<"', if:'"<<if_name_<<"', ec:"<<ec;                
+            socket_.leave_group(endpoint().address(), if_name_.data(), ec);
+            TOOLBOX_INFO << "leave_group '"<<endpoint()<<"', if:'"<<if_name_<<"', ec:"<<ec;                
         } else {
-            socket_.leave_group(src().address(), 0u, ec);
-            TOOLBOX_INFO << "leave_group '"<<src()<<"', if:0, ec:"<<ec;                
+            socket_.leave_group(endpoint().address(), 0u, ec);
+            TOOLBOX_INFO << "leave_group '"<<endpoint()<<"', if:0, ec:"<<ec;                
         }
         socket_.close();
         socket_ = Socket();
@@ -80,7 +82,7 @@ public:
         sub_recv_.reset();
     }
     void on_recv(tb::CyclTime now, int fd, unsigned events) {
-        recv_timestamp_ = now.wall_time();
+        header_.recv_timestamp(now.wall_time());
         std::size_t size = socket_.recv(buf_.prepare(4096), 0);
         buf_.commit(size);
         packet_(*this);
@@ -90,13 +92,12 @@ public:
     tb::Signal<const This&> &packet() { return packet_; }
 private:
     tb::Signal<const This&> packet_;
-    Endpoint endpoint_;
     Socket socket_;
     std::string_view if_name_;
     toolbox::Buffer buf_;
     toolbox::Reactor& reactor_;
     tb::Reactor::Handle sub_recv_;
-    tb::WallTime recv_timestamp_;
+    Header header_{};
 };
 
 using McastDgram = BasicMcastDgram<tb::UdpProtocol, tb::McastSock>;

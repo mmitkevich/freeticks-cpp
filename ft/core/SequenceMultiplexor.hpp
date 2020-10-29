@@ -31,7 +31,7 @@ public:
     template<typename TypedPacketT>
     bool match(const TypedPacketT& packet) const {
         for(auto &ep : endpoints_) {
-            if(ep == packet.src()) {
+            if(ep == packet.header().src()) {
                 return true;
             }
         }
