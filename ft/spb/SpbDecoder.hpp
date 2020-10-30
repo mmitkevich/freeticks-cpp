@@ -120,7 +120,7 @@ public:
         using Base::data;
         using Base::size;
         using Base::header;
-        std::uint64_t sequence() const { return value().frame.seq; }
+        std::uint64_t sequence() const { return value().header().frame.seq; }
     };
 public:
     SpbDecoder(const SpbDecoder&) = delete;

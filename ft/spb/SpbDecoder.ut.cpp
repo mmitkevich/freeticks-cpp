@@ -42,24 +42,24 @@ void maybe_bench(const char*name, std::size_t N, F fn, Args...args) {
 
 BOOST_AUTO_TEST_CASE(Parser)
 {
-    using SpbSchema = SpbSchema<SpbUdp>;
+    using SpbSchema = SpbSchema<MdHeader>;
     using BinaryPacket = tb::BinaryPacket<tb::Header<IpEndpoint>>;
     using SpbProtocol = SpbProtocol<SpbSchema, BinaryPacket>;
     using SpbDecoder = typename  SpbProtocol::Decoder;
     std::size_t n_snapshot_start = 0;
     auto on_snapshot_start = [&](SpbDecoder::TypedPacket<SpbSchema::SnapshotStart> pkt) {
-        auto& msg = pkt.value();
+        auto& e = pkt.value();
         if constexpr (!BENCH) {
-            TOOLBOX_INFO << "SnapshotStart("<<msg.frame.msgid<<", update_seq=" << msg.update_seq << ")";
+            TOOLBOX_INFO << "SnapshotStart("<<e.header().frame.msgid<<", update_seq=" << e.value().update_seq << ")";
         }
         n_snapshot_start++;
     };
 
     std::size_t n_snapshot_finish = 0;    
     auto on_snapshot_finish = [&](SpbDecoder::TypedPacket<SpbSchema::SnapshotStart> pkt) {
-        auto& msg = pkt.value();
+         auto& e = pkt.value();
         if constexpr (!BENCH) {
-            TOOLBOX_INFO << "SnapshotFinish("<<msg.frame.msgid<<", update_seq=" << msg.update_seq << ")";
+            TOOLBOX_INFO << "SnapshotFinish("<<e.header().frame.msgid<<", update_seq=" << e.value().update_seq << ")";
         }
         n_snapshot_finish++;
     };

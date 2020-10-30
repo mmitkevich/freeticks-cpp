@@ -36,7 +36,7 @@ public:
 
     void on_packet(const SpbPacket<InstrumentSnapshot>& pkt) {
         //TOOLBOX_INFO << pkt;
-        auto& d = pkt.value();
+        auto& d = pkt.value().value();
         core::VenueInstrument vi;
         vi.venue(protocol().venue());
         vi.exchange(protocol().exchange());

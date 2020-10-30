@@ -16,6 +16,11 @@ namespace tbn = toolbox::net;
 #define FT_STREAM_DEBUG TOOLBOX_DEBUG << name() << ": "
 
 
+struct SeqHeader {
+    std::uint64_t seq;
+    tb::WallTime server_timestamp;
+};
+
 template<typename ProtocolT>
 class SpbBestPriceStream : public BasicSpbStream<SpbBestPriceStream<ProtocolT>, ProtocolT, core::TickStream>
 {
@@ -47,16 +52,17 @@ public:
     void on_parameters_updated(const core::Parameters &params) {
         Base::on_parameters_updated(params);
     }
-    template<typename PacketT>
-    void on_packet(const PacketT& pkt) {
-        on_message(pkt.value());
+    template<typename T>
+    void on_packet(const SpbPacket<T>& pkt) {
+        const auto &payload = pkt.value();
+        on_message(payload.header(), payload.value());
     }
 
-    void on_message(const SnapshotStart& e) { 
+    void on_message(const typename SnapshotStart::Header& h, const typename SnapshotStart::Payload& e) { 
         next_updates_snapshot_seq_ = e.update_seq;
         if(!updates_snapshot_seq_)  // this is "base index" for our updates queue
             updates_snapshot_seq_ = next_updates_snapshot_seq_;
-        snapshot_start_seq_ = snapshot_last_seq_ = e.frame.seq;
+        snapshot_start_seq_ = snapshot_last_seq_ = h.sequence();
         assert(snapshot_start_seq_!=0);
         snapshot_.clear(); // we keep only new updates. If Start comes before prev Finish we effectively lost whole snapshot.
         TOOLBOX_DEBUG << name() << " SnapshotStart "
@@ -68,12 +74,12 @@ public:
     std::int64_t updates_front_seq() const {
         if(updates_.empty())
             return invalid_snapshot_seq;
-        return updates_.front().frame.seq;
+        return updates_.front().first.seq;
     }
     std::int64_t updates_back_seq() const {
         if(updates_.empty())
             return invalid_snapshot_seq;
-        return updates_.back().frame.seq;
+        return updates_.back().first.seq;
     }
     void on_bad_snapshot(const char* reason) {
         TOOLBOX_DEBUG << name() << " BadSnapshot( "<<reason<<" )"
@@ -81,15 +87,15 @@ public:
             <<", updates: { snapshot:"<<updates_snapshot_seq_<<", last:"<<updates_last_seq_ << ", front:"<<updates_front_seq() 
             <<", back:"<< updates_back_seq() << ", count:"<<updates_.size() <<" }";
     }
-    void on_message(const SnapshotFinish& e) { 
-        snapshot_last_seq_ = e.frame.seq;
+    void on_message(const typename SnapshotFinish::Header& h, const spb::Snapshot& e) { 
+        snapshot_last_seq_ = h.frame.seq;
         if(!snapshot_start_seq_) {
             // Start was lost or we connected after Start before Finish
             on_bad_snapshot("finish without start");
         } else if(e.update_seq!=next_updates_snapshot_seq_) { 
             // Start was lost or next Start came before prev Finish (reordered)
             on_bad_snapshot("finish with wrong start");
-        } else if(std::any_of(snapshot_.begin(), snapshot_.end(), [](auto &x) { return x.empty(); })) {
+        } else if(std::any_of(snapshot_.begin(), snapshot_.end(), [](auto &x) { return x.first.seq==invalid_snapshot_seq; })) {
             // some slots were not filled with snapshot
             on_bad_snapshot("gaps in snapshot");
         } /*else if(updates_front_seq()!=updates_snapshot_seq_+1) {
@@ -103,8 +109,8 @@ public:
             }
         
             // give them snapshot. updates coming after snapshot should be merged
-            for(auto &s: snapshot_) {
-                on_message_online(s);
+            for(auto &[seq, s]: snapshot_) {
+                on_message_online(seq, s);
             }
 
             if(updates_last_seq_<updates_snapshot_seq_) {
@@ -124,29 +130,32 @@ public:
         next_updates_snapshot_seq_ = invalid_snapshot_seq;
         // keep updates_snapshot_seq_+1 pointing to updates_ first element
     }
-    void on_message(const PriceSnapshot& e) {
+    void on_message(const typename PriceSnapshot::Header& h, const spb::Price& e) {
         // cache price snapshots
         if(!snapshot_start_seq_)
         {
             //TOOLBOX_DEBUG<<"Snapshot without SnapshotStart, seq:"<<d.frame.seq;
         }else {
-            snapshot_last_seq_ = e.frame.seq;
+            auto seq = h.sequence();
+            snapshot_last_seq_ = seq;
             // place in correct position
-            std::size_t index = e.frame.seq - snapshot_start_seq_;
+            assert(seq>snapshot_start_seq_);
+            std::size_t index = seq - snapshot_start_seq_-1;
             snapshot_.resize(std::max(snapshot_.size(), index+1));
-            snapshot_[index] = e;
+            snapshot_[index] = {SeqHeader{seq, h.header.system_time.wall_time()}, e};
         }
         //on_price_packet(e);
     }
     
-    void on_message(const PriceOnline& e) {
+    void on_message(const typename PriceOnline::Header& h, const spb::Price& e) {
         if(!updates_snapshot_seq_) { // no snapshot yet
             
         } else {
-            if(e.frame.seq>=updates_snapshot_seq_+1) {
-                std::size_t index = e.frame.seq - updates_snapshot_seq_ - 1;
+            auto seq = h.sequence();
+            if(seq>=updates_snapshot_seq_+1) {
+                std::size_t index = seq - updates_snapshot_seq_ - 1;
                 updates_.resize(std::max(updates_.size(), index+1));
-                updates_[index] = e;
+                updates_[index] = {SeqHeader {seq, h.header.system_time.wall_time()}, e};
                 if(updates_last_seq_)
                     send_updates("Online");
             }
@@ -166,8 +175,8 @@ public:
         assert(updates_last_seq_>=updates_snapshot_seq_);
         
         for(std::int64_t index=(updates_last_seq_+1)-(updates_snapshot_seq_+1); index<updates_.size(); index++) {
-            auto& u = updates_[index];
-            if(!u.frame.seq) {
+            auto& [hu, u] = updates_[index];
+            if(!hu.seq) {
                 #ifdef FT_REPORT_GAPS
                 TOOLBOX_DEBUG<<name()<<" "<<reason<<" updates_gap:"<<updates_last_seq_+1<<", nsent:"<<nsent<<", ngaps:"<<ngaps
                 <<", snapshot: { start:"<<snapshot_start_seq_<<", last:"<<snapshot_last_seq_<<" }"
@@ -181,9 +190,9 @@ public:
                 updates_last_seq_++;   
                 result.ngaps++;                 
             } else {
-                assert(u.frame.seq == updates_last_seq_+1);
+                assert(hu.seq == updates_last_seq_+1);
                 updates_last_seq_++;
-                on_message_online(u);
+                on_message_online(hu, u);
                 result.nsent++;                
             }
         }
@@ -197,17 +206,16 @@ public:
 
         return result;
     }
-    template<typename PriceOnlineT>
-    void on_message_online(const PriceOnlineT& d)
+    void on_message_online(const SeqHeader& h, const Price& e)
     {
         //TOOLBOX_DEBUG << name()<<": "<<e;
         //stats().on_received(d); // FIXME
-        for(auto &best: d.sub_best) {
+        for(auto &best: e.sub_best) {
             core::Tick ti {};
             ti.type(core::TickType::Update);
-            ti.venue_instrument_id = d.instrument.instrument_id;
+            ti.venue_instrument_id = e.instrument.instrument_id;
             ti.timestamp = tb::WallClock::now();
-            ti.server_timestamp = d.header.system_time.wall_time();
+            ti.server_timestamp = h.server_timestamp;
             ti.price = protocol().price_conv().to_core(best.price);
             ti.side = get_side(best);
             ti.qty = core::Qty(best.amount);
@@ -229,7 +237,7 @@ private:
     // note: this works while 0 is bad seq num
     static constexpr std::uint64_t invalid_snapshot_seq = 0;
 
-    std::vector<PriceSnapshot> snapshot_;
+    std::vector<std::pair<SeqHeader, Price>> snapshot_;
     std::uint64_t snapshot_start_seq_{};    // when started
     std::uint64_t snapshot_last_seq_{};     // last snapshot seq
     std::uint64_t updates_snapshot_seq_ {};
@@ -237,7 +245,7 @@ private:
 
 
     // this are updates.
-    std::deque<PriceOnline> updates_;
+    std::deque<std::pair<SeqHeader, Price>> updates_;
     std::uint64_t updates_last_seq_{};
 };
 

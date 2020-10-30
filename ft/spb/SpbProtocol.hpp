@@ -111,6 +111,6 @@ private:
 };
 
 template<typename BinaryPacketT>
-using SpbUdpProtocol = SpbProtocol<SpbSchema<SpbUdp>, BinaryPacketT>;
+using SpbUdpProtocol = SpbProtocol<SpbSchema<MdHeader>, BinaryPacketT>;
 
 }

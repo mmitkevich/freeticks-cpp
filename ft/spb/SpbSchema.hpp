@@ -12,32 +12,40 @@
 namespace ft::spb {
 
 #pragma pack(push, 1)
-struct SpbUdp
-{
-    using Header = MdHeader;
-};
 
-template<uint16_t ID, typename TraitsT>
-struct Message
+template<uint16_t ID, typename HeaderT>
+struct SpbHeader
 {
     static constexpr MsgId msgid {ID};
     Frame frame {ID};
-    using Header = typename TraitsT::Header;
+    using Header = HeaderT;
     Header header;
-    friend std::ostream& operator<<(std::ostream& os, const Message& self) {
+    friend std::ostream& operator<<(std::ostream& os, const SpbHeader& self) {
         return os<<self.frame<<","<<self.header;
     }
-
     bool empty() const { return frame.msgid==0; }
-
+    std::uint64_t sequence() const { return frame.seq; }
 };
 
-template<uint16_t ID, typename TraitsT>
-struct Snapshot : Message<ID, TraitsT>
+template<typename HeaderT, typename PayloadT>
+struct SpbPacket {
+    using Header = HeaderT;
+    using Payload = PayloadT;
+    
+    constexpr static auto msgid = Header::msgid;
+
+    const Header& header() const { return header_; }
+    const PayloadT& value() const {return value_; }
+
+    HeaderT header_;
+    PayloadT value_;
+};
+
+struct Snapshot
 {
     Int8 update_seq;
     friend std::ostream& operator<<(std::ostream& os, const Snapshot& self) {
-        return os<<self.frame<<","<<self.header<<",update_seq:"<<self.update_seq;
+        return os<<"update_seq:"<<self.update_seq;
     }
 };
 
@@ -116,9 +124,7 @@ struct Group
 };
 
 
-
-template<uint16_t ID, typename TraitsT>
-struct AggrMsg: public Message<ID, TraitsT>
+struct Aggr
 {
     MarketInstrumentId instrument_;
     Group<SubAggr> aggr_;
@@ -127,9 +133,11 @@ struct AggrMsg: public Message<ID, TraitsT>
     Group<SubAggr>& aggr() { return aggr_; }
 };
 
-#define FT_BEGIN_ENUM_OSTREAM(Type) 
-#define FT_ENUM_OSTREAM(Type, Value) case Type::Value: os << #Value; break;
-#define FT_END_ENUM_OSTREAM(Type) } return os; } 
+//UNUSED
+//#define FT_BEGIN_ENUM_OSTREAM(Type) 
+//#define FT_ENUM_OSTREAM(Type, Value) case Type::Value: os << #Value; break;
+//#define FT_END_ENUM_OSTREAM(Type) } return os; } 
+
 struct SubBest {
     enum class Type: Int1 {
         Buy = 1,
@@ -208,105 +216,100 @@ struct InstrumentStatus {
     }
 };
 
-template<typename TraitsT>
-struct SpbSchema 
+struct EmptyBook {
+    MarketInstrumentId instrument;
+};
+
+struct Price
+{
+    MarketInstrumentId instrument;    
+    Group<SubBest> sub_best;
+    friend std::ostream& operator<<(std::ostream& os, const Price& self) {
+        os << "instrument_id:"<<self.instrument<<",sub_best:"<<self.sub_best;
+        return os;
+    }
+};
+
+struct Instrument {
+    InstrumentId instrument_id;
+    Characters<32> symbol;
+    Characters<64> desc;
+    Characters<128> desc_ru;
+    InstrumentStatus status;
+    Characters<3> type_;
+    enum class Type: Int4 {
+        Future = 'f',
+        TplusN = 't',
+        Option = 'o',
+        Repo = 'r',
+        PR = ('r'<<8)|'p',
+        Swap = ('s'<<8)|'w',
+        CalendarSpread = 'c',
+        DVP = ('d'<<16)|('v'<<8)|'p'
+    };
+    Type type() const { return *(Type*)type_.c_str(); }
+    enum class AuctionDir: Int1 {
+        Direct = 0,
+        Inverse = 1
+    };
+    AuctionDir auction_dir;
+    Dec8 price_increment;
+    Dec8 step_price;
+    Int2 legs_count;
+    Int2 trade_mode_id;
+
+    friend std::ostream& operator<<(std::ostream& os, const Instrument& self) {
+        //std::wcout << self.symbol.wstr() << std::endl;//<<"|"<<self.desc_ru.str() << std::endl;
+
+        return os  << "instrument_id:"<<self.instrument_id
+            << ",symbol:'" << self.symbol.str() <<"'"
+            << ",desc:'" << self.desc.str() <<"'"
+            << ",desc_ru:'" << self.desc.str() <<"'"
+            << ",status:{" << self.status << "}"
+            << ",type:'" << self.type() <<"=" << self.type_ <<"'"
+            << ",auction_dir:'" << self.auction_dir<<"'"
+            << ",price_increment:" << self.price_increment
+            << ",step_price:" << self.step_price
+            << ",legs_count:" << self.legs_count
+            << ",trade_mode_id:" << self.trade_mode_id;
+    }
+    friend std::ostream& operator<<(std::ostream& os, const AuctionDir& self) {
+        switch(self) {
+            case AuctionDir::Direct: return os<<"Direct";
+            case AuctionDir::Inverse: return os<<"Inverse";
+            default: return os << tbu::unbox(self);
+        }
+    }
+    friend std::ostream& operator<<(std::ostream& os, const Type& self) {
+        switch(self) {
+            case Type::Future: return os<< "Future";
+            case Type::TplusN: return os<<"T+N";
+            case Type::Option: return os<<"Option";
+            case Type::Repo: return os<<"Repo";
+            case Type::PR: return os<<"pr";
+            case Type::Swap: return os<<"Swap";
+            case Type::CalendarSpread: return os<<"CalendarSpread";
+            case Type::DVP: return os<<"dvp";
+            default: return os << tbu::unbox(self);
+        }
+    }
+};
+
+template<typename HeaderT>
+struct SpbSchema
 {
     // Declare messages
-    using SnapshotStart = Snapshot<12345, TraitsT>;
-    using SnapshotFinish = Snapshot<12312, TraitsT>;
+    using SnapshotStart = SpbPacket<SpbHeader<12345, HeaderT>, Snapshot>;
+    using SnapshotFinish = SpbPacket<SpbHeader<12312, HeaderT>, Snapshot>;
 
-    using AggrMsgOnline = AggrMsg<1111, TraitsT>;
-    using AggrMsgSnapshot = AggrMsg<1112, TraitsT>;
+    using AggrOnline = SpbPacket<SpbHeader<1111, HeaderT>, Aggr>;
+    using AggrSnapshot = SpbPacket<SpbHeader<1112, HeaderT>, Aggr>;
+  
+    using PriceOnline =  SpbPacket<SpbHeader<7651, HeaderT>, Price>;
+    using PriceSnapshot = SpbPacket<SpbHeader<7653, HeaderT>, Price>;
 
-    struct EmptyBook : Message<15300, TraitsT>
-    {
-        MarketInstrumentId instrument;
-    };
-    struct PriceSnapshot : Message<7653, TraitsT>
-    {
-        MarketInstrumentId instrument;    
-        Group<SubBest> sub_best;
-        friend std::ostream& operator<<(std::ostream& os, const PriceSnapshot& self) {
-            os << self.frame<<","<<self.header<< ",instrument_id:"<<self.instrument<<",sub_best:"<<self.sub_best;
-            return os;
-        }
-    };
-    struct PriceOnline : Message<7651, TraitsT>
-    {
-        MarketInstrumentId instrument;    
-        Group<SubBest> sub_best;
-        friend std::ostream& operator<<(std::ostream& os, const PriceOnline& self) {
-            os << self.frame<<","<<self.header<< ",instrument_id:"<<self.instrument<<",sub_best:"<<self.sub_best;
-            return os;
-        }
-    };
+    using InstrumentSnapshot = SpbPacket<SpbHeader<973, HeaderT>, Instrument>;
 
-    struct InstrumentSnapshot :  Message<973, TraitsT>
-    {
-        InstrumentId instrument_id;
-        Characters<32> symbol;
-        Characters<64> desc;
-        Characters<128> desc_ru;
-        InstrumentStatus status;
-        Characters<3> type_;
-        enum class Type: Int4 {
-            Future = 'f',
-            TplusN = 't',
-            Option = 'o',
-            Repo = 'r',
-            PR = ('r'<<8)|'p',
-            Swap = ('s'<<8)|'w',
-            CalendarSpread = 'c',
-            DVP = ('d'<<16)|('v'<<8)|'p'
-        };
-        Type type() const { return *(Type*)type_.c_str(); }
-        enum class AuctionDir: Int1 {
-            Direct = 0,
-            Inverse = 1
-        };
-        AuctionDir auction_dir;
-        Dec8 price_increment;
-        Dec8 step_price;
-        Int2 legs_count;
-        Int2 trade_mode_id;
-
-        friend std::ostream& operator<<(std::ostream& os, const InstrumentSnapshot& self) {
-            //std::wcout << self.symbol.wstr() << std::endl;//<<"|"<<self.desc_ru.str() << std::endl;
-
-            return os  << self.frame<<","<<self.header
-                << ",instrument_id:"<<self.instrument_id
-                << ",symbol:'" << self.symbol.str() <<"'"
-                << ",desc:'" << self.desc.str() <<"'"
-                << ",desc_ru:'" << self.desc.str() <<"'"
-                << ",status:{" << self.status << "}"
-                << ",type:'" << self.type() <<"=" << self.type_ <<"'"
-                << ",auction_dir:'" << self.auction_dir<<"'"
-                << ",price_increment:" << self.price_increment
-                << ",step_price:" << self.step_price
-                << ",legs_count:" << self.legs_count
-                << ",trade_mode_id:" << self.trade_mode_id;
-        }
-        friend std::ostream& operator<<(std::ostream& os, const AuctionDir& self) {
-            switch(self) {
-                case AuctionDir::Direct: return os<<"Direct";
-                case AuctionDir::Inverse: return os<<"Inverse";
-                default: return os << tbu::unbox(self);
-            }
-        }
-        friend std::ostream& operator<<(std::ostream& os, const Type& self) {
-            switch(self) {
-                case Type::Future: return os<< "Future";
-                case Type::TplusN: return os<<"T+N";
-                case Type::Option: return os<<"Option";
-                case Type::Repo: return os<<"Repo";
-                case Type::PR: return os<<"pr";
-                case Type::Swap: return os<<"Swap";
-                case Type::CalendarSpread: return os<<"CalendarSpread";
-                case Type::DVP: return os<<"dvp";
-                default: return os << tbu::unbox(self);
-            }
-        }
-    };
 };
 
 #pragma pack(pop)
