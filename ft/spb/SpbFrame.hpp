@@ -67,7 +67,7 @@ struct Frame {
     : msgid(msgid)
     , seq(0)
     , size(0) {}
-    
+
     friend std::ostream& operator<<(std::ostream& os, const Frame& self) {
         os << "msgid:"<<self.msgid<<",seq:"<<self.seq;
         return os;
@@ -88,6 +88,7 @@ static_assert(sizeof(MarketInstrumentId)==6);
 struct MdHeader {
     Time8n system_time;
     Int2 sourceid;
+
     friend std::ostream& operator<<(std::ostream& os, const MdHeader& self) {
         return os << "system_time:'" << self.system_time<<"'"<<",sourceid:"<<self.sourceid;
     }

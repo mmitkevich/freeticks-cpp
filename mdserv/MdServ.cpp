@@ -67,7 +67,7 @@ public:
     if (state == core::RunState::Stopped) {
       // gateway().report(std::cerr);
       auto elapsed = tbs::MonoClock::now() - start_timestamp_;
-      auto total_received = gateway().stats().total_received;
+      auto total_received = gateway().stats().received();
       std::cerr << " read " << total_received << " in "
                    << elapsed.count() / 1e9 << " s"
                    << " at " << (1e3 * total_received / elapsed.count())
@@ -77,10 +77,8 @@ public:
 
   void on_tick(const core::Tick &e) {
     // TOOLBOX_INFO << e;
-    auto &ins = instruments_[e.venue_instrument_id];
-    //if (!ins.empty()) {
-    //  std::cout << "sym:'" << ins.venue_symbol() << "'," << e << std::endl;
-    //}
+    auto &ins = instruments_[e.venue_instrument_id()];
+    std::cout << "sym:'" << ins.venue_symbol() << "'," << e << std::endl;
   }
 
   void on_instrument(const core::VenueInstrument &e) {
@@ -141,7 +139,6 @@ public:
 
       parser('h', "help", tbu::Switch{help}, "print help")
         ('v', "verbose", tbu::Value{opts["verbose"], std::uint32_t{}}, "log level")
-        ('O', "output_format", tbu::Value{opts["output_format"], std::string_view{}}.default_value("csv"), "output format")
         ('c', "config", tbu::Value{config_file}.required(), "config file")
         (tbu::Value{venue}.required(), "VENUE")
       .parse(argc, argv);
@@ -153,7 +150,6 @@ public:
       if(!config_file.empty()) {
         opts.parse_file(config_file);
       }
-
       run(venue, opts);
       return EXIT_SUCCESS;
     } catch (std::runtime_error &e) {

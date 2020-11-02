@@ -1,3 +1,4 @@
+#include "ft/core/Tick.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "QshDecoder.hpp"
@@ -157,75 +158,73 @@ void QshDecoder::read_order_log() {
 
     int flags = read_byte();
     std::uint16_t plaza_flags = read_uint16();
-    Tick d;
-    d.flags = 0;
+    Tick d {};
     FT_TRACE("flags 0x"<<std::hex<<flags<<" plaza_flags 0x"<<plaza_flags);
     if(plaza_flags & (PLAZA_ADD|PLAZA_MOVE|PLAZA_COUNTER)) {
         using namespace tbu::operators;
-        d.flags |= core::TickType::Place;
+        d.type(core::TickType::Place);
     }
     if(plaza_flags & (PLAZA_CANCEL|PLAZA_MOVE)) {
         using namespace tbu::operators;
-        d.flags |= core::TickType::Cancel;
+        d.type(core::TickType::Cancel);
     }
     if(plaza_flags & PLAZA_FILL) {
         using namespace tbu::operators;
-        d.flags |= core::TickType::Fill;
+        d.type(core::TickType::Fill);
     }
     if(flags & OL_TIMESTAMP) {
         state_.ts = read_grow_datetime(state_.ts);
-        d.timestamp = d.server_timestamp = Timestamp(state_.ts);
         FT_TRACE("exchange_timestamp "<<e.timestamp)
-    } else {
-        d.timestamp = d.server_timestamp = Timestamp(state_.ts);
     }
+    Timestamp ts(state_.ts);
+    d.timestamp(ts);
+    d.server_timestamp(ts);
+
     if(flags & OL_ID) {
-        if(plaza_flags & PLAZA_ADD)
-            d.server_id = state_.exchange_id = read_growing(state_.exchange_id);
-        else 
-            d.server_id = read_relative(state_.exchange_id);
+        if(plaza_flags & PLAZA_ADD) {
+            state_.exchange_id = read_growing(state_.exchange_id);
+            d.server_id(state_.exchange_id);
+        } else {
+            d.server_id(read_relative(state_.exchange_id));
+        }
         FT_TRACE("exchange_id "<<e.exchange_id)
     } else {
-        d.server_id = state_.exchange_id;
+        d.server_id(state_.exchange_id);
     }
     if(flags&OL_PRICE) {
-        d.price = state_.price = read_relative(state_.price);
+        state_.price = read_relative(state_.price);
         FT_TRACE("price "<<e.price)
-    } else {
-        d.price = state_.price;
     }
+    d.price(state_.price);
     if(flags&OL_AMOUNT) {
-        d.qty = read_leb128();
+        d.qty(read_leb128());
         FT_TRACE("qty "<<e.qty)
     }
     if(plaza_flags & PLAZA_FILL) {
         if(flags&OL_AMOUNT_LEFT) {
-            d.qty_active = read_leb128();
+            d.qty_active(read_leb128());
             FT_TRACE("qty_left "<<e.qty_left)
         }
         if(flags&OL_FILL_ID) {
-            d.fill_id = state_.fill_id = read_growing(state_.fill_id);
+            state_.fill_id = read_growing(state_.fill_id);
             FT_TRACE("trade_id "<<d.fill_id)
-        } else {
-            d.fill_id = state_.fill_id;
         }
+        d.fill_id(state_.fill_id);        
         if(flags&OL_FILL_PRICE) {
-            d.fill_price = state_.fill_price = read_relative(state_.fill_price);
+            state_.fill_price = read_relative(state_.fill_price);
             FT_TRACE("trade_price "<<e.fill_price)
-        } else {
-            d.fill_price = state_.fill_price;
         }
+        d.fill_price(state_.fill_price);
         if(flags&OL_OPEN_INTEREST) {
-            d.open_interest = state_.open_interest = read_relative(state_.open_interest);
+            state_.open_interest = read_relative(state_.open_interest);
             FT_TRACE("open_interest "<<e.open_interest)
-        } else {
-            d.open_interest = state_.open_interest;
         }
+        d.open_interest(state_.open_interest);
     }
-    if(d.flags==0) {
-        TOOLBOX_WARNING<<"qsh: unknown flags "<<std::hex<<flags<<" plaza "<<std::hex<<plaza_flags;
+    if(d.type()==core::TickType::Unknown) {
+        TOOLBOX_WARNING<<"qsh: invalid flags "<<std::hex<<flags<<" plaza "<<std::hex<<plaza_flags;
+        ticks().stats().on_rejected(flags);
     }else {
-        ticks().stats().on_accepted();
         ticks().invoke(d);
     }
 }

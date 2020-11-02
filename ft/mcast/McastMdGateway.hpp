@@ -234,7 +234,6 @@ public:
 
     void on_packet(const BinaryPacket& pkt) {
         stats_.on_received(pkt);
-        stats_.on_accepted(pkt);
         protocol_.on_packet(pkt);
     }
 

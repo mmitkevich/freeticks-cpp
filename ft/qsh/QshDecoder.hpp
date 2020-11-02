@@ -18,7 +18,7 @@
 
 namespace ft::qsh {
 using Tick = ft::core::Tick;
-using Timestamp = typename Tick::Timestamp;
+using Timestamp = ft::core::Timestamp;
 
 class QshDecoder
 {
@@ -61,9 +61,9 @@ public:
         OL_OPEN_INTEREST = 1<<7
     };
 
-    using Qty = typename Tick::Qty;
-    using Price = typename Tick::Price;
-    using ExchangeId = typename Tick::ExchangeId;
+    using Qty = ft::core::Qty;
+    using Price = ft::core::Price;
+    using ExchangeId = ft::core::ExchangeId;
     
     struct State {
         std::string app;

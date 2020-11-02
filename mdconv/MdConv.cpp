@@ -59,7 +59,7 @@ public:
     if (state == core::RunState::Stopped) {
       // gateway().report(std::cerr);
       auto elapsed = tbs::MonoClock::now() - start_timestamp_;
-      auto total_received = gateway().stats().total_received;
+      auto total_received = gateway().stats().received();
       TOOLBOX_INFO << " read " << total_received << " in "
                    << elapsed.count() / 1e9 << " s"
                    << " at " << (1e3 * total_received / elapsed.count())
@@ -69,7 +69,7 @@ public:
 
   void on_tick(const core::Tick &e) {
     // TOOLBOX_INFO << e;
-    auto &ins = instruments_[e.venue_instrument_id];
+    auto &ins = instruments_[e.venue_instrument_id()];
     if (!ins.empty()) {
       std::cout << "sym:'" << ins.venue_symbol() << "'," << e << std::endl;
     }

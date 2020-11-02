@@ -86,9 +86,10 @@ private:
             case IPPROTO_TCP: case IPPROTO_UDP: {
                 stats_.on_received(pkt);
                 if(filter_(pkt.header())) {
-                    stats_.on_accepted(pkt);
                     protocol_.on_packet(pkt);
                     on_idle();      
+                } else {
+                    stats_.on_rejected(pkt);
                 }
         } break;
             default: break; // ignore

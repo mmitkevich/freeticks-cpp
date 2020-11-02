@@ -1,23 +1,41 @@
 #pragma once
 #include "ft/utils/Common.hpp"
 #include "ft/utils/Throttled.hpp"
+#include <ostream>
 
 namespace ft::core {
 
 class StreamStats {
 public:
     template<typename...ArgsT>
-    void on_received(ArgsT...args) { total_received++; }
+    void on_received(ArgsT...args) { received_++; }
     
-    template<typename...ArgsT>
-    void on_accepted(ArgsT...args) { total_accepted++; }    
+    //template<typename...ArgsT>
+    //void on_accepted(ArgsT...args) { accepted_++; }    
 
     template<typename...ArgsT>
-    void on_bad(ArgsT...args) { total_bad++; }    
+    void on_rejected(ArgsT...args) { rejected_++; }    
 
-    std::size_t total_received{0};
-    std::size_t total_accepted{0};
-    std::size_t total_bad{0}; // rejected on bad format
+    void on_gap(std::size_t gap_size=1) { gaps_+=gap_size; }
+    
+    std::size_t received() const { return received_; }
+    std::size_t accepted() const { return accepted_; }
+    std::size_t rejected() const { return rejected_; }
+    std::size_t gaps() const { return gaps_; }
+
+    friend std::ostream& operator<<(std::ostream& os, const StreamStats& self) {
+        os << "received:"<<self.received();
+        if(self.rejected()>0)
+            os<<",rejected:"<<self.rejected();
+        if(self.gaps()>0)
+            os<<",gaps:"<<self.gaps();
+        return os;
+    }
+protected:
+    std::size_t received_{0};
+    std::size_t accepted_{0};
+    std::size_t rejected_{0}; // rejected on bad format
+    std::size_t gaps_{};
 };
 
 
@@ -47,13 +65,13 @@ public:
     template<typename T>
     void on_received(const T& packet) { 
         if constexpr(DerivedT::enabled())
-            total_received++;
+            received_++;
     }
-    template<typename T>
+    /*template<typename T>
     void on_accepted(const T& packet) { 
         if constexpr(DerivedT::enabled())
-            total_accepted++;
-    }
+            accepted_++;
+    }*/
     void on_idle() {
         report(std::cerr);
     }

@@ -141,7 +141,7 @@ public:
             
             if(frame.size<=0) {
                 TOOLBOX_DEBUG << "["<<(ptr-begin)<<"] invalid size "<<frame.size;
-                stats_.on_bad(frame);
+                stats_.on_rejected(frame);
                 break;
             }
 
@@ -158,14 +158,14 @@ public:
                         found = true;
                         //TOOLBOX_DEBUG << "["<<(ptr-begin)<<"] msgid "<<frame.msgid<<" seq "<<frame.seq;
                         TypedPacket<Message> typed_packet(packet);
-                        stats_.on_accepted(frame);
                         stream.on_decoded(typed_packet);
                     }
                 });
             });
-            //if(!found) {
+            if(!found) {
+                stats_.on_rejected(frame);
             //    TOOLBOX_DEBUG << name()<<": ["<<(ptr-begin)<<"] unknown msgid "<<frame.msgid;
-            //}
+            }
             ptr += sizeof(Frame) + frame.size;
         }
     }

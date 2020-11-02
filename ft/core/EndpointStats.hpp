@@ -13,7 +13,7 @@ public:
 public:
     using Base::Base;
     using Base::report;
-    using Base::on_accepted;
+    //using Base::on_accepted;
     using Base::on_received;
     static constexpr bool enabled() { return ft_stats_enabled(); }    
 

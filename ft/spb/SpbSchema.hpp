@@ -3,6 +3,7 @@
 #include "ft/utils/Common.hpp"
 
 #include "SpbFrame.hpp"
+#include <cstdint>
 #include <ostream>
 #include <sstream>
 #include <type_traits>
@@ -25,6 +26,7 @@ struct SpbHeader
     }
     bool empty() const { return frame.msgid==0; }
     std::uint64_t sequence() const { return frame.seq; }
+    tb::WallTime server_time() const {return header.system_time.wall_time(); }
 };
 
 template<typename HeaderT, typename PayloadT>
@@ -312,7 +314,41 @@ struct SpbSchema
 
 };
 
+
+struct SeqHeader {
+    std::uint64_t seq;
+    tb::WallTime server_timestamp;
+};
+
+template<typename T>
+struct SeqValue : SeqHeader {
+    T value;
+};
+
+struct SnapshotKey {
+    spb::MarketInstrumentId instrument_id;
+    spb::SourceId source_id;
+    core::TickType type;
+    core::TickSide side;
+    std::uint64_t to_long() const {
+        return ((((std::uint64_t)instrument_id.instrument_id)<<16 | ((std::uint64_t)instrument_id.market_id)) << 16) | source_id;
+    }
+    bool operator==(const SnapshotKey& rhs) const { return to_long() == rhs.to_long(); }
+};
+
 #pragma pack(pop)
 
-
 } // ns
+
+
+namespace std {
+
+template<>
+struct hash<ft::spb::SnapshotKey> {
+    std::size_t operator()(const ft::spb::SnapshotKey& val) const {
+        return hash<std::uint64_t>{}(val.to_long());
+    }
+};
+
+
+}
