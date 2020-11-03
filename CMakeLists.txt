@@ -78,7 +78,6 @@ find_package(PCAP)
 
 add_subdirectory(ft)
 set(ft_core_LIBRARY ft-core-static)
-add_subdirectory(mdconv)
 add_subdirectory(mdserv)
 
 
