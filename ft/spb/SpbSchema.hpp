@@ -96,6 +96,10 @@ struct Group
 
     using const_iterator = const ElementT*;
 
+    Group() {}
+    Group(const Group& rhs) = delete;
+    Group(Group&& rhs) = delete;
+    
     std::size_t size() const {
         return count;
     }
@@ -315,21 +319,15 @@ struct SpbSchema
 };
 
 
-struct SeqHeader {
-    std::uint64_t seq;
-    tb::WallTime server_timestamp;
-};
-
 template<typename T>
-struct SeqValue : SeqHeader {
+struct SeqValue {
+    std::uint64_t seq;
     T value;
 };
 
 struct SnapshotKey {
     spb::MarketInstrumentId instrument_id;
     spb::SourceId source_id;
-    core::TickType type;
-    core::TickSide side;
     std::uint64_t to_long() const {
         return ((((std::uint64_t)instrument_id.instrument_id)<<16 | ((std::uint64_t)instrument_id.market_id)) << 16) | source_id;
     }

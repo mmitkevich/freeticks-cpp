@@ -71,7 +71,8 @@ BOOST_AUTO_TEST_CASE(Parser)
         "\x04\x00\x18\x30";
 
     maybe_bench("parser", 1000*BENCH, [&] {
-        protocol.decoder().on_packet(BinaryPacket(msg, sizeof(msg)-1));
+        BinaryPacket bin (msg, sizeof(msg)-1);
+        protocol.decoder().on_packet(bin);
     });
     TOOLBOX_INFO << "snapshot_start "<<n_snapshot_start<<" snapshot_finish "<<n_snapshot_finish;
 }

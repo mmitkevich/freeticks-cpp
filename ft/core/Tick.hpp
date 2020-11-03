@@ -5,6 +5,7 @@
 #include "toolbox/sys/Time.hpp"
 #include "toolbox/util/Slot.hpp"
 #include <cstdint>
+#include <ostream>
 #include "ft/core/Identifiable.hpp"
 #include "ft/utils/Numeric.hpp"
 
@@ -46,17 +47,40 @@ enum class TickType : std::uint8_t {
     Clear   = 6, // L2: clear book (side)
 };
 
+inline std::ostream& operator<<(std::ostream& os, const TickType self) {
+    switch(self) {
+        case TickType::Unknown: return os << "Unknown";
+        case TickType::Place: return os << "Place";
+        case TickType::Cancel: return os << "Cancel";
+        case TickType::Modify: return os << "Modify";
+        case TickType::Fill: return os << "Fill";
+        case TickType::Update: return os <<"Update";
+        case TickType::Clear: return os <<"Clear";
+        default: return os << tb::unbox(self);
+    }
+}
+
 enum class TickSide: std::int8_t {
     Invalid = 0,
     Buy     = 1,
     Sell    = -1,
 };
 
+inline std::ostream& operator<<(std::ostream& os, const TickSide self) {
+    switch(self) {
+        case TickSide::Invalid: return os<<"Invalid";
+        case TickSide::Buy: return os<<"Buy";
+        case TickSide::Sell: return os<<"Sell";
+        default: return os<<tb::unbox(self);
+    }
+}
 template<typename ValueT, std::int64_t Multiplier>
 using PriceConversion = ft::utils::NumericConversion<ValueT, Multiplier, Price, CorePriceMultiplier>;
 
 template<typename ValueT, std::int64_t Multiplier>
 using QtyConversion = ft::utils::NumericConversion<ValueT, Multiplier, Qty, CoreQtyMultiplier>;
+
+using Sequence = std::uint64_t;
 
 //template<typename PolicyT>
 struct TickData {
@@ -65,14 +89,15 @@ struct TickData {
     //using Timestamp = typename PolicyT::Timestamp;
 
     struct {
-        std::uint64_t ti_type:4;
-        std::uint64_t ti_side:2;
+        std::int64_t ti_type:4;
+        std::int64_t ti_side:2;
     } ti_flags {};
 
     ClientId ti_id {};
     ExchangeId ti_server_id {};
     Timestamp ti_timestamp {};         // client
     Timestamp ti_server_timestamp {};  // exchange
+    Sequence ti_sequence {};
     VenueInstrumentId ti_venue_instrument_id;    
     Price ti_price {};
     Qty ti_qty {};
@@ -116,6 +141,13 @@ public:
     void open_interest(Qty val) { ti_open_interest = val; }
     VenueInstrumentId venue_instrument_id() const { return ti_venue_instrument_id; }
     void venue_instrument_id(VenueInstrumentId val) { ti_venue_instrument_id = val; }
+    Sequence sequence() const { return ti_sequence; }
+    void sequence(Sequence val) { ti_sequence = val; }
+
+    bool empty() const { 
+        auto t = type();
+        return t == TickType::Unknown;
+    }
     //using Base::flags;
     //using Base::id;
     //using Base::server_id;
@@ -129,19 +161,14 @@ using TickSlot = TickSignal::Slot;
 
 template<typename PolicyT>
 inline std::ostream & operator<<(std::ostream& os, const BasicTick<PolicyT> &e) {
-    os << "sts:'" << toolbox::sys::put_time<toolbox::Nanos>(e.ti_server_timestamp)<<"'";
+    os << "seq:"<<e.ti_sequence;
+    os << ",sts:'" << toolbox::sys::put_time<toolbox::Nanos>(e.ti_server_timestamp)<<"'";
     os << ",cts-sts:" << (e.ti_timestamp-e.ti_server_timestamp).count();
     os << ",vi:" << e.ti_venue_instrument_id;
     os << ",t:'";
-    switch(e.type()) {
-        case TickType::Place: os << "Place"; break;
-        case TickType::Cancel: os << "Cancel"; break;
-        case TickType::Fill: os << "Fill"; break;
-        case TickType::Update: os << "Update"; break;
-        case TickType::Clear: os << "Clear"; break;
-        default: os << tbu::unbox(e.type()); break;
-    }
+    os << e.type();
     os << "'";
+    os << ",s:"<<e.side();
     os << ",price:" << PolicyT::instance().price_conv().to_double(e.ti_price);
     os << ",qty:" << PolicyT::instance().qty_conv().to_double(e.ti_qty);
     return os;

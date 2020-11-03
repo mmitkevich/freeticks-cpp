@@ -44,27 +44,30 @@ public:
         snapshot_start_seq_ = snapshot_last_seq_ = invalid_seq;
         snapshot_size_ = 0;
     }
-    bool snapshot(std::uint64_t seq, const K& key,  const V& value) {
+    std::uint64_t updates_snapshot_seq() const {
+        return updates_last_seq_;
+    }
+    std::pair<bool, const V&> snapshot(std::uint64_t seq, const K& key,  const V& value) {
         if(!snapshot_start_seq_) {
             //log_state(seq,"Snapshot: No SnapshotStart");
-            return false;
+            return {false, value};
         }
         snapshot_last_seq_ = seq;
         snapshot_size_++;
         
         snapshots_stats_.on_received();
 
-        auto& prev = snapshot_[key];
+        SeqValue<V>& prev = snapshot_[key];
         if(prev.seq == invalid_seq || updates_snapshot_seq_>prev.seq) {
-            prev = value;
-            return true;
+            prev = SeqValue<V>{updates_snapshot_seq_, value};
+            return {true, prev.value};
         }else {
             //log_state(updates_snapshot_seq_, "Snapshot: Stale ignored");    
             snapshots_stats_.on_rejected();
-            return false;
+            return {false, prev.value};
         }
     }
-    bool update(std::uint64_t seq, const K& key,  const V& value) {
+    std::pair<bool,const V&> update(std::uint64_t seq, const K& key,  const V& value) {
         if(updates_last_seq_!=invalid_seq && seq>updates_last_seq_ + 1) {
             updates_stats_.on_gap(seq-(updates_last_seq_ + 1));
         }
@@ -72,14 +75,14 @@ public:
         
         updates_stats_.on_received();
 
-        auto& prev = snapshot_[key];
+        SeqValue<V>& prev = snapshot_[key];
         if(prev.seq == invalid_seq || seq>prev.seq) {
-            prev = value;
-            return true;
+            prev = SeqValue<V>{seq, value};
+            return {true, prev.value};
         }else {
             //log_state(seq, "Update: Stale ignored");    
             updates_stats_.on_rejected();
-            return false;
+            return {false, prev.value};
         }
     }
 
@@ -91,7 +94,7 @@ public:
 private:
     std::string_view name_ {};
     
-    utils::FlatMap<K, V> snapshot_;
+    utils::FlatMap<K, SeqValue<V>> snapshot_;
 
     std::uint64_t snapshot_start_seq_{};    // when started
     std::uint64_t snapshot_last_seq_{};     // last snapshot seq
@@ -106,15 +109,20 @@ private:
     
 };
 
-template<typename ProtocolT>
-class SpbBestPriceStream : public BasicSpbStream<SpbBestPriceStream<ProtocolT>, ProtocolT, core::TickStream>
+using SpbBestPriceSnapshot = std::array<core::Tick,3>;
+
+template<typename ProtocolT
+,typename SnapshotUpdatesT = SpbReplacingUpdates<spb::SnapshotKey, spb::SpbBestPriceSnapshot>
+> class SpbBestPriceStream : public BasicSpbStream<SpbBestPriceStream<ProtocolT>, ProtocolT, core::TickStream>
 {
 public:
     using This = SpbBestPriceStream<ProtocolT>;
     using Base = BasicSpbStream<This, ProtocolT, core::TickStream>;
     using Protocol = typename Base::Protocol;
     using Schema = typename Base::Schema;
-    
+    using SnapshotUpdates = SnapshotUpdatesT;  
+    using Snapshot = SpbBestPriceSnapshot;
+
     // packet type meta function
     template<typename MessageT>
     using SpbPacket = typename Base::template SpbPacket<MessageT>;
@@ -148,39 +156,61 @@ public:
     void on_message(const typename SnapshotFinish::Header& h, const spb::Snapshot& e) { 
         impl_.finish(h.sequence(), e.update_seq);
     }
-    void on_message(const typename PriceSnapshot::Header& h, const spb::Price& e) {
-        SnapshotKey key {e.instrument, h.header.sourceid};
-        spb::SeqValue<spb::Price> val { h.sequence(), h.server_time(),  e };
 
-        if(impl_.snapshot(h.sequence(), std::move(key), val))
-            send(val);
+    void on_message(const typename PriceSnapshot::Header& h, const spb::Price& e) {
+        auto snap = to_snapshot(impl_.updates_snapshot_seq(), h.server_time(), e);
+        SnapshotKey key {e.instrument, h.header.sourceid};
+        auto rv = impl_.snapshot(impl_.updates_snapshot_seq(), std::move(key), snap);
+        if(rv.first)
+            send(rv.second);
     }
     
     void on_message(const typename PriceOnline::Header& h, const spb::Price& e) {
-        spb::SnapshotKey key { e.instrument, h.header.sourceid };
-        spb::SeqValue<spb::Price> val { h.sequence(), h.server_time(),  e };
-
-        if(impl_.update(h.sequence(), std::move(key), val))
-            send(val);
+        auto snap = to_snapshot(h.sequence(), h.server_time(), e);
+        SnapshotKey key {e.instrument, h.header.sourceid};
+        auto rv = impl_.update(h.sequence(), std::move(key), snap);
+        if(rv.first)
+            send(rv.second);
     }
 
-    void send(const spb::SeqValue<spb::Price>& e)
+protected:
+    void send(const Snapshot& snap)
     {
-        //TOOLBOX_DEBUG << name()<<": "<<e;
+        //TOOLBOX_DEBUG << name()<<": "<<val.value;
         //stats().on_received(d); // FIXME
-        for(auto &best: e.value.sub_best) {
-            core::Tick ti {};
-            ti.type(core::TickType::Update);
-            ti.venue_instrument_id(e.value.instrument.instrument_id);
-            ti.timestamp(tb::WallClock::now());
-            ti.server_timestamp(e.server_timestamp);
-            ti.price(protocol().price_conv().to_core(best.price));
-            ti.side(get_side(best));
-            ti.qty(core::Qty(best.amount));
-            if(ti.side()!=core::TickSide::Invalid)
-                invoke(ti);
+        for(const auto& e: snap) {
+            if(e.type()==core::TickType::Update)
+                invoke(e);
         }
     }
+
+    core::Tick to_tick(Seq seq, const spb::MarketInstrumentId id, const toolbox::WallTime server_timestamp, const spb::SubBest& best) {
+        core::Tick ti {};
+        ti.sequence(seq);
+        core::TickType type = core::TickType::Update;
+        if(best.type==SubBest::Type::Deal) {
+            type = core::TickType::Fill;
+        }
+        ti.type(type);
+        ti.venue_instrument_id(id.instrument_id);
+        ti.timestamp(tb::WallClock::now());
+        ti.server_timestamp(server_timestamp);
+        ti.price(protocol().price_conv().to_core(best.price));
+        ti.side(get_side(best));
+        ti.qty(core::Qty(best.amount));
+        return ti;
+    }
+    
+    Snapshot to_snapshot(Seq seq, const core::Timestamp server_timestamp, const spb::Price& e) {
+        Snapshot snap;
+        assert(e.sub_best.size()<=snap.size());
+        for(std::size_t i=0; i<std::min(e.sub_best.size(), snap.size()); i++) {
+            auto &best = e.sub_best[i];
+            snap[i] = to_tick(seq, e.instrument, server_timestamp, best);
+        }
+        return snap;
+    }
+    
     static constexpr core::TickSide get_side(const SubBest& self) {  
         switch(self.type) {
             case SubBest::Type::Buy: return core::TickSide::Buy;
@@ -189,7 +219,7 @@ public:
         }
     }
 private:
-    SpbReplacingUpdates<spb::SnapshotKey, spb::SeqValue<spb::Price> > impl_;
+    SnapshotUpdates impl_;
 };
 
 }

@@ -78,7 +78,8 @@ public:
   void on_tick(const core::Tick &e) {
     // TOOLBOX_INFO << e;
     auto &ins = instruments_[e.venue_instrument_id()];
-    std::cout << "sym:'" << ins.venue_symbol() << "'," << e << std::endl;
+    if(out_.is_open())
+      out_ << "sym:'" << ins.venue_symbol() << "'," << e << std::endl;
   }
 
   void on_instrument(const core::VenueInstrument &e) {
@@ -99,7 +100,8 @@ public:
     //TOOLBOX_DEBUG << "opts:\n" << params << "\n";
       
     gateway(factory(venue));
-
+    std::string output_path = params.value_or("output", std::string{"/dev/stdout"});
+    out_.open(output_path);
     start_timestamp_ = tbs::MonoClock::now();
     gateway().url(venue);
     gateway().parameters(params);
@@ -139,6 +141,7 @@ public:
 
       parser('h', "help", tbu::Switch{help}, "print help")
         ('v', "verbose", tbu::Value{opts["verbose"], std::uint32_t{}}, "log level")
+        ('o', "output", tbu::Value{opts["output"], std::string{}}, "output file")
         ('c', "config", tbu::Value{config_file}.required(), "config file")
         (tbu::Value{venue}.required(), "VENUE")
       .parse(argc, argv);
@@ -164,6 +167,7 @@ private:
   std::unique_ptr<core::IMdGateway> gateway_;
   core::InstrumentsCache instruments_;
   core::Reactor& reactor_;
+  std::ofstream out_;
 };
 
 } // namespace ft
