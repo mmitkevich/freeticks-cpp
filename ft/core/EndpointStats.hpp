@@ -28,8 +28,8 @@ public:
     }
     template<typename PacketT>
     void on_accepted(const PacketT& pkt) { 
+        Base::on_accepted(pkt); 
         if constexpr(enabled()) {
-            Base::on_accepted(pkt);
             const auto& dst = pkt.header().dst();
             auto current = dst_stat_[dst];
             dst_stat_[dst] = current + 1;

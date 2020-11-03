@@ -37,8 +37,8 @@ public:
         }
     }
     void on_received(const Frame& frame) {
+        Base::on_received(frame);
         if constexpr(core::ft_stats_enabled()) {
-            Base::on_received(frame);
             auto current = values_[frame.msgid];
             values_[frame.msgid] = current+1;
         }

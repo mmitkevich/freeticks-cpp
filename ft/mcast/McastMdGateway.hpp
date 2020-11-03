@@ -131,7 +131,8 @@ public:
     Protocol& protocol() {   return protocol_; }
     Connections& connections() { return connections_; }
     
-    Stats& stats() { return stats_; }
+    auto& stats() { return protocol_.stats(); }
+    auto& gw_stats() { return stats_; }
     
     using Base::parameters;
     using Base::state;

@@ -42,7 +42,8 @@ public:
     Protocol& protocol() {   return protocol_; }
     toolbox::PcapDevice& device() { return device_; }
     
-    Stats& stats() { return stats_; }
+    auto& stats() { return protocol_.stats(); }
+    auto& gw_stats() { return stats_; } 
 
     // dispatch parameters
     void on_parameters_updated(const core::Parameters& params) {
