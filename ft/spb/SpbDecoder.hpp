@@ -2,6 +2,7 @@
 
 #include "ft/core/Instrument.hpp"
 #include "ft/core/Stream.hpp"
+#include "ft/core/StreamStats.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/pcap/PcapMdGateway.hpp"
 #include "ft/utils/Common.hpp"
@@ -27,16 +28,20 @@ public:
     using MsgStats = utils::FlatMap<MsgId, std::size_t>;
 public:
     void on_report(std::ostream& os) {
-        std::size_t n = values_.size();
-        os <<"msg_stat, distinct:"<<n<<std::endl;
-        for(auto& [k,v]: values_) {
-            os << std::setw(12) << v << "    " << k << std::endl;
+        if constexpr(core::ft_stats_enabled()) {
+            std::size_t n = values_.size();
+            os <<"msg_stat["<<n<<"]:"<<std::endl;
+            for(auto& [k,v]: values_) {
+                os << std::setw(12) << v << "    " << k << std::endl;
+            }
         }
     }
     void on_received(const Frame& frame) {
-        Base::on_received(frame);
-        auto current = values_[frame.msgid];
-        values_[frame.msgid] = current+1;
+        if constexpr(core::ft_stats_enabled()) {
+            Base::on_received(frame);
+            auto current = values_[frame.msgid];
+            values_[frame.msgid] = current+1;
+        }
     }
 protected:
     MsgStats values_;

@@ -1,6 +1,6 @@
 {
     "venue":"SPB_MDBIN",
-    "mode": "pcap",
+    "mode": "pcap",// "mcast"
     "streams":[                                                   // channel A,            channel B
         { "stream":"bestprice",  "type": "snapshot.mcast", "urls": ["233.26.38.16:6016", "233.26.38.144:6144"] },
         { "stream":"bestprice",  "type": "update.mcast",   "urls": ["233.26.38.17:6017", "233.26.38.145:6145"],    "recovery": "BEX.TOB" },

@@ -19,9 +19,11 @@ public:
 
 public:
     void on_report(std::ostream& os) {
-        os << "dst_stat:" << std::endl;
-        for(auto& [k,v]: dst_stat_) {
-            os <<  std::setw(12) << v << "    " << k << std::endl;
+        if constexpr(enabled()) {
+            os << "dst_stat:" << std::endl;
+            for(auto& [k,v]: dst_stat_) {
+                os <<  std::setw(12) << v << "    " << k << std::endl;
+            }
         }
     }
     template<typename PacketT>

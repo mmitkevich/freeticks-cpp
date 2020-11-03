@@ -40,7 +40,7 @@ protected:
 
 
 inline constexpr bool ft_stats_enabled() {
-    return true;
+    return false;
 };
 
 template<typename DerivedT>
