@@ -48,7 +48,11 @@ public:
     std::string input;
     tb::optional<std::string> output;
   };
-
+  using McastPacket = mcast::McastDgram;
+  template<typename ProtocolT> using McastMdGateway = mcast::McastMdGateway<ProtocolT, core::Executor>;
+  using PcapPacket = tb::PcapPacket;
+  template<typename ProtocolT> using PcapMdGateway = pcap::PcapMdGateway<ProtocolT, core::Executor>;
+  
 public:
   MdServ(core::Reactor& reactor)
   : reactor_(reactor)
@@ -59,19 +63,19 @@ public:
   core::IMdGateway &gateway() { return *gateway_; }
   void gateway(std::unique_ptr<core::IMdGateway> gw) { gateway_ = std::move(gw); }
 
-  void on_state_changed(core::RunState state, core::RunState old_state,
+  void on_state_changed(core::State state, core::State old_state,
                         core::ExceptionPtr err) {
-    std::cerr << "gateway state: "<<state;
-    if (state == core::RunState::Failed && err)
-      std::cerr << "error: " << err->what();
-    if (state == core::RunState::Stopped) {
+    TOOLBOX_DEBUG << "gateway state: "<<state;
+    if (state == core::State::Failed && err)
+      std::cerr << "error: " << err->what() << std::endl;
+    if (state == core::State::Stopped) {
       // gateway().report(std::cerr);
       auto elapsed = tbs::MonoClock::now() - start_timestamp_;
       auto total_received = gateway().stats().received();
       std::cerr << " read " << total_received << " in "
                    << elapsed.count() / 1e9 << " s"
                    << " at " << (1e3 * total_received / elapsed.count())
-                   << " mio/s";
+                   << " mio/s" << std::endl;
     }
   };
 
@@ -79,29 +83,53 @@ public:
     // TOOLBOX_INFO << e;
     auto &ins = instruments_[e.venue_instrument_id()];
     if(out_.is_open())
-      out_ << "sym:'" << ins.venue_symbol() << "'," << e << std::endl;
+      out_ << "m:tick,sym:'" << ins.venue_symbol() << "'," << e << std::endl;
   }
 
   void on_instrument(const core::VenueInstrument &e) {
     // TOOLBOX_INFO  << e;
     instruments_.update(e);
+    if(out_.is_open()) {
+      out_ << "m:ins,"<<e<<std::endl;
+    }
   }
+  
+  using MdGwFactory = std::function<std::unique_ptr<core::IMdGateway>(std::string_view venue)>;
 
+  template<typename BinaryPacketT, template<typename ProtocolT> typename GatewayT>
+  MdGwFactory make_factory () {
+    using SpbProtocol = spb::SpbUdpProtocol<BinaryPacketT>;
+    using SpbMdGateway = GatewayT<SpbProtocol>;
+    using Factory = ftu::Factory<core::IMdGateway, core::MdGateway>;
+  
+    return [this](std::string_view venue)->std::unique_ptr<core::IMdGateway> { 
+      return Factory::make_unique(
+        ftu::IdFn{"SPB_MDBIN", [this] { return std::make_unique<SpbMdGateway>(&reactor_); }},
+        ftu::IdFn{"QSH", [this] { return std::make_unique<qsh::QshMdGateway>(&reactor_); }})
+      (venue); 
+    };
+  }
+  MdGwFactory make_factory(const core::Parameters& params) {
+    std::string mode = params.value_or("mode", std::string{"mcast"});
+    if(mode=="mcast") {
+      return make_factory<McastPacket, McastMdGateway>();
+    } else if(mode=="pcap") {
+      return make_factory<PcapPacket, PcapMdGateway>();
+    } else {
+      std::stringstream ss;
+      ss<<"Invalid mode "<<mode;
+      throw std::runtime_error(ss.str());
+    }
+  }
   void run(std::string_view venue, const core::Parameters &params) {
-    TOOLBOX_INFO<<"MdServ::run(venue:'"<<venue<<"',params:"<<params<<")";
+    //TOOLBOX_DEBUG<<"run venue:'"<<venue<<"', params:"<<params;
 
-    using SpbProtocol = spb::SpbUdpProtocol<mcast::McastDgram>;
-    using SpbMdGateway = mcast::McastMdGateway<SpbProtocol>;
-    using MdGwFactory = ftu::Factory<core::IMdGateway, core::MdGateway>;
-
-    auto factory = MdGwFactory::unique_ptr(
-      ftu::IdFn{"SPB_MDBIN", [&] { return std::make_unique<SpbMdGateway>(reactor_); }});
-      
-    //TOOLBOX_DEBUG << "opts:\n" << params << "\n";
+    MdGwFactory factory = make_factory(params);
       
     gateway(factory(venue));
-    std::string output_path = params.value_or("output", std::string{"/dev/stdout"});
-    out_.open(output_path);
+    std::string output_path = params.value_or("output", std::string{"/dev/null"});
+    if(output_path!="/dev/null")
+      out_.open(output_path);
     start_timestamp_ = tbs::MonoClock::now();
     gateway().url(venue);
     gateway().parameters(params);
@@ -114,8 +142,10 @@ public:
         .connect(tbu::bind<&This::on_instrument>(this));
 
     gateway().start();
-    tb::ReactorRunner runner(reactor_);
-    tb::wait_termination_signal();
+    if(gateway().state()!=core::State::Stopped) {
+      tb::ReactorRunner runner(reactor_);
+      tb::wait_termination_signal();
+    }
   }
   
   void on_reactor_state_changed(tb::Reactor*reactor, tb::io::State state) {
@@ -132,18 +162,18 @@ public:
   int main(int argc, char *argv[]) {
     tb::set_log_level(tb::Log::Debug);
     
-    tb::Options parser{"mdserv [OPTIONS] URL"};
+    tb::Options parser{"mdserv [OPTIONS] config.json"};
     try {
       core::MutableParameters opts;
-      std::string venue;
       std::string config_file;
+      std::string mode;
       bool help = false;
 
       parser('h', "help", tbu::Switch{help}, "print help")
         ('v', "verbose", tbu::Value{opts["verbose"], std::uint32_t{}}, "log level")
         ('o', "output", tbu::Value{opts["output"], std::string{}}, "output file")
-        ('c', "config", tbu::Value{config_file}.required(), "config file")
-        (tbu::Value{venue}.required(), "VENUE")
+        ('m', "mode", tbu::Value{mode}, "pcap, mcast")
+        (tbu::Value{config_file}.required(), "config.json file")
       .parse(argc, argv);
 
       if(help) {
@@ -153,7 +183,9 @@ public:
       if(!config_file.empty()) {
         opts.parse_file(config_file);
       }
-      run(venue, opts);
+      if(!mode.empty())
+        opts["mode"] = mode;
+      run(opts.value<std::string>("venue"), opts);
       return EXIT_SUCCESS;
     } catch (std::runtime_error &e) {
       std::cerr << e.what() << std::endl;

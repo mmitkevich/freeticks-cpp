@@ -17,6 +17,4 @@ protected:
     Identifier id_ {};
 };
 
-
-
 }

@@ -52,11 +52,11 @@ public:
 public:
   core::IMdGateway &gateway() { return *gateway_; }
 
-  void on_state_changed(core::RunState state, core::RunState old_state,
+  void on_state_changed(core::State state, core::State old_state,
                         core::ExceptionPtr err) {
-    if (state == core::RunState::Failed && err)
+    if (state == core::State::Failed && err)
       std::cerr << "error: " << err->what();
-    if (state == core::RunState::Stopped) {
+    if (state == core::State::Stopped) {
       // gateway().report(std::cerr);
       auto elapsed = tbs::MonoClock::now() - start_timestamp_;
       auto total_received = gateway().stats().received();
@@ -70,9 +70,7 @@ public:
   void on_tick(const core::Tick &e) {
     // TOOLBOX_INFO << e;
     auto &ins = instruments_[e.venue_instrument_id()];
-    if (!ins.empty()) {
-      std::cout << "sym:'" << ins.venue_symbol() << "'," << e << std::endl;
-    }
+    std::cout << "sym:'" << ins.venue_symbol() << "'," << e << std::endl;
   }
 
   void on_instrument(const core::VenueInstrument &e) {
@@ -130,15 +128,16 @@ public:
         "filter max packet")(tbu::Value{urls}.required().multitoken(), "URL");
 
     using SpbProtocol = spb::SpbUdpProtocol<tbn::PcapPacket>;
-    using SpbMdGateway = pcap::PcapMdGateway<SpbProtocol>;
+    using SpbMdGateway = pcap::PcapMdGateway<SpbProtocol, core::Executor>;
+    using QshMdGateway = qsh::QshMdGateway;
 
     using MdGwFactory = ftu::Factory<core::IMdGateway, core::MdGateway>;
 
     toolbox::json::MutableDocument json;
 
-    auto factory = MdGwFactory::unique_ptr(
-        ftu::IdFn{"spb", [&] { return std::make_unique<SpbMdGateway>(); }},
-        ftu::IdFn{"qsh", [&] { return std::make_unique<qsh::QshMdGateway>(); }});
+    auto factory = MdGwFactory::make_unique(
+        ftu::IdFn{"spb", [&] { return std::make_unique<SpbMdGateway>(nullptr); }},
+        ftu::IdFn{"qsh", [&] { return std::make_unique<QshMdGateway>(nullptr); }});
 
     try {
       parser.parse(argc, argv);

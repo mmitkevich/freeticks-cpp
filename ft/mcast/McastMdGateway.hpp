@@ -102,11 +102,11 @@ private:
 
 using McastDgram = BasicMcastDgram<tb::UdpProtocol, tb::McastSock>;
 
-template<typename ProtocolT>
-class McastMdGateway : public core::BasicMdGateway<McastMdGateway<ProtocolT>> {
+template<typename ProtocolT, typename ExecutorT=core::Executor>
+class McastMdGateway : public core::BasicMdGateway<McastMdGateway<ProtocolT, ExecutorT>, ExecutorT> {
 public:
-    using Base = core::BasicMdGateway<McastMdGateway<ProtocolT>>;
-    using This = McastMdGateway<ProtocolT>;
+    using This = McastMdGateway<ProtocolT, ExecutorT>;
+    using Base = core::BasicMdGateway<This, ExecutorT>;
     using Protocol = ProtocolT;
     using TransportProtocol = toolbox::UdpProtocol;
     using Stats = core::EndpointStats<tb::BasicIpEndpoint<TransportProtocol>>;
@@ -120,8 +120,8 @@ public:
     using Connections = std::vector<Connection>;
 public:
     template<typename...ArgsT>
-    McastMdGateway(tb::Reactor& reactor, ArgsT...args)
-    : Base(&reactor)
+    McastMdGateway(tb::Reactor* reactor, ArgsT...args)
+    : Base(reactor)
     , protocol_(*this, std::forward<ArgsT>(args)...)
     {
         
@@ -135,6 +135,7 @@ public:
     
     using Base::parameters;
     using Base::state;
+    using Base::url;
 
     Connections make_connections(const core::Parameters& params) {
         Connections conns;
@@ -189,11 +190,6 @@ public:
         }     
     }
 
-    void url(std::string_view url) {
-        url_ = url;
-    }
-    
-    std::string_view url() const { return url_; }
 
     void start() {
         state(State::Starting);

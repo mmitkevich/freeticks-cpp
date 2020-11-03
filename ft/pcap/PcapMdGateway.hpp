@@ -1,4 +1,5 @@
 #pragma once
+#include "ft/core/Executor.hpp"
 #include "ft/core/Instrument.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/StreamStats.hpp"
@@ -9,6 +10,7 @@
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/EndpointFilter.hpp"
 #include "toolbox/net/Pcap.hpp"
+#include "toolbox/sys/Log.hpp"
 #include "toolbox/sys/Time.hpp"
 //#include <netinet/in.h>
 
@@ -18,17 +20,23 @@ namespace ft::pcap {
 
 
 
-template<typename ProtocolT>
-class PcapMdGateway : public core::BasicMdGateway<PcapMdGateway<ProtocolT>> {
+template<typename ProtocolT, typename ExecutorT=core::Executor>
+class PcapMdGateway : public core::BasicMdGateway<PcapMdGateway<ProtocolT, ExecutorT>, ExecutorT> {
 public:
-    using Base = core::BasicMdGateway<PcapMdGateway<ProtocolT>>;
+    using This = PcapMdGateway<ProtocolT, ExecutorT>;
+    using Base = core::BasicMdGateway<This, ExecutorT>;
     using Protocol = ProtocolT;
     using Stats = core::EndpointStats<tb::IpEndpoint>;
+    using BinaryPacket = tb::PcapPacket;
+    using Base::stop;
 public:
     template<typename...ArgsT>
-    PcapMdGateway(ArgsT...args)
-    : protocol_(*this, std::forward<ArgsT>(args)...)
-    {}
+    PcapMdGateway(tb::Reactor* reactor, ArgsT...args)
+    : Base(reactor)
+    , protocol_(*this, std::forward<ArgsT>(args)...)
+    {
+        device_.packets().connect(tbu::bind<&PcapMdGateway::on_packet_>(this));
+    }
 
 
     Protocol& protocol() {   return protocol_; }
@@ -38,8 +46,14 @@ public:
 
     // dispatch parameters
     void on_parameters_updated(const core::Parameters& params) {
-        filter(params["filter"]);
+        params["pcaps"].copy(inputs_);
+
+        auto streams_p = params["streams"];
+        protocol_.on_parameters_updated(streams_p);
+        
+        filter(params["filter"]); // FIXME: get filter from streams automatically
     }
+    
     void filter(const core::Parameters& params) {
         // if protocols configuration not specified all protocols will be used
         // protocols supported are only tcp and udp
@@ -57,14 +71,15 @@ public:
         params["dst"].copy(filter_.destinations);
         params["src"].copy(filter_.sources);
     }
-    void url(std::string_view url) {
-        device_.input(url);
-    }
-    std::string url() const { return device_.input(); }
-    void start() { run(); }
+
     void run() {
-        device_.packets().connect(tbu::bind<&PcapMdGateway::on_packet_>(this));
-        device_.run();
+        for(auto& input: inputs_) {
+            TOOLBOX_INFO<<"pcap replay started: "<<input;
+            device_.input(input);
+            device_.run();
+            TOOLBOX_INFO<<"pcap replay finished: "<<input;
+        }
+        stop();
     }
     void report(std::ostream& os) {
         protocol_.stats().report(os);
@@ -100,6 +115,7 @@ private:
     toolbox::PcapDevice device_;
     Stats stats_;
     toolbox::EndpointsFilter filter_;
+    std::vector<std::string> inputs_;
 };
 
 } // ft::pcap

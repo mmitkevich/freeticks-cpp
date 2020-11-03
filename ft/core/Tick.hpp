@@ -163,12 +163,12 @@ template<typename PolicyT>
 inline std::ostream & operator<<(std::ostream& os, const BasicTick<PolicyT> &e) {
     os << "seq:"<<e.ti_sequence;
     os << ",sts:'" << toolbox::sys::put_time<toolbox::Nanos>(e.ti_server_timestamp)<<"'";
-    os << ",cts-sts:" << (e.ti_timestamp-e.ti_server_timestamp).count();
-    os << ",vi:" << e.ti_venue_instrument_id;
-    os << ",t:'";
+    os << ",clt:" << (e.ti_timestamp-e.ti_server_timestamp).count();
+    os << ",vins:" << e.ti_venue_instrument_id;
+    os << ",ty:'";
     os << e.type();
     os << "'";
-    os << ",s:"<<e.side();
+    os << ",side:"<<e.side();
     os << ",price:" << PolicyT::instance().price_conv().to_double(e.ti_price);
     os << ",qty:" << PolicyT::instance().qty_conv().to_double(e.ti_qty);
     return os;

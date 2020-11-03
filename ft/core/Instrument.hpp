@@ -54,12 +54,12 @@ enum class InstrumentType: std::int8_t {
 };
 inline std::ostream& operator<<(std::ostream&os, const InstrumentType& self) {
     switch(self) {
-        case InstrumentType::Unknown: return os << "Unknown";
-        case InstrumentType::Future: return os << "Future";
-        case InstrumentType::Option: return os << "Option";
+        case InstrumentType::Unknown: return os << "Unk";
+        case InstrumentType::Future: return os << "Fut";
+        case InstrumentType::Option: return os << "Opt";
         case InstrumentType::Repo: return os <<"Repo";
         case InstrumentType::Spot: return os << "Spot";
-        case InstrumentType::CalendarSpread: return os <<"CalendarSpread";
+        case InstrumentType::CalendarSpread: return os <<"CalSpr";
         default: return os << tbu::unbox(self);
     }
 }
@@ -74,7 +74,7 @@ public:
     void symbol(std::string_view val) { symbol_ = val; }
     
     friend std::ostream& operator<<(std::ostream& os, const Instrument& self) {
-        os << "type:"<<self.type_<<",symbol:'"<<self.symbol_<<"'";
+        os << "sym:'"<<self.symbol_<<"',ity:'"<<self.type_<<"'";
         return os;
     }
     // JsonDocument extra;
@@ -120,11 +120,11 @@ public:
         return instrument_.symbol().empty();
     }
     friend std::ostream& operator<<(std::ostream& os, const VenueInstrument& self) {
-        os  << "instrument:"<<self.instrument_
-            <<",venue_instrument_id:"<<self.venue_instrument_id_
-            <<",venue_symbol:"<<self.venue_symbol_
-            <<",exchange:"<<self.exchange_
-            <<",venue:"<<self.venue_;
+        os  << self.instrument_
+            <<",vins:"<<self.venue_instrument_id_
+            <<",vsym:'"<<self.venue_symbol_<<"'"
+            <<",exch:'"<<self.exchange_<<"'"
+            <<",venu:'"<<self.venue_<<"'";
         return os;
     }
 protected:

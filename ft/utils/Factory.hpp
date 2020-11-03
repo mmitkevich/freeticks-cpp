@@ -29,7 +29,7 @@ namespace detail {
         {}
 
         template<typename...ArgsT>
-        auto operator()(std::string_view id, ArgsT...args) {
+        std::unique_ptr<InterfaceT> operator()(std::string_view id, ArgsT...args) {
             bool done = false;
             std::unique_ptr<InterfaceT> result;
             mp::tuple_for_each(values_, [&](auto &factory) {
@@ -56,6 +56,6 @@ public:
     using Interface = InterfaceT;
 public:
     template<typename...FactoriesT>
-    static auto unique_ptr(FactoriesT&&... args) { return detail::UniquePtr<Interface, AdapterT, FactoriesT...> {args...}; }
+    static auto make_unique(FactoriesT&&... args) { return detail::UniquePtr<Interface, AdapterT, FactoriesT...> {args...}; }
 };
 } // ft::utils

@@ -1,4 +1,5 @@
 #pragma once
+#include "ft/core/Executor.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/utils/Common.hpp"
@@ -11,11 +12,11 @@
 namespace ft::qsh {
 
 // file-based gateway for Qsh files
-class QshMdGateway: public core::BasicMdGateway<QshMdGateway> {
+class QshMdGateway: public core::BasicMdGateway<QshMdGateway, core::Executor> {
 public:
     using This = QshMdGateway;
-    QshMdGateway() 
-    {}
+    using Base = core::BasicMdGateway<This, core::Executor>;
+    using Base::Base;
 
     void url(std::string_view val) { url_ = val; }
     std::string_view url() { return url_; }

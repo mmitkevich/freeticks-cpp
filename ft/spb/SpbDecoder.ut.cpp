@@ -47,7 +47,7 @@ BOOST_AUTO_TEST_CASE(Parser)
     using SpbProtocol = SpbProtocol<SpbSchema, BinaryPacket>;
     using SpbDecoder = typename  SpbProtocol::Decoder;
     std::size_t n_snapshot_start = 0;
-    auto on_snapshot_start = [&](SpbDecoder::TypedPacket<SpbSchema::SnapshotStart> pkt) {
+    auto on_snapshot_start = [&](SpbDecoder::SpbPacket<SpbSchema::SnapshotStart> pkt) {
         auto& e = pkt.value();
         if constexpr (!BENCH) {
             TOOLBOX_INFO << "SnapshotStart("<<e.header().frame.msgid<<", update_seq=" << e.value().update_seq << ")";
@@ -56,7 +56,7 @@ BOOST_AUTO_TEST_CASE(Parser)
     };
 
     std::size_t n_snapshot_finish = 0;    
-    auto on_snapshot_finish = [&](SpbDecoder::TypedPacket<SpbSchema::SnapshotStart> pkt) {
+    auto on_snapshot_finish = [&](SpbDecoder::SpbPacket<SpbSchema::SnapshotStart> pkt) {
          auto& e = pkt.value();
         if constexpr (!BENCH) {
             TOOLBOX_INFO << "SnapshotFinish("<<e.header().frame.msgid<<", update_seq=" << e.value().update_seq << ")";

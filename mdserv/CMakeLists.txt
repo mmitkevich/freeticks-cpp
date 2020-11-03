@@ -12,4 +12,5 @@ add_executable(${app_NAME}
 
 target_link_libraries(${app_NAME}
   ${tb_core_LIBRARY}
-  ${ft_core_LIBRARY})
+  ${ft_core_LIBRARY}
+  ${PCAP_LIBRARY})

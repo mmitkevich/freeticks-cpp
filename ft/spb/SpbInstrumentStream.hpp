@@ -21,7 +21,7 @@ public:
     using Schema = typename Base::Schema;
     template<typename MessageT>
     using SpbPacket = typename Base::template SpbPacket<MessageT>;
-    
+
     using InstrumentSnapshot = typename Schema::InstrumentSnapshot;
     using TypeList = mp::mp_list<InstrumentSnapshot>;
 
@@ -53,7 +53,7 @@ public:
         if(type == "snapshot.xml") {
             for(auto e:params["urls"]) {
                 std::string url = std::string{e.get_string()};
-                executor().on_state(core::RunState::Started, [url, this] { snapshot_xml(url); });
+                executor().state_hook(core::State::Started, [url, this] { snapshot_xml(url); });
             }
         }
     }

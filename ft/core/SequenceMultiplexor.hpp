@@ -30,8 +30,12 @@ public:
     }
     template<typename TypedPacketT>
     bool match(const TypedPacketT& packet) const {
+        
+        if(endpoints_.size()==0)
+            return true;
         for(auto &ep : endpoints_) {
-            if(ep == packet.header().src()) {
+            //TOOLBOX_DEBUG<<"match filter "<<ep<<" packet src "<<packet.header().dst()
+            if(ep == packet.header().dst()) {
                 return true;
             }
         }

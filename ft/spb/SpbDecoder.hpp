@@ -52,7 +52,7 @@ public:
     using SequenceMultiplexor = typename Decoder::template SequenceMultiplexor<ImplT>;
     using Schema = typename Decoder::Schema;
     template<typename MessageT>
-    using SpbPacket = typename Decoder::template TypedPacket<MessageT>;
+    using SpbPacket = typename Decoder::template SpbPacket<MessageT>;
     using Multiplexor = SequenceMultiplexor<DerivedT>;
 public:
     BasicSpbStream(Protocol& protocol)
@@ -80,7 +80,7 @@ public:
     void on_stale(const PacketT& packet, const Multiplexor& mux) {
         //TOOLBOX_DEBUG << DerivedT::name()<<"."<<mux.name()<<": ignored stale seq "<<packet.sequence()<<" current seq "<<mux.sequence();
     }
-    void on_gateway_state_changed(core::RunState state, core::RunState old_state, core::ExceptionPtr err) {}
+    void on_gateway_state_changed(core::State state, core::State old_state, core::ExceptionPtr err) {}
 protected:
     void on_parameters_updated(const core::Parameters &params) {
         std::string_view type = params["type"].get_string();
@@ -112,7 +112,7 @@ public:
     using SequenceMultiplexor = core::BasicSequencedMultiplexor<ImplT, typename BinaryPacket::Header::Endpoint, std::uint64_t>;
 
     template<typename MessageT> 
-    class TypedPacket: public tb::PacketView<MessageT, BinaryPacket> {
+    class SpbPacket: public tb::PacketView<MessageT, BinaryPacket> {
         using Base = tb::PacketView<MessageT, BinaryPacket>;
     public:
         using Base::Base;
@@ -157,8 +157,8 @@ public:
                     if(!found && Message::msgid == frame.msgid) {
                         found = true;
                         //TOOLBOX_DEBUG << "["<<(ptr-begin)<<"] msgid "<<frame.msgid<<" seq "<<frame.seq;
-                        TypedPacket<Message> typed_packet(packet);
-                        stream.on_decoded(typed_packet);
+                        SpbPacket<Message> spbpkt(packet);
+                        stream.on_decoded(spbpkt);
                     }
                 });
             });
