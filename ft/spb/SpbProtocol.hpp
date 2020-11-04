@@ -83,7 +83,7 @@ public:
         for(auto e: params) {
             auto strm = e.value_or("stream", std::string{});
             StreamsTuple strms = streams();
-            tb::tuple_for_each(strms, [&](auto &s) {
+            mp::tuple_for_each(strms, [&](auto &s) {
                 if(s.name() == strm) {
                     s.on_parameters_updated(e);
                 }
