@@ -32,10 +32,6 @@ public:
     core::TickStream& ticks(core::StreamType streamtype) { return decoder_.ticks(); }
     core::VenueInstrumentStream& instruments(core::StreamType streamtype) { return decoder_.instruments(); }
 private:
-    void on_tick(const Tick& tick) {
-           
-    }
-private:
     QshDecoder decoder_;
     std::string url_;
 };

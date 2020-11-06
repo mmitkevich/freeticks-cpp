@@ -21,10 +21,10 @@ namespace tbn = toolbox::net;
 
 using Timestamp = core::Timestamp;
 
-using SpbBestPriceSnapshot = std::array<core::Tick,3>;
+using SpbTick = core::Ticks<3>;
 
 template<typename ProtocolT
-,typename SnapshotUpdatesT = SpbReplacingUpdates<spb::SnapshotKey, spb::SpbBestPriceSnapshot>
+,typename SnapshotUpdatesT = SpbReplacingUpdates<spb::SnapshotKey, spb::SpbTick>
 > class SpbBestPriceStream : public BasicSpbStream<SpbBestPriceStream<ProtocolT>, ProtocolT, core::TickStream>
 {
 public:
@@ -33,7 +33,6 @@ public:
     using Protocol = typename Base::Protocol;
     using Schema = typename Base::Schema;
     using SnapshotUpdates = SnapshotUpdatesT;  
-    using Snapshot = SpbBestPriceSnapshot;
 
     // packet type meta function
     template<typename MessageT>
@@ -70,57 +69,46 @@ public:
     }
 
     void on_message(const typename PriceSnapshot::Header& h, const spb::Price& e, Timestamp cts) {
-        auto snap = to_snapshot(impl_.updates_snapshot_seq(), cts, h.server_time(), e);
+        auto ti = to_tick(impl_.updates_snapshot_seq(), cts, h.server_time(), e);
         SnapshotKey key {e.instrument, h.header.sourceid};
-        auto rv = impl_.snapshot(impl_.updates_snapshot_seq(), std::move(key), snap);
-        if(rv.first)
-            send(rv.second);
+        auto [tick, is_replaced] = impl_.snapshot(impl_.updates_snapshot_seq(), std::move(key), ti);
+        if(is_replaced) {
+            invoke(tick->template as_size<1>());
+        }
     }
     
     void on_message(const typename PriceOnline::Header& h, const spb::Price& e, Timestamp cts) {
-        auto snap = to_snapshot(h.sequence(), cts, h.server_time(), e);
+        auto ti = to_tick(h.sequence(), cts, h.server_time(), e);
         SnapshotKey key {e.instrument, h.header.sourceid};
-        auto rv = impl_.update(h.sequence(), std::move(key), snap);
-        if(rv.first)
-            send(rv.second);
-    }
-
-protected:
-    void send(const Snapshot& snap)
-    {
-        //TOOLBOX_DEBUG << name()<<": "<<val.value;
-        //stats().on_received(d); // FIXME
-        for(const auto& e: snap) {
-            if(!e.empty())
-                invoke(e);
+        auto [tick, is_replaced]  = impl_.update(h.sequence(), std::move(key), ti);
+        if(is_replaced) {
+            invoke(tick->template as_size<1>());
         }
     }
 
-    core::Tick to_tick(Seq seq, const spb::MarketInstrumentId id, const tb::WallTime cts, const tb::WallTime sts, const spb::SubBest& best) {
-        core::Tick ti {};
+protected:    
+    SpbTick to_tick(Seq seq, const Timestamp cts, const Timestamp sts, const spb::Price& e) {
+        SpbTick ti;
+        assert(e.sub_best.size()<=ti.capacity());
         ti.sequence(seq);
-        core::TickType type = core::TickType::Update;
-        if(best.type==SubBest::Type::Deal) {
-            type = core::TickType::Fill;
-        }
-        ti.type(type);
-        ti.venue_instrument_id(id.instrument_id);
-        ti.timestamp(cts);
-        ti.server_timestamp(sts);
-        ti.price(protocol().price_conv().to_core(best.price));
-        ti.side(get_side(best));
-        ti.qty(core::Qty(best.amount));
-        return ti;
-    }
-    
-    Snapshot to_snapshot(Seq seq, const Timestamp cts, const Timestamp sts, const spb::Price& e) {
-        Snapshot snap;
-        assert(e.sub_best.size()<=snap.size());
-        for(std::size_t i=0; i<std::min(e.sub_best.size(), snap.size()); i++) {
+        ti.resize(std::min(e.sub_best.size(), ti.capacity()));
+        for(std::size_t i=0; i<ti.size(); i++) {
             auto &best = e.sub_best[i];
-            snap[i] = to_tick(seq, e.instrument, cts, sts, best);
+            core::TickType type = core::TickType::Update;
+            if(best.type==SubBest::Type::Deal) {
+                type = core::TickType::Fill;
+            }
+            ti.type(core::TickType::L1);
+            ti.venue_instrument_id(e.instrument.instrument_id);
+            ti.recv_time(cts);
+            ti.send_time(sts);
+            auto& lvl = ti[i];
+            lvl.type(core::TickType::Update);
+            lvl.price(protocol().price_conv().to_core(best.price));
+            lvl.side(get_side(best));
+            lvl.qty(core::Qty(best.amount));
         }
-        return snap;
+        return ti;
     }
     
     static constexpr core::TickSide get_side(const SubBest& self) {  

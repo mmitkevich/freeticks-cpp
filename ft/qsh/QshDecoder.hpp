@@ -17,7 +17,7 @@
 #include "toolbox/util.hpp"
 
 namespace ft::qsh {
-using Tick = ft::core::Tick;
+using QshTick = ft::core::Ticks<2>;
 using Timestamp = ft::core::Timestamp;
 
 class QshDecoder

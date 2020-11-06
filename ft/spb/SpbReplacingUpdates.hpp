@@ -31,10 +31,10 @@ public:
     std::uint64_t updates_snapshot_seq() const {
         return updates_last_seq_;
     }
-    std::pair<bool, const V&> snapshot(std::uint64_t seq, const K& key,  const V& value) {
+    std::pair<const V*, bool> snapshot(std::uint64_t seq, const K& key,  const V& value) {
         if(!snapshot_start_seq_) {
             //log_state(seq,"Snapshot: No SnapshotStart");
-            return {false, value};
+            return {&value, false};
         }
         snapshot_last_seq_ = seq;
         snapshot_size_++;
@@ -44,14 +44,14 @@ public:
         SeqValue<V>& prev = snapshot_[key];
         if(prev.seq == invalid_seq || updates_snapshot_seq_>prev.seq) {
             prev = SeqValue<V>{updates_snapshot_seq_, value};
-            return {true, prev.value};
+            return {&prev.value, true};
         }else {
             //log_state(updates_snapshot_seq_, "Snapshot: Stale ignored");    
             snapshots_stats_.on_rejected();
-            return {false, prev.value};
+            return {&prev.value, false};
         }
     }
-    std::pair<bool,const V&> update(std::uint64_t seq, const K& key,  const V& value) {
+    std::pair<const V*,bool> update(std::uint64_t seq, const K& key,  const V& value) {
         if(updates_last_seq_!=invalid_seq && seq>updates_last_seq_ + 1) {
             updates_stats_.on_gap(seq-(updates_last_seq_ + 1));
         }
@@ -62,11 +62,11 @@ public:
         SeqValue<V>& prev = snapshot_[key];
         if(prev.seq == invalid_seq || seq>prev.seq) {
             prev = SeqValue<V>{seq, value};
-            return {true, prev.value};
+            return {&prev.value,true};
         }else {
             //log_state(seq, "Update: Stale ignored");    
             updates_stats_.on_rejected();
-            return {false, prev.value};
+            return {&prev.value,false};
         }
     }
     static constexpr bool log_state_enabled = false;

@@ -158,73 +158,73 @@ void QshDecoder::read_order_log() {
 
     int flags = read_byte();
     std::uint16_t plaza_flags = read_uint16();
-    Tick d {};
+    QshTick ti {};
+    auto& order = ti[0];
+    auto& fill = ti[1];
     FT_TRACE("flags 0x"<<std::hex<<flags<<" plaza_flags 0x"<<plaza_flags);
     if(plaza_flags & (PLAZA_ADD|PLAZA_MOVE|PLAZA_COUNTER)) {
-        using namespace tbu::operators;
-        d.type(core::TickType::Place);
+        ti.type(core::TickType::L3);
+        order.type(core::TickType::Place);
     }
     if(plaza_flags & (PLAZA_CANCEL|PLAZA_MOVE)) {
-        using namespace tbu::operators;
-        d.type(core::TickType::Cancel);
+        ti.type(core::TickType::L3);
+        order.type(core::TickType::Cancel);
     }
     if(plaza_flags & PLAZA_FILL) {
-        using namespace tbu::operators;
-        d.type(core::TickType::Fill);
+        fill.type(core::TickType::Fill);
     }
     if(flags & OL_TIMESTAMP) {
         state_.ts = read_grow_datetime(state_.ts);
         FT_TRACE("exchange_timestamp "<<e.timestamp)
     }
     Timestamp ts(state_.ts);
-    d.timestamp(ts);
-    d.server_timestamp(ts);
-
+    ti.recv_time(ts);
+    ti.send_time(ts);
     if(flags & OL_ID) {
         if(plaza_flags & PLAZA_ADD) {
             state_.exchange_id = read_growing(state_.exchange_id);
-            d.server_id(state_.exchange_id);
+            order.server_id(state_.exchange_id);
         } else {
-            d.server_id(read_relative(state_.exchange_id));
+            order.server_id(read_relative(state_.exchange_id));
         }
         FT_TRACE("exchange_id "<<e.exchange_id)
     } else {
-        d.server_id(state_.exchange_id);
+        order.server_id(state_.exchange_id);
     }
     if(flags&OL_PRICE) {
         state_.price = read_relative(state_.price);
         FT_TRACE("price "<<e.price)
     }
-    d.price(state_.price);
+    order.price(state_.price);
     if(flags&OL_AMOUNT) {
-        d.qty(read_leb128());
+        order.qty(read_leb128());
         FT_TRACE("qty "<<e.qty)
     }
     if(plaza_flags & PLAZA_FILL) {
         if(flags&OL_AMOUNT_LEFT) {
-            d.qty_active(read_leb128());
+            fill.qty(read_leb128());
             FT_TRACE("qty_left "<<e.qty_left)
         }
         if(flags&OL_FILL_ID) {
             state_.fill_id = read_growing(state_.fill_id);
             FT_TRACE("trade_id "<<d.fill_id)
         }
-        d.fill_id(state_.fill_id);        
+        fill.server_id(state_.fill_id);        
         if(flags&OL_FILL_PRICE) {
             state_.fill_price = read_relative(state_.fill_price);
             FT_TRACE("trade_price "<<e.fill_price)
         }
-        d.fill_price(state_.fill_price);
+        fill.price(state_.fill_price);
         if(flags&OL_OPEN_INTEREST) {
             state_.open_interest = read_relative(state_.open_interest);
             FT_TRACE("open_interest "<<e.open_interest)
         }
-        d.open_interest(state_.open_interest);
+        //fill.open_interest(state_.open_interest);
     }
-    if(d.type()==core::TickType::Unknown) {
+    if(ti.type()==core::TickType::Unknown) {
         TOOLBOX_WARNING<<"qsh: invalid flags "<<std::hex<<flags<<" plaza "<<std::hex<<plaza_flags;
         ticks().stats().on_rejected(flags);
     }else {
-        ticks().invoke(d);
+        ticks().invoke(ti.as_size<1>());
     }
 }
