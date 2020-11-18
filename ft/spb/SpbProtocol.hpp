@@ -97,10 +97,10 @@ public:
     BestPriceStream& bestprice() { return bestprice_;}
     InstrumentStream& instruments() { return instruments_; }
 
-    core::TickStream& ticks(core::StreamType streamtype) {
+    core::TickStream& ticks(core::StreamName stream) {
         return bestprice();
     }
-    core::VenueInstrumentStream& instruments(core::StreamType streamtype) {
+    core::VenueInstrumentStream& instruments(core::StreamName stream) {
         return  instruments();
     }
 private:

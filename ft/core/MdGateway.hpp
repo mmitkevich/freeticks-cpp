@@ -18,13 +18,13 @@ namespace streams {
     constexpr static const char* Instrument = "Instrument";
 };
 
-using StreamType = const char*;
+using StreamName = const char*;
 
 class IMdGateway : public IComponent {
 public:
-    virtual TickStream& ticks(StreamType streamtype) = 0;
+    virtual TickStream& ticks(StreamName streamtype) = 0;
 
-    virtual VenueInstrumentStream& instruments(StreamType streamtype) = 0;
+    virtual VenueInstrumentStream& instruments(StreamName streamtype) = 0;
 
     // very basic stats
     virtual core::StreamStats& stats() = 0;
@@ -52,8 +52,8 @@ public:
     const Parameters& parameters() const override { return impl_->parameters(); }
     ParametersSignal& parameters_updated() override { return impl_->parameters_updated(); }
     
-    core::TickStream& ticks(StreamType streamtype) override { return impl_->ticks(streamtype); }
-    core::VenueInstrumentStream& instruments(StreamType streamtype) override { return impl_->instruments(streamtype); }
+    core::TickStream& ticks(StreamName stream) override { return impl_->ticks(stream); }
+    core::VenueInstrumentStream& instruments(StreamName streamtype) override { return impl_->instruments(streamtype); }
 private:
     std::unique_ptr<ImplT> impl_;
 };

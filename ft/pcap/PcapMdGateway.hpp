@@ -89,11 +89,11 @@ public:
     void on_idle() {
         report(std::cerr);
     }
-    core::TickStream& ticks(core::StreamType streamtype) {
-        return protocol_.ticks(streamtype);
+    core::TickStream& ticks(core::StreamName stream) {
+        return protocol_.ticks(stream);
     }
-    core::VenueInstrumentStream& instruments(core::StreamType streamtype) {
-        return protocol_.instruments(streamtype);
+    core::VenueInstrumentStream& instruments(core::StreamName stream) {
+        return protocol_.instruments(stream);
     }
 
 private:

@@ -98,7 +98,7 @@ protected:
             if(best.type==SubBest::Type::Deal) {
                 type = core::TickType::Fill;
             }
-            ti.type(core::TickType::L1);
+            ti.type(core::TickType::Tick);
             ti.venue_instrument_id(e.instrument.instrument_id);
             ti.recv_time(cts);
             ti.send_time(sts);

@@ -29,8 +29,8 @@ public:
     }
     core::StreamStats& stats() { return decoder_.ticks().stats(); }
     
-    core::TickStream& ticks(core::StreamType streamtype) { return decoder_.ticks(); }
-    core::VenueInstrumentStream& instruments(core::StreamType streamtype) { return decoder_.instruments(); }
+    core::TickStream& ticks(core::StreamName stream) { return decoder_.ticks(); }
+    core::VenueInstrumentStream& instruments(core::StreamName stream) { return decoder_.instruments(); }
 private:
     QshDecoder decoder_;
     std::string url_;

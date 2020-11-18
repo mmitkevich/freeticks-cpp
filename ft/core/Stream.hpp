@@ -3,6 +3,7 @@
 #include "ft/utils/Common.hpp"
 #include "toolbox/util/Slot.hpp"
 #include "ft/core/StreamStats.hpp"
+#include "ft/capi/ft-types.h"
 
 namespace ft::core {
 
@@ -32,5 +33,22 @@ public:
 protected:
   core::StreamStats stats_;
 };
+
+enum class StreamType {
+    Invalid = 0,
+    Tick = FT_TICK,
+    OHLC = FT_OHLC,
+    Instrument = FT_INSTRUMENT
+};
+
+inline std::ostream& operator<<(std::ostream& os, const StreamType self) {
+    switch(self) {
+        case StreamType::Invalid: return os << "Unknown";
+        case StreamType::Tick: return os << "Tick";
+        case StreamType::OHLC: return os << "OHLC";
+        case StreamType::Instrument: return os << "Instrument";
+        default: return os << (int)tb::unbox(self);
+    }
+}
 
 };

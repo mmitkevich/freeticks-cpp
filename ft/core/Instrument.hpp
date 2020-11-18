@@ -1,7 +1,9 @@
 #pragma once
 
+#include "ft/capi/ft-types.h"
 #include "ft/core/Identifiable.hpp"
 #include "ft/core/Stream.hpp"
+#include "ft/capi/ft-types.h"
 
 namespace ft::core {
 
@@ -136,5 +138,20 @@ protected:
 };
 
 using VenueInstrumentStream = core::Stream<VenueInstrument>;
+
+template<std::size_t SymbolLength>
+class InstrumentMetadata : public ft_instrument_t {
+public:
+    InstrumentMetadata(std::string_view symbol) {
+        ft_symbol_len = std::min(symbol.size()+1, SymbolLength);
+        std::memcpy(symbol_, symbol.data(), ft_symbol_len-1);
+        symbol_[ft_symbol_len-1] = 0;
+        ft_hdr.ft_len = sizeof(ft_instrument_t)+ft_symbol_len;
+    }
+    std::size_t length() const { return ft_hdr.ft_len + ft_symbol_len*sizeof(ft_symbol[0]); }
+    std::string_view symbol() const { return std::string_view(ft_symbol, ft_symbol_len); }
+private:
+    ft_char symbol_[SymbolLength];
+};
 
 };

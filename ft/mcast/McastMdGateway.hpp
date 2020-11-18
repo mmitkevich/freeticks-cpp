@@ -81,7 +81,7 @@ public:
         assert(socket_.empty());
         sub_recv_.reset();
     }
-    void on_recv(tb::CyclTime now, int fd, unsigned events) {
+    void on_recv(tb::CyclTime now, tb::os::FD fd, tb::IoEvent events) {
         header_.recv_timestamp(now.wall_time());
         std::size_t size = socket_.recv(buf_.prepare(4096), 0);
         buf_.commit(size);
@@ -222,11 +222,11 @@ public:
     void on_idle() {
         report(std::cerr);
     }
-    core::TickStream& ticks(core::StreamType streamtype) {
-        return protocol_.ticks(streamtype);
+    core::TickStream& ticks(core::StreamName stream) {
+        return protocol_.ticks(stream);
     }
-    core::VenueInstrumentStream& instruments(core::StreamType streamtype) {
-        return protocol_.instruments(streamtype);
+    core::VenueInstrumentStream& instruments(core::StreamName stream) {
+        return protocol_.instruments(stream);
     }
 
     void on_packet(const BinaryPacket& pkt) {

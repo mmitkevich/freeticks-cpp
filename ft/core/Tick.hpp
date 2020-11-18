@@ -9,6 +9,9 @@
 #include "ft/core/Identifiable.hpp"
 #include "ft/utils/Numeric.hpp"
 
+#include "ft/capi/ft-types.h"
+#include "ft/core/Request.hpp"
+
 namespace ft::core {
 
 using Timestamp = toolbox::WallTime;
@@ -37,38 +40,33 @@ struct DefaultPolicy {
     constexpr QtyConv qty_conv() { return QtyConv(CoreQtyMultiplier); }
 };
 
-enum class TickType : std::uint8_t {
-    Unknown = 0,
-    Place   = 1, // L3: insert new order 
-    Cancel  = 2, // L3: cancel order
-    Modify  = 3, // L3: insert new order, with reference to old (cancelled) order
-    Fill    = 4, // L3: order fill
-    Update  = 5, // L2: update aggregated volume on level
-    Clear   = 6, // L2: clear book (side)
-    L1      = 13,
-    L2      = 14,
-    L3      = 15
+enum class TickType : ft_byte {
+    Invalid = 0,
+    Add     = FT_ADD,         // L3: insert new order 
+    Remove  = FT_REMOVE,        // L3: cancel order
+    Fill    = FT_EXEC_FILL,                    // L3: order fill
+    PartFill= FT_EXEC_PARTIAL_FILL,    // L3: order fill
+    Update  = FT_UPDATE,                // L2: update aggregated volume on level
+    Clear   = FT_CLEAR,                  // L2: clear book (side)
+    Tick    = FT_TICK           // any of above
 };
 
 inline std::ostream& operator<<(std::ostream& os, const TickType self) {
     switch(self) {
-        case TickType::Unknown: return os << "Unknown";
-        case TickType::Place: return os << "Place";
-        case TickType::Cancel: return os << "Cancel";
-        case TickType::Modify: return os << "Modify";
+        case TickType::Invalid: return os << "Unknown";
+        case TickType::Add: return os << "Place";
+        case TickType::Remove: return os << "Cancel";
         case TickType::Fill: return os << "Fill";
+        case TickType::PartFill: return os << "PartFill";
         case TickType::Update: return os <<"Update";
         case TickType::Clear: return os <<"Clear";
-        case TickType::L1: return os << "L1";
-        case TickType::L2: return os << "L1";
-        case TickType::L3: return os << "L1";
         default: return os << (int)tb::unbox(self);
     }
 }
 
-typedef std::int8_t ti_side_t;
 
-enum class TickSide: ti_side_t {
+
+enum class TickSide: ft_side_t {
     Invalid = 0,
     Buy     = 1,
     Sell    = -1,
@@ -90,107 +88,77 @@ using QtyConversion = ft::utils::NumericConversion<ValueT, Multiplier, Qty, Core
 
 using Sequence = std::uint64_t;
 
-// stable binary data format
-typedef  std::int64_t ti_flags_t;
-struct tick_price_t {
-    struct {
-        ti_flags_t ti_type:8;
-        ti_flags_t ti_side:2;        
-    } ti_flags {};
-    ClientId ti_client_id {};               // client order or fill id
-    ExchangeId ti_server_id {};             // server order or fill id
-    Timestamp ti_timestamp {};              // exchange timestamp    
-    Qty ti_qty {};                          // original/active qty
-    Price ti_price {};
-};
 
-struct tick_version_t {
-    uint16_t ti_template;
-    uint16_t ti_schema;
-    uint16_t ti_version;
-};
-struct tick_t {
-    uint16_t ti_len;                    // length of message(without repeating group)
-    tick_version_t ti_template;         // template (3*16bit) SBE compatible
-    struct {                            // 64bit flags
-        ti_flags_t ti_type:8;
-    } ti_flags {};
-    
-    Sequence ti_sequence {};            // sender sequence number    
-    Timestamp ti_recv_time {};          // receiver timestamp
-    Timestamp ti_send_time {};          // sender timestamp
 
-    VenueInstrumentId ti_venue_instrument_id;   // instrument symbol hash (64 bit)
-
-    std::uint16_t ti_item_len{};       // SBE: blockLength
-    std::uint16_t ti_items_count{};    // SBE: numInGroup
-    char ti_items[0];                  // data block, SBE: "repeating group"
-};
-
-template<typename PolicyT, std::size_t FixedLength=sizeof(tick_price_t)>
-struct BasicTickPrice : tick_price_t {
+template<typename PolicyT, std::size_t FixedLength=sizeof(ft_price_t)>
+struct BasicTickPrice : ft_price_t {
 public:
     constexpr static std::size_t fixed_length() { return FixedLength; }
     
-    TickType type() const { return (TickType)(ti_flags.ti_type); }
-    void type(TickType type) { ti_flags.ti_type = tb::unbox(type); }
+    TickType type() const { return (TickType)(ft_type); }
+    void type(TickType type) { ft_type = tb::unbox(type); }
 
     // following could be group of 
-    TickSide side() const { return (TickSide)ti_flags.ti_side; }
-    void side(TickSide side) { ti_flags.ti_side = tb::unbox(side); }
+    TickSide side() const { return (TickSide)ft_side; }
+    void side(TickSide side) { ft_side = tb::unbox(side); }
     
-    Price price() const { return ti_price; }
-    void price(Price val) { ti_price = val; }
+    Price price() const { return ft_price; }
+    void price(Price val) { ft_price = val; }
 
-    Qty qty() const { return ti_qty; }
-    void qty(Qty val) { ti_qty = val; }
+    Qty qty() const { return ft_qty; }
+    void qty(Qty val) { ft_qty = val; }
 
-    bool empty() { return type()==TickType::Unknown; }
+    bool empty() { return type()==TickType::Invalid; }
 
     // order
-    ExchangeId server_id() const { return ti_server_id; }   // to be made up to 64 byte len?
-    void server_id(ExchangeId val) { ti_server_id = val; }
+    ExchangeId server_id() const { return ft_server_id; }   // to be made up to 64 byte len?
+    void server_id(ExchangeId val) { ft_server_id = val; }
 };
 
+
 template<typename T, std::size_t SizeI=1>
-struct BasicTicks : tick_t {
+struct BasicTicks : ft_tick_t {
 public:
-    std::size_t length() const { return ti_len + ti_items_count*ti_item_len; }
+    std::size_t length() const { return ft_hdr.ft_len + ft_items_count*ft_item_len; }
     static constexpr std::size_t capacity() { return SizeI; }
-    TickType type() const { return (TickType)(ti_flags.ti_type); }
-    void type(TickType type) { ti_flags.ti_type = tb::unbox(type); }
+    
+    TickType type() const { return (TickType)ft_hdr.ft_type.ft_event; }
+    void type(TickType type) { ft_hdr.ft_type.ft_event = tb::unbox(type); }
+    
+    StreamType topic() const { return (StreamType)ft_hdr.ft_type.ft_topic; }
+    void topic(StreamType topic) { ft_hdr.ft_type.ft_topic = topic; }
 
-    Sequence sequence() const { return ti_sequence; }
-    void sequence(Sequence val) { ti_sequence = val; }
+    Sequence sequence() const { return ft_hdr.ft_seq; }
+    void sequence(Sequence val) { ft_hdr.ft_seq = val; }
 
-    Timestamp recv_time() const { return ti_recv_time; }
-    void recv_time(Timestamp val) { ti_recv_time = val; }
+    Timestamp recv_time() const { return Timestamp(tb::Nanos(ft_hdr.ft_recv_time)); }
+    void recv_time(Timestamp val) { ft_hdr.ft_recv_time = val.time_since_epoch().count(); }
 
-    Timestamp send_time() const { return ti_send_time; }
-    void send_time(Timestamp val) { ti_send_time = val; }    
+    Timestamp send_time() const { return Timestamp(tb::Nanos(ft_hdr.ft_send_time)); }
+    void send_time(Timestamp val) { ft_hdr.ft_send_time = val.time_since_epoch().count(); }    
 
-    VenueInstrumentId venue_instrument_id() const { return ti_venue_instrument_id; }
-    void venue_instrument_id(VenueInstrumentId val) { ti_venue_instrument_id = val; }
+    VenueInstrumentId venue_instrument_id() const { return ft_instrument_id; }
+    void venue_instrument_id(VenueInstrumentId val) { ft_instrument_id = val; }
 
     const T* begin() const { return &operator[](0); }
     const T* end() const { return &operator[](size()-1); }
 
     bool empty() const { 
         auto t = type();
-        return t == TickType::Unknown || size()==0;
+        return t == TickType::Invalid || size()==0;
     }
     T& operator[](std::size_t i) { 
-        return *reinterpret_cast<T*>(&ti_items[0]+ T::fixed_length()*i);
+        return *reinterpret_cast<T*>(&ft_items[0]+ T::fixed_length()*i);
     }
     const T& operator[](std::size_t i) const { 
-        return *reinterpret_cast<const T*>(&ti_items[0]+ T::fixed_length()*i);
+        return *reinterpret_cast<const T*>(&ft_items[0]+ T::fixed_length()*i);
     }
     std::size_t size() const  {
-        return ti_items_count;
+        return ft_items_count;
     }
     void resize(std::size_t size) {
         assert(size<=capacity());
-        ti_items_count = size;
+        ft_items_count = size;
     }
     template<std::size_t NewSizeI>
     BasicTicks<T,NewSizeI>& as_size() {
@@ -216,13 +184,13 @@ template<typename PolicyT, std::size_t FixedLength>
 inline std::ostream& operator<<(std::ostream& os, const BasicTickPrice<PolicyT, FixedLength>& e) {
     os << "ty:'" << e.type() << "'";
     os << ",side:"<<e.side();
-    os << ",price:" << PolicyT::instance().price_conv().to_double(e.ti_price);
-    os << ",qty:" << PolicyT::instance().qty_conv().to_double(e.ti_qty);
+    os << ",price:" << PolicyT::instance().price_conv().to_double(e.ft_price);
+    os << ",qty:" << PolicyT::instance().qty_conv().to_double(e.ft_qty);
     return os;
 }
 template<typename DataT, std::size_t SizeI>
 inline std::ostream & operator<<(std::ostream& os, const BasicTicks<DataT, SizeI> &e) {
-    os << "seq:"<<e.ti_sequence;
+    os << "seq:"<<e.sequence();
     os << ",sts:'" << toolbox::sys::put_time<toolbox::Nanos>(e.send_time())<<"'";
     os << ",clt:" << (e.recv_time()-e.send_time()).count();
     os << ",vins:" << e.venue_instrument_id();

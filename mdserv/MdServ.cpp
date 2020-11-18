@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string_view>
 
+#include "ft/capi/ft-types.h"
 #include "ft/core/Instrument.hpp"
 #include "ft/core/InstrumentsCache.hpp"
 #include "ft/core/MdGateway.hpp"
@@ -29,7 +30,8 @@
 
 #include "ft/utils/Factory.hpp"
 #include "toolbox/util/Json.hpp"
-
+#include "toolbox/ipc/MagicRingBuffer.hpp"
+#include "ft/core/Request.hpp"
 
 namespace ft {
 
@@ -38,6 +40,27 @@ namespace tbs = toolbox::sys;
 namespace tb = toolbox;
 namespace tbj = toolbox::json;
 
+
+template<typename SockT>
+class MdRequests {
+public:
+  MdRequests() {}
+  void url(std::string_view url) { url_ = url; }
+  void start() {
+    sock_ = std::make_unique<SockT>();
+  }
+  void stop() {
+    sock_.reset(nullptr);
+  }
+  SockT& sock() {
+    assert(sock_!=nullptr);
+    return *sock_;
+  }
+
+private:
+  std::unique_ptr<SockT> sock_;
+  std::string url_;
+};
 class MdServ {
 public:
   using This = MdServ;
@@ -173,6 +196,7 @@ public:
         ('v', "verbose", tbu::Value{opts["verbose"], std::uint32_t{}}, "log level")
         ('o', "output", tbu::Value{opts["output"], std::string{}}, "output file")
         ('m', "mode", tbu::Value{mode}, "pcap, mcast")
+        ('r', "requests", tbu::Value{opts["requests"], std::string{}}, "requests queue")
         (tbu::Value{config_file}.required(), "config.json file")
       .parse(argc, argv);
 
@@ -195,6 +219,7 @@ public:
   }
 
 private:
+  MdRequests<tb::MagicRingBuffer> requests_;
   tb::MonoTime start_timestamp_;
   std::unique_ptr<core::IMdGateway> gateway_;
   core::InstrumentsCache instruments_;
