@@ -4,6 +4,7 @@
 #include "ft/utils/Common.hpp"
 
 #include "toolbox/io/Buffer.hpp"
+#include "toolbox/io/Poller.hpp"
 #include "toolbox/io/Reactor.hpp"
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Protocol.hpp"
@@ -64,7 +65,7 @@ public:
         if(ec)
             throw std::system_error{tb::make_sys_error(ec.value()), "mcast_join_group"};            
         assert(!socket_.empty());
-        sub_recv_ = reactor_.subscribe(socket_.get(), tb::EpollIn, tb::bind<&This::on_recv>(this));
+        sub_recv_ = reactor_.subscribe(socket_.get(), tb::PollEvents::Read, tb::bind<&This::on_recv>(this));
     }
     void disconnect() {
         assert(!socket_.empty());
@@ -81,7 +82,7 @@ public:
         assert(socket_.empty());
         sub_recv_.reset();
     }
-    void on_recv(tb::CyclTime now, tb::os::FD fd, tb::IoEvent events) {
+    void on_recv(tb::CyclTime now, tb::os::FD fd, tb::PollEvents events) {
         header_.recv_timestamp(now.wall_time());
         std::size_t size = socket_.recv(buf_.prepare(4096), 0);
         buf_.commit(size);

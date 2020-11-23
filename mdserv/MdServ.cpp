@@ -166,12 +166,12 @@ public:
 
     gateway().start();
     if(gateway().state()!=core::State::Stopped) {
-      tb::ReactorRunner runner(reactor_);
+      tb::Reactor::Runner runner(reactor_);
       tb::wait_termination_signal();
     }
   }
   
-  void on_reactor_state_changed(tb::Reactor*reactor, tb::io::State state) {
+  void on_reactor_state_changed(tb::Scheduler*reactor, tb::io::State state) {
     TOOLBOX_INFO<<"reactor state: "<<state;
     switch(state) {
       case tb::io::State::Stopping: 
