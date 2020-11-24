@@ -1,21 +1,21 @@
 #pragma once
-#include "ft/core/Executor.hpp"
+#include "ft/core/Component.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/utils/Common.hpp"
 #include "QshDecoder.hpp"
 
-#include "ft/core/MdGateway.hpp"
+#include "ft/core/MdClient.hpp"
 #include <ostream>
 #include <string_view>
 
 namespace ft::qsh {
 
 // file-based gateway for Qsh files
-class QshMdGateway: public core::BasicMdGateway<QshMdGateway, core::Executor> {
+class QshMdClient: public core::BasicComponent<QshMdClient, core::State> {
 public:
-    using This = QshMdGateway;
-    using Base = core::BasicMdGateway<This, core::Executor>;
+    using This = QshMdClient;
+    using Base = core::BasicComponent<QshMdClient, core::State>;
     using Base::Base;
 
     void url(std::string_view val) { url_ = val; }

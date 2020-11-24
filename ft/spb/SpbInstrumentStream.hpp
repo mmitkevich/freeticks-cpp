@@ -1,5 +1,5 @@
 #pragma once
-#include "ft/core/Executor.hpp"
+#include "ft/core/Component.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/Tick.hpp"
@@ -30,7 +30,6 @@ public:
     using Base::decoder;
     using Base::invoke;
     using Base::protocol;
-    using Base::executor;
 
     static constexpr std::string_view name() { return "instrument"; }
 
@@ -53,9 +52,14 @@ public:
         if(type == "snapshot.xml") {
             for(auto e:params["urls"]) {
                 std::string url = std::string{e.get_string()};
-                executor().state_hook(core::State::Started, [url, this] { snapshot_xml(url); });
+                snapshot_xml_url_ = url;
+                //parent().state_hook(core::State::Started, [url, this] { snapshot_xml(url); });
             }
         }
+    }
+    void on_started() {
+        if(!snapshot_xml_url_.empty())
+            snapshot_xml(snapshot_xml_url_);
     }
     void snapshot_xml(std::string_view path) {
         tb::xml::Parser p;
@@ -75,6 +79,8 @@ public:
                 invoke(vi);
         }
     }
+private:
+    std::string snapshot_xml_url_;
 };
 
 }

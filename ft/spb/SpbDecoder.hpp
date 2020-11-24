@@ -4,7 +4,7 @@
 #include "ft/core/Stream.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/core/Tick.hpp"
-#include "ft/pcap/PcapMdGateway.hpp"
+#include "ft/pcap/PcapMdClient.hpp"
 #include "ft/utils/Common.hpp"
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Packet.hpp"
@@ -62,8 +62,8 @@ public:
 public:
     BasicSpbStream(Protocol& protocol)
     : protocol_(protocol) {
-        auto& ex = protocol.executor();
-        ex.state_changed().connect(tb::bind<&DerivedT::on_gateway_state_changed>(&impl()));
+        //auto& ex = protocol.parent();
+        //ex.state_changed().connect(tb::bind<&DerivedT::on_gateway_state_changed>(&impl()));
     }
     
     BasicSpbStream(const BasicSpbStream&) = delete;
@@ -72,7 +72,9 @@ public:
     Protocol& protocol() { return protocol_; }
     Decoder& decoder() { return protocol_.decoder_; }
     
-    core::Executor& executor() { return protocol_.executor(); }
+    //core::Executor& executor() { return protocol_.executor(); }
+
+    void on_started() {}
 
     template<typename PacketT>
     void on_decoded(const PacketT& packet) {
@@ -85,7 +87,7 @@ public:
     void on_stale(const PacketT& packet, const Multiplexor& mux) {
         //TOOLBOX_DEBUG << DerivedT::name()<<"."<<mux.name()<<": ignored stale seq "<<packet.sequence()<<" current seq "<<mux.sequence();
     }
-    void on_gateway_state_changed(core::State state, core::State old_state, core::ExceptionPtr err) {}
+    //void on_gateway_state_changed(core::State state, core::State old_state, core::ExceptionPtr err) {}
 protected:
     void on_parameters_updated(const core::Parameters &params) {
         std::string_view type = params["type"].get_string();
@@ -121,10 +123,8 @@ public:
         using Base = tb::PacketView<MessageT, BinaryPacket>;
     public:
         using Base::Base;
-        using Base::value;
-        using Base::data;
-        using Base::size;
         using Base::header;
+        using Base::value;
         std::uint64_t sequence() const { return value().header().frame.seq; }
     };
 public:
@@ -136,9 +136,10 @@ public:
     static constexpr std::string_view name() { return "SPB_MDBIN"; }
 
     void on_packet(const BinaryPacket& packet) {
-        const char* begin = packet.data();
+        auto& buf = packet.buffer();
+        const char* begin = reinterpret_cast<const char*>(buf.data());
         const char* ptr = begin;
-        const char* end = begin + packet.size();
+        const char* end = begin + buf.size();
         while(ptr < end) {
             const Frame &frame = *reinterpret_cast<const Frame*>(ptr);
             //TOOLBOX_DEBUG << name()<<": recv "<<packet.size()<<" bytes from "<<packet.src()<<" seq "<<frame.seq;

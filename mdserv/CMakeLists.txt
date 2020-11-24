@@ -5,7 +5,7 @@ include_directories(PRIVATE
   "${PROJECT_SOURCE_DIR}")
 
 set(app_SOURCES
-    MdServ.cpp)
+    MdServApp.cpp)
 
 add_executable(${app_NAME}
   ${app_SOURCES})

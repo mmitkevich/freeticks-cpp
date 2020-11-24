@@ -101,7 +101,7 @@ void QshDecoder::read_header() {
     char buf[19];
     input_stream().read(buf, sizeof(buf));
     if(input_stream().fail() || 
-        0!=std::memcmp("MdGateway History Data", buf, sizeof(buf)))
+        0!=std::memcmp("Qscalp History Data", buf, sizeof(buf)))
         throw std::runtime_error("not qscalp file");
     int v = input_stream().get();
     if(v!=4)

@@ -3,8 +3,8 @@
 #include "ft/core/Identifiable.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Parameters.hpp"
-#include "ft/core/Executor.hpp"
 #include "toolbox/io/State.hpp"
+#include "toolbox/io/Reactor.hpp"
 #include <deque>
 #include <atomic>
 #include <exception>
@@ -35,9 +35,9 @@ public:
 };
 
 template<typename ImplT>
-class Component : public IComponent {
+class ComponentImpl : public IComponent {
 public:
-    Component(std::unique_ptr<ImplT> &&impl)
+    ComponentImpl(std::unique_ptr<ImplT> &&impl)
     : impl_(std::move(impl)) {}
 
     void start() override { impl_->start(); }
@@ -48,59 +48,77 @@ public:
 
     void parameters(const Parameters& parameters, bool replace=false) override { impl_->parameters(parameters, replace); }
     const Parameters& parameters() const override { return impl_->parameters(); }
-    ParametersSignal& parameters_updated() override { return impl_->parameters_updated(); }
-
 protected:
     std::unique_ptr<ImplT> impl_;
 };
 
-class Completions {
+/// list of deferred hooks
+template<typename...ArgsT>
+class BasicHooks {
 public:
     template<typename F>
-    void emplace_back(F&& fn) {
+    void connect(F&& fn) {
         fns_.emplace_back(std::move(fn));
     }
-    void invoke() {
+    void invoke(ArgsT...args) {
         while(!fns_.empty()) {
-            fns_.front()();
+            auto hook = std::move(fns_.front());
             fns_.pop_front();
+            hook(std::forward<ArgsT>(args)...);
         }
     }
+    void operator()(ArgsT...args) { invoke(std::forward<ArgsT>(args)...); }
 private:
-    std::deque<std::function<void()>> fns_;
+    std::deque<std::function<void(ArgsT...)>> fns_;
 };
 
-template<typename DerivedT, typename StateT=State, typename BaseT=Identifiable>
-class BasicComponent : public BaseT {
+
+using Reactor = toolbox::io::Reactor;
+
+Reactor& current_reactor();
+
+class Component : public Identifiable {
 public:
-    using Base = BaseT;
-    using Base::Base;
+    Reactor& reactor() { return *reactor_; }
+    Component(Reactor*reactor=nullptr)
+    : reactor_(reactor)
+    {}
+    void url(std::string_view url) { url_ = url; }
+    std::string_view url() const { return url_; }
+protected:
+    Reactor *reactor_{nullptr};
+    std::string url_;
+};
+/// Component: identifier + parameters + state + reactor
+template<typename DerivedT, typename StateT>
+class BasicComponent : public Component, public BasicParameterized<DerivedT> {
+public:
+    using Base = Component;
     using State = StateT;
     using StateSignal = tb::Signal<State, State, ExceptionPtr>;
-
+public:
+    using Base::Base;
     void start() {
         state(State::Starting);
         state(State::Started);
     }
-
     void stop() {
         state(State::Stopping);
         state(State::Stopped);
     }
-    
     void state(State state, ExceptionPtr err=nullptr) {
         if(state != state_) {
             auto old_state = state_.load(std::memory_order_acquire);
             state_.store(state, std::memory_order_release);
             switch(state) {
-                case State::Started: on_started_.invoke(); break;
-                case State::Stopped: on_stopped_.invoke(); break;
+                case State::Started: started_hooks_.invoke(); break;
+                case State::Stopped: stopped_hooks_.invoke(); break;
             }
             state_changed_.invoke(state, old_state, err);
         }
     }
     State state() const { return state_; }
-
+    
     template<typename FnT>
     bool state_hook(State state, FnT&& fn) {
         if(state_==state) {
@@ -108,8 +126,8 @@ public:
             return true;
         }
         switch(state) {
-            case State::Started: on_started_.emplace_back(std::move(fn)); return false;
-            case State::Stopped: on_stopped_.emplace_back(std::move(fn)); return false;
+            case State::Started: started_hooks_.connect(std::move(fn)); return false;
+            case State::Stopped: stopped_hooks_.connect(std::move(fn)); return false;
             default: assert(false); return false;
         }
     }
@@ -117,8 +135,11 @@ public:
 protected:
     std::atomic<State> state_{State::Stopped};
     StateSignal state_changed_; 
-    Completions on_stopped_;
-    Completions on_started_;
+    BasicHooks<> stopped_hooks_;
+    BasicHooks<> started_hooks_;
+    Reactor* reactor_;
 };
+
+
 
 } // ns ft::core

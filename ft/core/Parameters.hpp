@@ -15,29 +15,24 @@ public:
     virtual void parameters(const Parameters& parameters, bool replace=false) = 0;
     /// retrieve current parameters
     virtual const Parameters& parameters() const = 0;
-    /// parameters changed notification: source, new parameters
-    virtual ParametersSignal& parameters_updated() = 0;
 };
 
 
 
-template<class BaseT = IParameterized>
-class BasicParameterized : public BaseT {
+template<typename DerivedT>
+class BasicParameterized {
 public:
-    using BaseT::BaseT;
     /// update parameters. when replace==true, old parameters are cleared
     void parameters(const Parameters& parameters, bool replace=false) { 
         // FIXME: merge?
         MutableParameters::copy(parameters, parameters_);
-        parameters_updated_.invoke(parameters_);
+        static_cast<DerivedT*>(this)->on_parameters_updated(parameters_);
     }
+    void on_parameters_updated(const Parameters& parameters) {}
     /// retrieve current parameters
     const Parameters& parameters() const { return parameters_; }
-    /// parameters changed notification: source, new parameters
-    ParametersSignal& parameters_updated() { return parameters_updated_; }
 
 protected:
-    ParametersSignal parameters_updated_;
     MutableParameters parameters_;
 };
 

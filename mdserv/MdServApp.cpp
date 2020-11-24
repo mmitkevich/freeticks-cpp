@@ -10,60 +10,40 @@
 #include "ft/capi/ft-types.h"
 #include "ft/core/Instrument.hpp"
 #include "ft/core/InstrumentsCache.hpp"
-#include "ft/core/MdGateway.hpp"
+#include "ft/core/MdClient.hpp"
 #include "ft/core/Parameters.hpp"
-#include "ft/core/Executor.hpp"
+#include "ft/mcast/McastMdClient.hpp"
 
-#include "ft/mcast/McastMdGateway.hpp"
-
+#include "toolbox/io/Poller.hpp"
 #include "toolbox/io/Runner.hpp"
+#include "toolbox/net/DgramSock.hpp"
 #include "toolbox/net/EndpointFilter.hpp"
 #include "toolbox/sys/Log.hpp"
+#include "toolbox/sys/Time.hpp"
 #include "toolbox/util/Finally.hpp"
 #include "toolbox/util/Json.hpp"
 #include "toolbox/util/Options.hpp"
 
-#include "ft/pcap/PcapMdGateway.hpp"
-#include "ft/qsh/QshMdGateway.hpp"
+#include "ft/pcap/PcapMdClient.hpp"
+#include "ft/qsh/QshMdClient.hpp"
 
 #include "ft/spb/SpbProtocol.hpp"
 
 #include "ft/utils/Factory.hpp"
 #include "toolbox/util/Json.hpp"
-#include "toolbox/ipc/MagicRingBuffer.hpp"
+//#include "toolbox/ipc/MagicRingBuffer.hpp"
 #include "ft/core/Request.hpp"
+
+#include "MdServer.hpp"
 
 namespace ft {
 
-namespace tbu = toolbox::util;
-namespace tbs = toolbox::sys;
 namespace tb = toolbox;
-namespace tbj = toolbox::json;
 
 
-template<typename SockT>
-class MdRequests {
+class MdServApp {
 public:
-  MdRequests() {}
-  void url(std::string_view url) { url_ = url; }
-  void start() {
-    sock_ = std::make_unique<SockT>();
-  }
-  void stop() {
-    sock_.reset(nullptr);
-  }
-  SockT& sock() {
-    assert(sock_!=nullptr);
-    return *sock_;
-  }
-
-private:
-  std::unique_ptr<SockT> sock_;
-  std::string url_;
-};
-class MdServ {
-public:
-  using This = MdServ;
+  using This = MdServApp;
   struct MdOptions {
     int log_level = 0;
     std::string input_format;
@@ -71,20 +51,21 @@ public:
     std::string input;
     tb::optional<std::string> output;
   };
-  using McastPacket = mcast::McastDgram;
-  template<typename ProtocolT> using McastMdGateway = mcast::McastMdGateway<ProtocolT, core::Executor>;
+  using McastPacket = io::McastDgramConn::Packet;
+  template<typename ProtocolT> using McastMdClient = mcast::McastMdClient<ProtocolT>;
   using PcapPacket = tb::PcapPacket;
-  template<typename ProtocolT> using PcapMdGateway = pcap::PcapMdGateway<ProtocolT, core::Executor>;
+  template<typename ProtocolT> using PcapMdClient = pcap::PcapMdClient<ProtocolT>;
   
 public:
-  MdServ(core::Reactor& reactor)
+  MdServApp(core::Reactor& reactor)
   : reactor_(reactor)
+  , requests_(reactor)
   {
       reactor_.state_changed().connect(tbu::bind<&This::on_reactor_state_changed>(this));
   }
 
-  core::IMdGateway &gateway() { return *gateway_; }
-  void gateway(std::unique_ptr<core::IMdGateway> gw) { gateway_ = std::move(gw); }
+  core::IMdClient &mdclient() { return *mdclient_; }
+  void gateway(std::unique_ptr<core::IMdClient> mdclient) { mdclient_ = std::move(mdclient); }
 
   void on_state_changed(core::State state, core::State old_state,
                         core::ExceptionPtr err) {
@@ -93,8 +74,8 @@ public:
       std::cerr << "error: " << err->what() << std::endl;
     if (state == core::State::Stopped) {
       // gateway().report(std::cerr);
-      auto elapsed = tbs::MonoClock::now() - start_timestamp_;
-      auto total_received = gateway().stats().received();
+      auto elapsed = tb::MonoClock::now() - start_timestamp_;
+      auto total_received = mdclient().stats().received();
       std::cerr << " read " << total_received << " in "
                    << elapsed.count() / 1e9 << " s"
                    << " at " << (1e3 * total_received / elapsed.count())
@@ -117,27 +98,27 @@ public:
     }
   }
   
-  using MdGwFactory = std::function<std::unique_ptr<core::IMdGateway>(std::string_view venue)>;
+  using MdClientFactory = std::function<std::unique_ptr<core::IMdClient>(std::string_view venue)>;
 
   template<typename BinaryPacketT, template<typename ProtocolT> typename GatewayT>
-  MdGwFactory make_factory () {
+  MdClientFactory make_factory () {
     using SpbProtocol = spb::SpbUdpProtocol<BinaryPacketT>;
-    using SpbMdGateway = GatewayT<SpbProtocol>;
-    using Factory = ftu::Factory<core::IMdGateway, core::MdGateway>;
+    using SpbMdClient = GatewayT<SpbProtocol>;
+    using Factory = ftu::Factory<core::IMdClient, core::MdClientProxy>;
   
-    return [this](std::string_view venue)->std::unique_ptr<core::IMdGateway> { 
+    return [this](std::string_view venue)->std::unique_ptr<core::IMdClient> { 
       return Factory::make_unique(
-        ftu::IdFn{"SPB_MDBIN", [this] { return std::make_unique<SpbMdGateway>(&reactor_); }},
-        ftu::IdFn{"QSH", [this] { return std::make_unique<qsh::QshMdGateway>(&reactor_); }})
+        ftu::IdFn{"SPB_MDBIN", [this] { return std::make_unique<SpbMdClient>(&reactor_); }},
+        ftu::IdFn{"QSH", [this] { return std::make_unique<qsh::QshMdClient>(&reactor_); }})
       (venue); 
     };
   }
-  MdGwFactory make_factory(const core::Parameters& params) {
+  MdClientFactory make_factory(const core::Parameters& params) {
     std::string mode = params.value_or("mode", std::string{"mcast"});
     if(mode=="mcast") {
-      return make_factory<McastPacket, McastMdGateway>();
+      return make_factory<McastPacket, McastMdClient>();
     } else if(mode=="pcap") {
-      return make_factory<PcapPacket, PcapMdGateway>();
+      return make_factory<PcapPacket, PcapMdClient>();
     } else {
       std::stringstream ss;
       ss<<"Invalid mode "<<mode;
@@ -147,25 +128,27 @@ public:
   void run(std::string_view venue, const core::Parameters &params) {
     //TOOLBOX_DEBUG<<"run venue:'"<<venue<<"', params:"<<params;
 
-    MdGwFactory factory = make_factory(params);
+    MdClientFactory factory = make_factory(params);
       
     gateway(factory(venue));
     std::string output_path = params.value_or("output", std::string{"/dev/null"});
     if(output_path!="/dev/null")
       out_.open(output_path);
-    start_timestamp_ = tbs::MonoClock::now();
-    gateway().url(venue);
-    gateway().parameters(params);
-    gateway().state_changed().connect(tbu:: bind<&This::on_state_changed>(this));
-    gateway()
-        .ticks(ft::core::streams::BestPrice)
-        .connect(tbu::bind<&This::on_tick>(this));
-    gateway()
-        .instruments(ft::core::streams::Instrument)
-        .connect(tbu::bind<&This::on_instrument>(this));
+    start_timestamp_ = tb::MonoClock::now();
+    auto& c = mdclient();
+    c.url(venue);
+    c.parameters(params);
+    c.state_changed().connect(tbu:: bind<&This::on_state_changed>(this));
+    c
+      .ticks(ft::core::streams::BestPrice)
+      .connect(tbu::bind<&This::on_tick>(this));
+    c
+      .instruments(ft::core::streams::Instrument)
+      .connect(tbu::bind<&This::on_instrument>(this));
 
-    gateway().start();
-    if(gateway().state()!=core::State::Stopped) {
+    c.start();
+    requests_.start();
+    if(c.state() != core::State::Stopped) {
       tb::Reactor::Runner runner(reactor_);
       tb::wait_termination_signal();
     }
@@ -175,7 +158,8 @@ public:
     TOOLBOX_INFO<<"reactor state: "<<state;
     switch(state) {
       case tb::io::State::Stopping: 
-        gateway().stop();
+        mdclient().stop();
+        requests_.stop();
         break;
       default:
         break;
@@ -219,9 +203,9 @@ public:
   }
 
 private:
-  MdRequests<tb::MagicRingBuffer> requests_;
+  MdServer<io::DgramConn> requests_;
   tb::MonoTime start_timestamp_;
-  std::unique_ptr<core::IMdGateway> gateway_;
+  std::unique_ptr<core::IMdClient> mdclient_;
   core::InstrumentsCache instruments_;
   core::Reactor& reactor_;
   std::ofstream out_;
@@ -230,6 +214,6 @@ private:
 } // namespace ft
 
 int main(int argc, char *argv[]) {
-  ft::MdServ app(ft::core::current_reactor());
+  ft::MdServApp app(ft::core::current_reactor());
   return app.main(argc, argv);
 }

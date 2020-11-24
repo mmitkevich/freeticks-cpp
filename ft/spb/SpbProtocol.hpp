@@ -1,5 +1,5 @@
 #pragma once
-#include "ft/core/Executor.hpp"
+#include "ft/core/Component.hpp"
 #include "ft/core/Instrument.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/Tick.hpp"
@@ -57,11 +57,12 @@ public:
     static constexpr std::string_view Exchange = "SPB";
     static constexpr std::string_view Venue = Decoder::name();
 public:
-    SpbProtocol(core::Executor& executor)
-    : executor_(executor)
-    , decoder_(streams())
+    SpbProtocol()
+    : decoder_(streams())
     , bestprice_(*this)
-    , instruments_(*this) {}
+    , instruments_(*this) {
+        
+    }
 
     SpbProtocol(const SpbProtocol&) = delete;
     SpbProtocol(SpbProtocol&&) = delete;
@@ -76,9 +77,11 @@ public:
     void on_packet(const BinaryPacket& e) { 
         decoder_.on_packet(e); 
     }
-    
-    core::Executor& executor() { return executor_; }
 
+    void on_started() {
+        bestprice_.on_started();
+        instruments_.on_started();
+    }
     void on_parameters_updated(const core::Parameters& params) {
         for(auto e: params) {
             auto strm = e.value_or("stream", std::string{});
@@ -104,7 +107,6 @@ public:
         return  instruments();
     }
 private:
-    core::Executor& executor_;
     Decoder decoder_;    
     BestPriceStream bestprice_;
     InstrumentStream instruments_;

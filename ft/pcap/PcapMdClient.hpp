@@ -1,11 +1,11 @@
 #pragma once
-#include "ft/core/Executor.hpp"
+#include "ft/core/Component.hpp"
 #include "ft/core/Instrument.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/utils/StringUtils.hpp"
-#include "ft/core/MdGateway.hpp"
+#include "ft/core/MdClient.hpp"
 
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/EndpointFilter.hpp"
@@ -20,22 +20,22 @@ namespace ft::pcap {
 
 
 
-template<typename ProtocolT, typename ExecutorT=core::Executor>
-class PcapMdGateway : public core::BasicMdGateway<PcapMdGateway<ProtocolT, ExecutorT>, ExecutorT> {
+template<typename ProtocolT>
+class PcapMdClient : public core::BasicComponent<PcapMdClient<ProtocolT>, core::State> {
 public:
-    using This = PcapMdGateway<ProtocolT, ExecutorT>;
-    using Base = core::BasicMdGateway<This, ExecutorT>;
+    using This = PcapMdClient<ProtocolT>;
+    using Base = core::BasicComponent<PcapMdClient<ProtocolT>, core::State>;
     using Protocol = ProtocolT;
     using Stats = core::EndpointStats<tb::IpEndpoint>;
     using BinaryPacket = tb::PcapPacket;
     using Base::stop;
 public:
     template<typename...ArgsT>
-    PcapMdGateway(tb::Reactor* reactor, ArgsT...args)
+    PcapMdClient(tb::Reactor* reactor, ArgsT...args)
     : Base(reactor)
-    , protocol_(*this, std::forward<ArgsT>(args)...)
+    , protocol_(std::forward<ArgsT>(args)...)
     {
-        device_.packets().connect(tbu::bind<&PcapMdGateway::on_packet_>(this));
+        device_.packets().connect(tbu::bind<&PcapMdClient::on_packet_>(this));
     }
 
 
@@ -74,6 +74,7 @@ public:
     }
 
     void run() {
+        protocol_.on_started();
         for(auto& input: inputs_) {
             TOOLBOX_INFO<<"pcap replay started: "<<input;
             device_.input(input);
