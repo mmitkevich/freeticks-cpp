@@ -6,8 +6,8 @@ namespace ft::core {
 
 static Reactor g_reactor;
 
-Reactor& current_reactor() {
-    return g_reactor;
+Reactor* current_reactor() {
+    return &g_reactor;
 }
 
 } // ns ft::io

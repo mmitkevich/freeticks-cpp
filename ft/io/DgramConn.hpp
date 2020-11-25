@@ -1,3 +1,4 @@
+#include "ft/core/Component.hpp"
 #include "toolbox/io/Buffer.hpp"
 #include "toolbox/io/Poller.hpp"
 #include "toolbox/net/Protocol.hpp"
@@ -5,7 +6,7 @@
 #include "toolbox/net/Packet.hpp"
 #include "toolbox/io/Reactor.hpp"
 #include "toolbox/net/McastSock.hpp"
-
+#include "ft/core/Parameters.hpp"
 #include "ft/io/Conn.hpp"
 
 namespace ft::io {
@@ -13,23 +14,26 @@ namespace ft::io {
 namespace tb = toolbox;
 
 template<typename ProtocolT, typename SocketT>
-class BasicDgramConn : public BasicConn {
+class BasicDgramConn : public BasicConn<BasicDgramConn<ProtocolT, SocketT>> {
 public:
-    using Base = BasicConn;
+    using This = BasicDgramConn<ProtocolT,SocketT>;
+    using Base = BasicConn<This>;
     using Endpoint = tb::BasicIpEndpoint<ProtocolT>;
     using PacketHeader = tb::PacketHeader<Endpoint>;
     using Packet = tb::Packet<PacketHeader, tb::ConstBuffer>;
     using Socket = SocketT;
-    using This = BasicDgramConn<ProtocolT, SocketT>;
 public:
-  BasicDgramConn(tb::Reactor& reactor, Endpoint src, Endpoint dst)
+  BasicDgramConn(tb::Reactor* reactor, Endpoint src, Endpoint dst)
     : Base(reactor)
     , packet_(PacketHeader(src, dst))
     {}
 
 public:
+    using Base::reactor;
     const Packet& packet() const { return packet_; } 
-
+    void on_parameters_updated(const core::Parameters& params) {
+        
+    }
 public:
     /// Connection {
     const Endpoint& endpoint() const { return packet().header().src(); } // "other side"
@@ -85,10 +89,12 @@ public:
     using Packet = typename Base::Packet;
     using Socket = typename Base::Socket;
 public:
-    BasicMcastDgramConn(toolbox::Reactor& reactor, Endpoint ep, std::string_view if_name)
+    explicit BasicMcastDgramConn(tb::Reactor* reactor, Endpoint ep, std::string_view if_name)
     : Base(reactor, ep, ep)
     , if_name_(if_name)
     {}
+    BasicMcastDgramConn(BasicMcastDgramConn&&)=default;
+    BasicMcastDgramConn(const BasicMcastDgramConn&)=default;
     
     /// Packet {
     using Base::packet;

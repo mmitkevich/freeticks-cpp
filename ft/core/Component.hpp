@@ -75,21 +75,26 @@ private:
 
 using Reactor = toolbox::io::Reactor;
 
-Reactor& current_reactor();
+Reactor* current_reactor();
 
 class Component : public Identifiable {
 public:
-    Reactor& reactor() { return *reactor_; }
-    Component(Reactor*reactor=nullptr)
+    explicit Component(Reactor* reactor=nullptr)
     : reactor_(reactor)
     {}
+
+    Component(const Component& rhs) = default;
+    Component(Component&& rhs) = default;
+
+    Reactor& reactor() { assert(reactor_); return *reactor_; }
+
     void url(std::string_view url) { url_ = url; }
     std::string_view url() const { return url_; }
 protected:
-    Reactor *reactor_{nullptr};
+    Reactor* reactor_;
     std::string url_;
 };
-/// Component: identifier + parameters + state + reactor
+/// Component = Identifier + Parameters + State + Reactor
 template<typename DerivedT, typename StateT>
 class BasicComponent : public Component, public BasicParameterized<DerivedT> {
 public:
@@ -98,6 +103,14 @@ public:
     using StateSignal = tb::Signal<State, State, ExceptionPtr>;
 public:
     using Base::Base;
+    BasicComponent(const BasicComponent& rhs)
+    : Base(rhs)
+    , state_(rhs.state_.load(std::memory_order_relaxed)) // TODO: make non-atomic, patch setters/getters?
+    , state_changed_(rhs.state_changed_)
+    , stopped_hooks_(rhs.stopped_hooks_)
+    , started_hooks_(rhs.started_hooks_)
+    {}
+
     void start() {
         state(State::Starting);
         state(State::Started);
@@ -137,7 +150,6 @@ protected:
     StateSignal state_changed_; 
     BasicHooks<> stopped_hooks_;
     BasicHooks<> started_hooks_;
-    Reactor* reactor_;
 };
 
 

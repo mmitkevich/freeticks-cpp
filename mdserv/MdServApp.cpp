@@ -57,13 +57,13 @@ public:
   template<typename ProtocolT> using PcapMdClient = pcap::PcapMdClient<ProtocolT>;
   
 public:
-  MdServApp(core::Reactor& reactor)
+  MdServApp(core::Reactor* reactor)
   : reactor_(reactor)
   , requests_(reactor)
   {
-      reactor_.state_changed().connect(tbu::bind<&This::on_reactor_state_changed>(this));
+      This::reactor().state_changed().connect(tbu::bind<&This::on_reactor_state_changed>(this));
   }
-
+  tb::Reactor& reactor() { assert(reactor_); return *reactor_; }
   core::IMdClient &mdclient() { return *mdclient_; }
   void gateway(std::unique_ptr<core::IMdClient> mdclient) { mdclient_ = std::move(mdclient); }
 
@@ -108,8 +108,8 @@ public:
   
     return [this](std::string_view venue)->std::unique_ptr<core::IMdClient> { 
       return Factory::make_unique(
-        ftu::IdFn{"SPB_MDBIN", [this] { return std::make_unique<SpbMdClient>(&reactor_); }},
-        ftu::IdFn{"QSH", [this] { return std::make_unique<qsh::QshMdClient>(&reactor_); }})
+        ftu::IdFn{"SPB_MDBIN", [this] { return std::make_unique<SpbMdClient>(reactor_); }},
+        ftu::IdFn{"QSH", [this] { return std::make_unique<qsh::QshMdClient>(reactor_); }})
       (venue); 
     };
   }
@@ -149,7 +149,7 @@ public:
     c.start();
     requests_.start();
     if(c.state() != core::State::Stopped) {
-      tb::Reactor::Runner runner(reactor_);
+      tb::Reactor::Runner runner(*reactor_);
       tb::wait_termination_signal();
     }
   }
@@ -207,7 +207,7 @@ private:
   tb::MonoTime start_timestamp_;
   std::unique_ptr<core::IMdClient> mdclient_;
   core::InstrumentsCache instruments_;
-  core::Reactor& reactor_;
+  core::Reactor* reactor_{nullptr};
   std::ofstream out_;
 };
 

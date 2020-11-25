@@ -18,6 +18,7 @@
 
 namespace ft::mcast {
 
+/// Multiple connections, single protocol
 template<typename ProtocolT>
 class McastMdClient : public core::BasicComponent<McastMdClient<ProtocolT>, core::State> {
 public:
@@ -51,20 +52,18 @@ public:
     
     using Base::parameters;
     using Base::state;
-    //using Base::url;
+    using Base::url;
 
     Connections make_connections(const core::Parameters& params) {
         Connections conns;
-        for(auto stream_p: params) {
-            std::string_view type = stream_p["type"].get_string();
+        for(auto p: params) {
+            std::string_view type = p["type"].get_string();
             using namespace std::literals::string_view_literals;
-            if(tb::ends_with(type, ".mcast"sv))
-            {
-                for(auto e : stream_p["urls"]) {
+            if(tb::ends_with(type, ".mcast"sv)) {
+                for(auto e : p["urls"]) {
                     std::string url = e.get_string().data();
                     Endpoint ep =  tb::parse_ip_endpoint<TransportProtocol>(url, 0, AF_INET);
-                    Connection c(reactor(), ep, if_name_);
-                    conns.push_back(std::move(c));
+                    conns.emplace_back(&reactor(), ep, if_name_);
                     conns.back().received().connect(tb::bind<&This::on_packet>(this));
                 }
             }
@@ -76,9 +75,9 @@ public:
     void on_parameters_updated(const core::Parameters& params) {
         TOOLBOX_INFO<<"McastMdClient::on_parameters_updated"<<params;
         if_name_ = params.value_or("interface", std::string{});
-        auto streams_p = params["streams"];
-        protocol_.on_parameters_updated(streams_p);
-        auto conns = make_connections(streams_p);
+        auto conns_p = params["connections"];
+        protocol_.on_parameters_updated(conns_p);
+        auto conns = make_connections(conns_p);
         // TODO: track individual changes, disconnect/reconnect only changed 
         bool was_connected = is_connected();
         if(was_connected)

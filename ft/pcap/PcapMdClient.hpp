@@ -31,7 +31,7 @@ public:
     using Base::stop;
 public:
     template<typename...ArgsT>
-    PcapMdClient(tb::Reactor* reactor, ArgsT...args)
+    explicit PcapMdClient(tb::Reactor* reactor, ArgsT...args)
     : Base(reactor)
     , protocol_(std::forward<ArgsT>(args)...)
     {
@@ -49,7 +49,7 @@ public:
     void on_parameters_updated(const core::Parameters& params) {
         params["pcaps"].copy(inputs_);
 
-        auto streams_p = params["streams"];
+        auto streams_p = params["connections"];
         protocol_.on_parameters_updated(streams_p);
         
         filter(params["filter"]); // FIXME: get filter from streams automatically

@@ -13,7 +13,7 @@ public:
   using This = MdServer<ConnT>;
   using Connection = ConnT;
 
-  MdServer(tb::Reactor& reactor)
+  MdServer(tb::Reactor* reactor)
   : conn_(reactor, {}, {})
   {}
 
