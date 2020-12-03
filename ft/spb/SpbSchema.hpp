@@ -238,11 +238,11 @@ struct Price
 
 struct Instrument {
     InstrumentId instrument_id;
-    Characters<32> symbol;
-    Characters<64> desc;
-    Characters<128> desc_ru;
+    Chars<32> symbol;
+    Chars<64> desc;
+    Chars<128> desc_ru;
     InstrumentStatus status;
-    Characters<3> type_;
+    Chars<3> type_;
     enum class Type: Int4 {
         Future = 'f',
         TplusN = 't',

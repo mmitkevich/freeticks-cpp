@@ -12,9 +12,10 @@
 #include "ft/core/InstrumentsCache.hpp"
 #include "ft/core/MdClient.hpp"
 #include "ft/core/Parameters.hpp"
-#include "ft/mcast/McastMdClient.hpp"
+#include "ft/io/Connections.hpp"
+#include "ft/io/MdClient.hpp"
 
-#include "toolbox/io/Poller.hpp"
+#include "toolbox/io/ReactorHandle.hpp"
 #include "toolbox/io/Runner.hpp"
 #include "toolbox/net/DgramSock.hpp"
 #include "toolbox/net/EndpointFilter.hpp"
@@ -32,14 +33,17 @@
 #include "ft/utils/Factory.hpp"
 #include "toolbox/util/Json.hpp"
 //#include "toolbox/ipc/MagicRingBuffer.hpp"
-#include "ft/core/Request.hpp"
+#include "ft/core/Requests.hpp"
 
-#include "MdServer.hpp"
+#include "ft/udp/UdpMdServer.hpp"
+#include "ft/tbricks/TbricksProtocol.hpp"
 
 namespace ft {
 
 namespace tb = toolbox;
-
+using UdpPacket = io::DgramConn::Packet;
+using MdServProtocol = ft::tbricks::TbricksProtocol<UdpPacket>;
+using MdServer = udp::UdpMdServer<MdServProtocol>;
 
 class MdServApp {
 public:
@@ -51,20 +55,21 @@ public:
     std::string input;
     tb::optional<std::string> output;
   };
-  using McastPacket = io::McastDgramConn::Packet;
-  template<typename ProtocolT> using McastMdClient = mcast::McastMdClient<ProtocolT>;
+  using McastPacket = io::McastConn::Packet;
+  template<typename ProtocolT> using McastMdClient = io::MdClient<ProtocolT>;
   using PcapPacket = tb::PcapPacket;
   template<typename ProtocolT> using PcapMdClient = pcap::PcapMdClient<ProtocolT>;
   
 public:
   MdServApp(core::Reactor* reactor)
   : reactor_(reactor)
-  , requests_(reactor)
+  , mdserver_(reactor)
   {
       This::reactor().state_changed().connect(tbu::bind<&This::on_reactor_state_changed>(this));
   }
   tb::Reactor& reactor() { assert(reactor_); return *reactor_; }
   core::IMdClient &mdclient() { return *mdclient_; }
+  MdServer &mdserver() { return mdserver_; }
   void gateway(std::unique_ptr<core::IMdClient> mdclient) { mdclient_ = std::move(mdclient); }
 
   void on_state_changed(core::State state, core::State old_state,
@@ -145,10 +150,13 @@ public:
     c
       .instruments(ft::core::streams::Instrument)
       .connect(tbu::bind<&This::on_instrument>(this));
+    
+    // FIXME: start should be in reactor thread?
+    mdserver().start();
+    c.start();  // for pcap will read files and stop
 
-    c.start();
-    requests_.start();
     if(c.state() != core::State::Stopped) {
+      // if not pcap should run reactor
       tb::Reactor::Runner runner(*reactor_);
       tb::wait_termination_signal();
     }
@@ -159,7 +167,7 @@ public:
     switch(state) {
       case tb::io::State::Stopping: 
         mdclient().stop();
-        requests_.stop();
+        mdserver().stop();
         break;
       default:
         break;
@@ -203,7 +211,7 @@ public:
   }
 
 private:
-  MdServer<io::DgramConn> requests_;
+  MdServer mdserver_;
   tb::MonoTime start_timestamp_;
   std::unique_ptr<core::IMdClient> mdclient_;
   core::InstrumentsCache instruments_;

@@ -4,6 +4,7 @@
 #include "ft/utils/Common.hpp"
 #include "ft/utils/StringUtils.hpp"
 #include "toolbox/sys/Time.hpp"
+#include "ft/sbe/SbeTypes.hpp"
 #include <cstring>
 #include <string>
 #include <string_view>
@@ -96,22 +97,8 @@ struct MdHeader {
 
 static_assert(sizeof(MdHeader)==10);
 
-template<std::size_t length>
-class Characters {
-    char value[length+1] {};
-public:
-    constexpr Characters() = default;
-    constexpr Characters(const char* value) : value(value) {}
-    constexpr std::size_t capacity() const { return length; }
-    constexpr std::size_t size() const { return std::char_traits<char>::length(value);}
-    constexpr std::string_view str() const { return std::string_view(value, size()); }
-    std::wstring wstr() const { return ft::utils::to_wstring(str()); }
-    constexpr const char* c_str() const { return value; }
-
-    friend auto& operator<<(std::ostream& os, const Characters& self) {
-        return os << self.str();
-    }
-};
+template<std::size_t Size>
+using Chars = ft::sbe::FixedString<Size>;
 
 using ClOrderId = std::array<char, 16>;
 using UserId = std::array<char, 16>;

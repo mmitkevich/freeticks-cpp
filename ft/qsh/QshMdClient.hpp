@@ -12,14 +12,11 @@
 namespace ft::qsh {
 
 // file-based gateway for Qsh files
-class QshMdClient: public core::BasicComponent<QshMdClient, core::State> {
+class QshMdClient: public core::BasicComponent<QshMdClient> {
 public:
     using This = QshMdClient;
-    using Base = core::BasicComponent<QshMdClient, core::State>;
+    using Base = core::BasicComponent<QshMdClient>;
     using Base::Base;
-
-    void url(std::string_view val) { url_ = val; }
-    std::string_view url() { return url_; }
     
     /// read input file
     void run() {

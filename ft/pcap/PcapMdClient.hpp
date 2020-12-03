@@ -21,10 +21,10 @@ namespace ft::pcap {
 
 
 template<typename ProtocolT>
-class PcapMdClient : public core::BasicComponent<PcapMdClient<ProtocolT>, core::State> {
+class PcapMdClient : public core::BasicComponent<PcapMdClient<ProtocolT>> {
 public:
     using This = PcapMdClient<ProtocolT>;
-    using Base = core::BasicComponent<PcapMdClient<ProtocolT>, core::State>;
+    using Base = core::BasicComponent<PcapMdClient<ProtocolT>>;
     using Protocol = ProtocolT;
     using Stats = core::EndpointStats<tb::IpEndpoint>;
     using BinaryPacket = tb::PcapPacket;

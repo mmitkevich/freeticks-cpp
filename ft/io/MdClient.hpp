@@ -10,25 +10,25 @@
 #include "ft/core/MdClient.hpp"
 #include "ft/core/EndpointStats.hpp"
 
-#include "ft/io/DgramConn.hpp"
+#include "ft/io/Connections.hpp"
 
 #include <string_view>
 #include <system_error>
 #include <vector>
 
-namespace ft::mcast {
+namespace ft::io {
 
-/// Multiple connections, single protocol
+/// MD client, uses multiple connections of same protocol
 template<typename ProtocolT>
-class McastMdClient : public core::BasicComponent<McastMdClient<ProtocolT>, core::State> {
+class MdClient : public core::BasicComponent<MdClient<ProtocolT>> {
 public:
-    using This = McastMdClient<ProtocolT>;
-    using Base = core::BasicComponent<This, core::State>;
+    using This = MdClient<ProtocolT>;
+    using Base = core::BasicComponent<This>;
     using Protocol = ProtocolT;
-    using TransportProtocol = toolbox::UdpProtocol;
-    using Stats = core::EndpointStats<tb::BasicIpEndpoint<TransportProtocol>>;
-    static constexpr TransportProtocol transport_protocol = TransportProtocol::v4();
-    using Connection = io::McastDgramConn;
+    using IpProtocol = tb::UdpProtocol;
+    using Stats = core::EndpointStats<tb::BasicIpEndpoint<IpProtocol>>;
+    static constexpr IpProtocol IpProto = IpProtocol::v4();
+    using Connection = io::McastConn;
     using BinaryPacket = typename Connection::Packet;
     using Socket = typename Connection::Socket;
     using Endpoint = typename Connection::Endpoint;
@@ -37,13 +37,10 @@ public:
     using Connections = std::vector<Connection>;
 public:
     template<typename...ArgsT>
-    McastMdClient(tb::Reactor* reactor, ArgsT...args)
+    MdClient(tb::Reactor* reactor, ArgsT...args)
     : Base(reactor)
     , protocol_(std::forward<ArgsT>(args)...)
-    {
-        
-    }
-    using Base::reactor;
+    {}
     Protocol& protocol() {   return protocol_; }
     Connections& connections() { return connections_; }
     
@@ -53,6 +50,7 @@ public:
     using Base::parameters;
     using Base::state;
     using Base::url;
+    using Base::reactor;
 
     Connections make_connections(const core::Parameters& params) {
         Connections conns;
@@ -62,9 +60,11 @@ public:
             if(tb::ends_with(type, ".mcast"sv)) {
                 for(auto e : p["urls"]) {
                     std::string url = e.get_string().data();
-                    Endpoint ep =  tb::parse_ip_endpoint<TransportProtocol>(url, 0, AF_INET);
-                    conns.emplace_back(&reactor(), ep, if_name_);
-                    conns.back().received().connect(tb::bind<&This::on_packet>(this));
+                    Endpoint ep =  tb::parse_ip_endpoint<IpProtocol>(url, 0, AF_INET);
+                    conns.push_back(Connection {reactor()});
+                    auto& conn = conns.back();
+                    conn.endpoint(ep, if_name_);
+                    conn.received().connect(tb::bind<&This::on_packet>(this));
                 }
             }
         }
@@ -79,29 +79,29 @@ public:
         protocol_.on_parameters_updated(conns_p);
         auto conns = make_connections(conns_p);
         // TODO: track individual changes, disconnect/reconnect only changed 
-        bool was_connected = is_connected();
-        if(was_connected)
-            disconnect();
+        bool was_opened = is_open();
+        if(was_opened)
+            close();
         std::swap(connections_, conns);
-        if(was_connected)
-            connect();
+        if(was_opened)
+            open();
     }
     
-    bool is_connected() const {
+    bool is_open() const {
         return state() != State::Stopped;
     }
 
-    void disconnect() {
+    void close() {
         TOOLBOX_INFO << "Disconnecting "<< connections_.size() << " endpoints on interface '"<<if_name_<<"'";
         for(auto &c : connections_) {
-            c.disconnect();
+            c.close();
         }
     }
 
-    void connect() {
+    void open() {
         TOOLBOX_INFO << "Connecting "<< connections_.size() << " endpoints on interface '"<<if_name_<<"'";
         for(auto& c : connections_) {
-            c.connect();
+            c.open();
         }     
     }
 
@@ -110,7 +110,7 @@ public:
         state(State::Starting);
         using namespace std::literals::chrono_literals;
         idle_timer_ = reactor().timer(tb::MonoClock::now(), 10s, tb::Priority::Low, tb::bind<&This::on_idle_timer>(this));
-        connect();
+        open();
         // FIXME: on_connected ?
         state(State::Started);
         protocol_.on_started();
@@ -122,7 +122,7 @@ public:
 
     void stop() {
         state(State::Stopping);
-        disconnect();
+        close();
         idle_timer_.cancel();
         state(State::Stopped);
     }
@@ -151,7 +151,6 @@ public:
 
 private:
     Connections connections_;
-    std::string url_;
     std::string if_name_;
     Protocol protocol_;
     Stats stats_;

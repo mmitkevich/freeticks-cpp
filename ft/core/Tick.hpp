@@ -10,7 +10,7 @@
 #include "ft/utils/Numeric.hpp"
 
 #include "ft/capi/ft-types.h"
-#include "ft/core/Request.hpp"
+#include "ft/core/Requests.hpp"
 
 namespace ft::core {
 

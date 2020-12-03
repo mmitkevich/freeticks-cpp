@@ -112,7 +112,7 @@ typedef struct  {
     ft_hdr_t ft_hdr;
     ft_id_t ft_instrument_id;       // hash of instrument symbol or some other object
     ft_slen_t ft_symbol_len;
-    ft_char   ft_symbol[];
+    ft_char   ft_symbol[0];
 } ft_instrument_t;
 
 /// subscription or unsubscription request
@@ -121,7 +121,7 @@ typedef struct  {
     ft_id_t ft_client_id;           // client-generated request id
     ft_id_t ft_instrument_id;       // hash of instrument symbol or some other object
     ft_slen_t ft_symbol_len;
-    ft_char   ft_symbol[];
+    ft_char   ft_symbol[0];
 } ft_subscribe_t;
 
 /// response on arbitrary request
@@ -144,7 +144,7 @@ typedef struct {
     ft_qty_t ft_price;                  // price
     ft_id_t ft_instrument_id;           // hash of instrument symbol or some other object
     ft_slen_t ft_symbol_len;            // symbol len
-    ft_char ft_symbol[];                // symbol characters
+    ft_char ft_symbol[0];                // symbol characters
 } ft_order_t;
 
 /// order update
@@ -167,7 +167,7 @@ typedef struct  {
     ft_time_t ft_timestamp;         // exchange timetamp
     ft_id_t  ft_status;             // numeric status
     ft_slen_t ft_message_len;       // string status
-    ft_char   ft_message[]; 
+    ft_char   ft_message[0]; 
 } ft_status_t;
 
 #ifdef __cplusplus

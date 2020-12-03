@@ -3,6 +3,7 @@
 #include "ft/capi/ft-types.h"
 #include "ft/core/Stream.hpp"
 #include "toolbox/sys/Time.hpp"
+#include "ft/sbe/SbeTypes.hpp"
 
 namespace ft::core {
 
@@ -17,7 +18,7 @@ class BasicHeader {
 public:
     BasicHeader(ImplT& impl) : impl_(impl){}
     std::size_t length() { return impl_.ft_len; };
-    void length(std::size_t len) { impl_.t_len = len; }
+    void length(std::size_t len) { impl_.ft_len = len; }
     ft_event_t type() const { return impl_.ft_type.ft_event; } 
     ft_topic_t topic() const { return impl_.ft_type.ft_topic; }
     ft_seq_t sequence() const { return impl_.ft_seq; }
@@ -37,9 +38,21 @@ public:
     core::Header header() { return core::Header{Base::ft_hdr}; }
 };
 
-class SubscriptionRequest : public core::BasicRequest<ft_subscribe_t> {
+#define rel_offsetof(t, d, s) offsetof(t,d)-offsetof(t,s)
+
+constexpr static std::size_t MaxSymbolSize = 64;
+
+template<std::size_t SizeI>
+class BasicSubscriptionRequest : public core::BasicRequest<ft_subscribe_t> {
     using Base = core::BasicRequest<ft_subscribe_t>;
 public:
+    using SymbolString = sbe::BasicVarString<ft_slen_t, rel_offsetof(ft_subscribe_t,ft_symbol,ft_symbol_len)>;
+    SymbolString symbol() {
+        return SymbolString {};
+    }
+private:
+    char data_[SizeI];
 };
 
+using SubscriptionRequest = BasicSubscriptionRequest<MaxSymbolSize>;
 }

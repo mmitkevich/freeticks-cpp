@@ -95,11 +95,11 @@ protected:
     std::string url_;
 };
 /// Component = Identifier + Parameters + State + Reactor
-template<typename DerivedT, typename StateT>
+template<typename DerivedT>
 class BasicComponent : public Component, public BasicParameterized<DerivedT> {
 public:
     using Base = Component;
-    using State = StateT;
+    using State = core::State;
     using StateSignal = tb::Signal<State, State, ExceptionPtr>;
 public:
     using Base::Base;
