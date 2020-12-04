@@ -1,7 +1,7 @@
 #pragma once
 
 #include "toolbox/io/Buffer.hpp"
-#include "toolbox/io/ReactorHandle.hpp"
+#include "toolbox/io/PollHandle.hpp"
 #include "toolbox/net/Protocol.hpp"
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Packet.hpp"
@@ -31,7 +31,9 @@ public:
 public:
     using Base::Base;
 
-    using Base::reactor;
+    BasicConn(tb::Reactor& reactor)
+    : reactor_(reactor) {}
+
     using Base::state;
     Packet& packet() { return packet_; } 
     const Packet& packet() const { return packet_; } 
@@ -52,7 +54,7 @@ public:
     
     void open() {
         const auto& ep = endpoint();
-        Base::open(ep.protocol());
+        Base::open(ep.protocol(), reactor_);
         Base::bind(ep);
         Base::connect(ep);
         Base::recv(buffer_.prepare(buffer_size()), 0, tb::bind<&This::on_recv>(this));
@@ -76,6 +78,7 @@ protected:
     }
     /// } Slots
 protected:
+    tb::Reactor& reactor_;
     Packet packet_;
     tb::Buffer buffer_;
     tb::Signal<const Packet&> received_;
@@ -94,7 +97,6 @@ public:
     using Base::close;
     using Base::received;
     using Base::state;
-    using Base::reactor;
 };
 
 class McastConn: public BasicConn<tb::McastSocket, McastConn> {
@@ -109,7 +111,6 @@ public:
 
     using Base::received;
     using Base::state;
-    using Base::reactor;
     using Base::packet;
     using Base::endpoint;
     using Base::if_name;    
