@@ -6,16 +6,15 @@
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Packet.hpp"
 #include "toolbox/io/Reactor.hpp"
-
 #include "toolbox/io/Socket.hpp"
-#   include "toolbox/io/DgramSocket.hpp"
-#   include "toolbox/io/McastSocket.hpp"
-
+#include "toolbox/io/McastSocket.hpp"
 #include "ft/core/Parameters.hpp"
+
 
 namespace ft::io {
 
 namespace tb = toolbox;
+
 
 template<typename SocketT, typename DerivedT>
 class BasicConn : protected SocketT
@@ -29,7 +28,7 @@ public:
     using PacketHeader = tb::PacketHeader<Endpoint>;
     using Packet = tb::Packet<PacketHeader, tb::ConstBuffer>;
 public:
-    using Base::Base;
+    using Base::Base, Base::read, Base::write, Base::async_read;
 
     BasicConn(tb::Reactor& reactor)
     : reactor_(reactor) {}
@@ -54,10 +53,12 @@ public:
     
     void open() {
         const auto& ep = endpoint();
-        Base::open(ep.protocol(), reactor_);
+        Base::open(reactor_, ep.protocol());
         Base::bind(ep);
-        Base::connect(ep);
-        Base::recv(buffer_.prepare(buffer_size()), 0, tb::bind<&This::on_recv>(this));
+        if constexpr (tb::SocketTraits::has_sock_connect<This>()) {
+            Base::connect(ep);
+        }
+        Base::async_read(buffer_.prepare(buffer_size()), tb::bind<&This::on_recv>(this));
     }
     void close() {
         Base::close();
@@ -74,7 +75,7 @@ protected:
         packet_.buffer() = {buffer_.buffer().data(), (std::size_t)size};
         received_(packet_);
         buffer_.consume(size);
-        Base::recv(buffer_.prepare(buffer_size()), 0, tb::bind<&This::on_recv>(this));
+        async_read(buffer_.prepare(buffer_size()), tb::bind<&This::on_recv>(this));
     }
     /// } Slots
 protected:
