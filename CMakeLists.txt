@@ -28,6 +28,10 @@ if (NOT "${TOOLBOX_TOOLCHAIN}" STREQUAL "")
   message(STATUS "TOOLBOX_TOOLCHAIN: ${TOOLBOX_TOOLCHAIN}")
 endif()
 
+if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+  add_definitions(-DTOOLBOX_BUILD_DEBUG=1)
+endif()
+
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${PROJECT_SOURCE_DIR}/etc/cmake")
 
 # Optimise for target architecture.
@@ -75,6 +79,7 @@ endif()
 include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 
 find_package(PCAP)
+find_package(AERON)
 
 add_subdirectory(ft)
 set(ft_core_LIBRARY ft-core-static)

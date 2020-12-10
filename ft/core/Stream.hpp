@@ -1,12 +1,16 @@
 #pragma once
 
 #include "ft/utils/Common.hpp"
+#include "ft/core/Component.hpp"
 #include "toolbox/util/Slot.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/capi/ft-types.h"
 
 namespace ft::core {
 
+/// Stream of events could be viewed as tb::Signal<const T&> from subscriber point of view
+/// and tb::Slot<const T&> (or tb::Slot<T&&>) from publisher point of view
+/// so, it has to have connect()/disconnect() methods and invoke()/empty()/operator()
 
 template<typename SequenceId>
 class Sequenced {
@@ -18,20 +22,50 @@ protected:
 };
 
 
-template<typename MessageT>
-class Stream : public tb::Signal<const MessageT&>, public Sequenced<std::uint64_t>
+enum class StreamState : int8_t {
+    Closed,
+    Pending,
+    Open,
+    Stale,
+    Closing,
+    Failed
+};
+
+class StreamBase :  public BasicComponent<core::StreamState>, public Sequenced<std::uint64_t> 
 {
-    using Base = tb::Signal<const MessageT&>;
+public:
+    core::StreamStats& stats() { return stats_; }
+    void open() {}
+    void close() {}
+protected:
+  core::StreamStats stats_;
+
+};
+
+/// (Input)Stream = Sequenced Signal
+template<typename ...ArgsT>
+class Stream : public tb::Signal<ArgsT...>, public StreamBase
+{
+    using Base = tb::Signal<ArgsT...>;
     using Sequenced = Sequenced<std::uint64_t>;
 public:
     using Base::Base;
     using Base::connect;
     using Base::disconnect;
     using Sequenced::sequence;
+};
 
-    core::StreamStats& stats() { return stats_; }
-protected:
-  core::StreamStats stats_;
+/// (Output) Sink is Sequenced Slot
+template<typename... ArgsT>
+class Sink: public tb::Slot<ArgsT...>, public StreamBase {
+    using Base = tb::Slot<ArgsT...>;
+    using Sequenced = Sequenced<std::uint64_t>;
+public:
+    Sink(Base&& slot): Base(slot) {}
+    using Base::Base;
+    using Base::invoke;
+    using Base::operator();
+    using Sequenced::sequence;
 };
 
 enum class StreamType {
@@ -40,6 +74,8 @@ enum class StreamType {
     OHLC = FT_OHLC,
     Instrument = FT_INSTRUMENT
 };
+
+using StreamName = const char*;
 
 inline std::ostream& operator<<(std::ostream& os, const StreamType self) {
     switch(self) {
@@ -50,5 +86,11 @@ inline std::ostream& operator<<(std::ostream& os, const StreamType self) {
         default: return os << (int)tb::unbox(self);
     }
 }
+
+class ProtocolBase {
+public:
+    void open() {}
+    void close() {}
+};
 
 };

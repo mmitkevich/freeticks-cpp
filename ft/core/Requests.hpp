@@ -55,4 +55,6 @@ private:
 };
 
 using SubscriptionRequest = BasicSubscriptionRequest<MaxSymbolSize>;
+using SubscriptionSignal = tb::Signal<core::SubscriptionRequest>;
+
 }

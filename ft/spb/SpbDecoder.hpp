@@ -4,7 +4,7 @@
 #include "ft/core/Stream.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/core/Tick.hpp"
-#include "ft/pcap/PcapMdClient.hpp"
+#include "ft/io/PcapMdClient.hpp"
 #include "ft/utils/Common.hpp"
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Packet.hpp"
@@ -71,10 +71,6 @@ public:
 
     Protocol& protocol() { return protocol_; }
     Decoder& decoder() { return protocol_.decoder_; }
-    
-    //core::Executor& executor() { return protocol_.executor(); }
-
-    void on_started() {}
 
     template<typename PacketT>
     void on_decoded(const PacketT& packet) {
@@ -170,7 +166,7 @@ public:
             });
             if(!found) {
                 stats_.on_rejected(frame);
-            //    TOOLBOX_DEBUG << name()<<": ["<<(ptr-begin)<<"] unknown msgid "<<frame.msgid;
+                TOOLBOX_DUMP << name()<<": ["<<(ptr-begin)<<"] unknown msgid "<<frame.msgid;
             }
             ptr += sizeof(Frame) + frame.size;
         }

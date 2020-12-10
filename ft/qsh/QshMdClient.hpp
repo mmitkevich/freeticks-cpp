@@ -12,10 +12,10 @@
 namespace ft::qsh {
 
 // file-based gateway for Qsh files
-class QshMdClient: public core::BasicComponent<QshMdClient> {
+class QshMdClient: public core::BasicComponent<QshMdClient, core::State> {
 public:
     using This = QshMdClient;
-    using Base = core::BasicComponent<QshMdClient>;
+    using Base = core::BasicComponent<QshMdClient, core::State>;
     using Base::Base;
     
     /// read input file
@@ -27,7 +27,7 @@ public:
     core::StreamStats& stats() { return decoder_.ticks().stats(); }
     
     core::TickStream& ticks(core::StreamName stream) { return decoder_.ticks(); }
-    core::VenueInstrumentStream& instruments(core::StreamName stream) { return decoder_.instruments(); }
+    core::InstrumentStream& instruments(core::StreamName stream) { return decoder_.instruments(); }
 private:
     QshDecoder decoder_;
     std::string url_;

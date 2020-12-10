@@ -16,19 +16,17 @@
 
 #include "ft/core/EndpointStats.hpp"
 
-namespace ft::pcap {
-
+namespace ft::io {
 
 
 template<typename ProtocolT>
-class PcapMdClient : public core::BasicComponent<PcapMdClient<ProtocolT>> {
+class PcapMdClient : public core::BasicComponent<PcapMdClient<ProtocolT>, core::State> {
 public:
     using This = PcapMdClient<ProtocolT>;
-    using Base = core::BasicComponent<PcapMdClient<ProtocolT>>;
+    using Base = core::BasicComponent<This, core::State>;
     using Protocol = ProtocolT;
     using Stats = core::EndpointStats<tb::IpEndpoint>;
     using BinaryPacket = tb::PcapPacket;
-    using Base::stop;
 public:
     template<typename...ArgsT>
     explicit PcapMdClient(tb::Reactor* reactor, ArgsT...args)
@@ -38,6 +36,7 @@ public:
         device_.packets().connect(tbu::bind<&PcapMdClient::on_packet_>(this));
     }
 
+    using Base::stop;
 
     Protocol& protocol() {   return protocol_; }
     toolbox::PcapDevice& device() { return device_; }
@@ -74,7 +73,7 @@ public:
     }
 
     void run() {
-        protocol_.on_started();
+        protocol_.start();
         for(auto& input: inputs_) {
             TOOLBOX_INFO<<"pcap replay started: "<<input;
             device_.input(input);
@@ -84,7 +83,7 @@ public:
         stop();
     }
     void report(std::ostream& os) {
-        protocol_.stats().report(os);
+        //protocol_.stats().report(os);
         stats_.report(os);
     }
     void on_idle() {
@@ -93,7 +92,7 @@ public:
     core::TickStream& ticks(core::StreamName stream) {
         return protocol_.ticks(stream);
     }
-    core::VenueInstrumentStream& instruments(core::StreamName stream) {
+    core::InstrumentStream& instruments(core::StreamName stream) {
         return protocol_.instruments(stream);
     }
 

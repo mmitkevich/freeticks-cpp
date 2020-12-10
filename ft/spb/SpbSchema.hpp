@@ -139,6 +139,11 @@ struct Aggr
     Group<SubAggr>& aggr() { return aggr_; }
 };
 
+struct Heartbeat 
+{
+    Int4 reserved_;
+};
+
 //UNUSED
 //#define FT_BEGIN_ENUM_OSTREAM(Type) 
 //#define FT_ENUM_OSTREAM(Type, Value) case Type::Value: os << #Value; break;
@@ -316,6 +321,7 @@ struct SpbSchema
 
     using InstrumentSnapshot = SpbPacket<SpbHeader<973, HeaderT>, Instrument>;
 
+    using Heartbeat = SpbPacket<SpbHeader<15236, HeaderT>, spb::Heartbeat>;
 };
 
 

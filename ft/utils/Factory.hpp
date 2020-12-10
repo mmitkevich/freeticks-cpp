@@ -30,16 +30,14 @@ namespace detail {
 
         template<typename...ArgsT>
         std::unique_ptr<InterfaceT> operator()(std::string_view id, ArgsT...args) {
-            bool done = false;
             std::unique_ptr<InterfaceT> result;
             mp::tuple_for_each(values_, [&](auto &factory) {
-                if(!done && factory.id==id) {
-                    done = true;
+                if(!result && factory.id==id) {
                     auto valptr = factory(std::forward<ArgsT>(args)...);
                     result =  std::unique_ptr<InterfaceT>(new AdapterT(std::move(valptr)));
                 }
             });
-            if(!done) {
+            if(!result) {
                 std::ostringstream ss;
                 ss<<"factory does not support '"<<id<<"'";
                 throw std::runtime_error(ss.str());

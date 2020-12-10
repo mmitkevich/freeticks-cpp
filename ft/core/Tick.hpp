@@ -176,9 +176,8 @@ private:
 template<std::size_t SizeI>
 using Ticks = BasicTicks<BasicTickPrice<DefaultPolicy>, SizeI>;
 using Tick = Ticks<1>;
-using TickStream = core::Stream<Tick>;
-using TickSignal = tbu::Signal<Tick>;
-using TickSlot = TickSignal::Slot;
+using TickStream = core::Stream<const Tick&>;
+using TickSink = core::Sink<const Tick&>;
 
 template<typename PolicyT, std::size_t FixedLength>
 inline std::ostream& operator<<(std::ostream& os, const BasicTickPrice<PolicyT, FixedLength>& e) {

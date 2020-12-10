@@ -89,7 +89,7 @@ public:
     std::istream& input_stream(){ return *input_stream_;}
 
     core::TickStream& ticks() { return ticks_; }
-    core::VenueInstrumentStream& instruments() { return instruments_; }
+    core::InstrumentStream& instruments() { return instruments_; }
     
     /// decode stream until EOF
     void run();
@@ -110,7 +110,7 @@ private:
     State state_;
     std::istream* input_stream_;
     core::TickStream ticks_;
-    core::VenueInstrumentStream instruments_;
+    core::InstrumentStream instruments_;
 };
 
 }

@@ -95,11 +95,11 @@ protected:
     std::string url_;
 };
 /// Component = Identifier + Parameters + State + Reactor
-template<typename DerivedT>
+template<typename DerivedT, typename StateT=core::State>
 class BasicComponent : public Component, public BasicParameterized<DerivedT> {
 public:
     using Base = Component;
-    using State = core::State;
+    using State = StateT;
     using StateSignal = tb::Signal<State, State, ExceptionPtr>;
 public:
     using Base::Base;
@@ -131,7 +131,7 @@ public:
         }
     }
     State state() const { return state_; }
-    
+
     template<typename FnT>
     bool state_hook(State state, FnT&& fn) {
         if(state_==state) {
@@ -146,7 +146,7 @@ public:
     }
     StateSignal& state_changed() { return state_changed_; }
 protected:
-    std::atomic<State> state_{State::Stopped};
+    std::atomic<State> state_ {};
     StateSignal state_changed_; 
     BasicHooks<> stopped_hooks_;
     BasicHooks<> started_hooks_;

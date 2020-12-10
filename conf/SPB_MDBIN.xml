@@ -1,0 +1,64 @@
+<!-- market data routing configuration -->
+<config id="mdserv">
+    <client id = "spb"      protocol = "SPB_MDBIN" interface = "10.1.110.55" disabled="true">
+        <stream id = "bestprice">
+            <channel id = "snapshot"         protocol = "mcast">
+                <endpoint id = "A"    val = "233.26.38.6016"/>
+                <endpoint id = "B"    val = "233.26.144:6144"/>
+            </channel>
+            <channel  id = "update"          protocol = "mcast">
+                <endpoint id = "A"    val = "233.26.38.17:6017"/>
+                <endpoint id = "B"    val = "233.26.38.145:6145"/>
+            </channel>
+            <channel id = "recovery"         protocol = "tcp"    topic = "BEX.TOB">
+                <endpoint id = "A"    val = "233.26.38.36:6036"/>
+                <endpoint id = "B"    val = "233.26.38.164:6164"/>
+            </channel>
+        </stream>
+        <stream id = "instrument">
+            <channel id = "snapshot"         protocol = "mcast">
+                <endpoint id = "A"    val = "233.26.38.36:6036"/>
+                <endpoint id = "B"    val = "233.26.38.164:6164"/>
+            </channel>
+            <channel id = "update"           protocol = "mcast">
+                <endpoint id = "A"    val = "233.26.38.37:6037"/>
+                <endpoint id = "B"    val = "233.26.38.165:6165"/>
+            </channel>
+            <channel  type = "snapshot"      protocol = "file">
+                <endpoint val = "/opt/tbricks/instr-2020-11-02.xml"/>
+            </channel>
+        </stream>
+    </client>
+
+    <!-- aeron server -->
+    <server id="ticks"      protocol="TICKS" disabled="false">
+        <stream id="bestprice">
+            <channel id="snapshot" protocol="aeron">
+                <endpoint val="127.0.0.1:67770" reliable="false">
+            </channel> 
+        </stream>
+    </server>
+
+    <!-- pcap replay requires early filtering using ACL -->
+    <filter>
+        <allow>
+            <protocol val="udp"/>
+            <protocol val="mcast"/>
+            <dst val="233.26.38.16:6016">   <dst val="233.26.38.16:6017">
+            <dst val="233.26.38.144:6144">  <dst val="233.26.38.144:6145">
+        </allow>
+        <deny val="all">
+    </filter>
+
+    <!-- historical data -->
+    <history>
+        <stream id="bestprice"> 
+            <location url="/opt/tbricks"                engine="pcap">
+                <file val="spb_20201013.pcap"/>
+            </location>
+            <location url="localhost:7888"              engine="clickhouse">
+                <query val="select * from LSEDATA where date>=${date}">
+            </location>
+        </stream>
+    </history>
+</config id="mdserv"> 

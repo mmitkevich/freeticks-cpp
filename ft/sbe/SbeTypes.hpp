@@ -58,6 +58,7 @@ public:
     std::wstring wstr() const { return ft::utils::to_wstring(str()); }
     constexpr const char* c_str() const { return data(); }
     char* data() { return &data_[OffsetI-sizeof(SizeT)]; }
+    const char* data() const { return &data_[OffsetI-sizeof(SizeT)]; }
     template<typename StringT>
     
     friend auto& operator<<(std::ostream& os, const BasicVarString& self) {

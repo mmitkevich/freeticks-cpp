@@ -31,6 +31,9 @@ public:
             os<<",gaps:"<<self.gaps();
         return os;
     }
+    void report(std::ostream& os) {
+        os << *this;
+    }
 protected:
     std::size_t received_{0};
     std::size_t accepted_{0};
@@ -40,7 +43,7 @@ protected:
 
 
 inline constexpr bool ft_stats_enabled() {
-    return false;
+    return true;
 };
 
 template<typename DerivedT>

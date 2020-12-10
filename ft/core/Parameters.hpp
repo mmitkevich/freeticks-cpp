@@ -22,16 +22,16 @@ public:
 template<typename DerivedT>
 class BasicParameterized {
 public:
+
     /// update parameters. when replace==true, old parameters are cleared
     void parameters(const Parameters& parameters, bool replace=false) { 
         // FIXME: merge?
         MutableParameters::copy(parameters, parameters_);
         static_cast<DerivedT*>(this)->on_parameters_updated(parameters_);
     }
-    void on_parameters_updated(const Parameters& parameters) {}
+    void on_parameters_updated(const core::Parameters& params) {}
     /// retrieve current parameters
     const Parameters& parameters() const { return parameters_; }
-
 protected:
     MutableParameters parameters_;
 };

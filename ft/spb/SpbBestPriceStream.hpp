@@ -43,8 +43,9 @@ public:
     using SnapshotFinish = typename Schema::SnapshotFinish;
     using PriceSnapshot = typename Schema::PriceSnapshot;
     using PriceOnline = typename Schema::PriceOnline;
+    using Heartbeat = typename Schema::Heartbeat;
     // list of supported messages
-    using TypeList = mp::mp_list<PriceOnline, PriceSnapshot, SnapshotStart, SnapshotFinish>;
+    using TypeList = mp::mp_list<PriceOnline, PriceSnapshot, SnapshotStart, SnapshotFinish, Heartbeat>;
 public:
     using Base::Base;
     using Base::stats;
@@ -84,6 +85,8 @@ public:
         if(is_replaced) {
             invoke(tick->template as_size<1>());
         }
+    }
+    void on_message(const typename Heartbeat::Header& h, const spb::Heartbeat& e, Timestamp cts) {
     }
 
 protected:    

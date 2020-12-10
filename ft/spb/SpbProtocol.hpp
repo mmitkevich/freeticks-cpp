@@ -39,7 +39,7 @@ Tup construct_tuple(Args&&... args) {
 template<
 typename SchemaT,
 typename BinaryPacketT
-> class SpbProtocol
+> class SpbProtocol: public core::ProtocolBase
 {
 public:
     using Schema = SchemaT;
@@ -78,9 +78,9 @@ public:
         decoder_.on_packet(e); 
     }
 
-    void on_started() {
-        bestprice_.on_started();
-        instruments_.on_started();
+    void open() {
+        bestprice_.open();
+        instruments_.open();
     }
     void on_parameters_updated(const core::Parameters& params) {
         for(auto e: params) {
@@ -103,7 +103,7 @@ public:
     core::TickStream& ticks(core::StreamName stream) {
         return bestprice();
     }
-    core::VenueInstrumentStream& instruments(core::StreamName stream) {
+    core::InstrumentStream& instruments(core::StreamName stream) {
         return  instruments();
     }
 private:

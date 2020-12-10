@@ -137,7 +137,8 @@ protected:
     std::string_view venue_;
 };
 
-using VenueInstrumentStream = core::Stream<VenueInstrument>;
+using InstrumentStream = core::Stream<const VenueInstrument&>;
+using InstrumentSink = core::Sink<const VenueInstrument&>;
 
 template<std::size_t SymbolLength>
 class InstrumentMetadata : public ft_instrument_t {

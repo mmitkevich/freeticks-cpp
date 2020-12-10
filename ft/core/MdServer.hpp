@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ft/core/Instrument.hpp"
+#include "ft/core/Requests.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/core/Parameters.hpp"
@@ -12,27 +13,21 @@
 namespace ft::core {
 
 
-namespace streams {
-    constexpr static const char* BestPrice = "BestPrice";
-    constexpr static const char* Instrument = "Instrument";
-};
-
-
-class IMdClient : public IComponent {
+class IMdServer : public IComponent {
 public:
-    virtual TickStream& ticks(StreamName streamtype) = 0;
+    virtual SubscriptionSignal& subscriptions(StreamName id) = 0;
 
-    virtual InstrumentStream& instruments(StreamName streamtype) = 0;
-
-    // very basic stats
-    virtual core::StreamStats& stats() = 0;
+    // "instruments"
+    virtual core::InstrumentSink instruments(StreamName id) = 0;
+    // "bestprice", "orderbook", etc
+    virtual core::TickSink ticks(StreamName id) = 0;
 };
 
 
 template<typename ImplT>
-class MdClientImpl : public IMdClient {
+class MdServerImpl : public IMdServer {
 public:
-    MdClientImpl(std::unique_ptr<ImplT> &&impl)
+    MdServerImpl(std::unique_ptr<ImplT> &&impl)
     : impl_(std::move(impl)) {}
 
     void start() override { impl_->start(); }
@@ -44,13 +39,12 @@ public:
     State state() const override { return impl_->state(); }
     StateSignal& state_changed() override { return impl_->state_changed(); };
 
-    core::StreamStats& stats() override { return impl_->stats(); }
-
     void parameters(const Parameters& parameters, bool replace=false) override { impl_->parameters(parameters, replace); }
     const Parameters& parameters() const override { return impl_->parameters(); }
     
-    core::TickStream& ticks(StreamName stream) override { return impl_->ticks(stream); }
-    core::InstrumentStream& instruments(StreamName streamtype) override { return impl_->instruments(streamtype); }
+    SubscriptionSignal& subscriptions(StreamName id) override { return impl_->subscriptions(id); }
+    core::TickSink ticks(StreamName stream) override { return impl_->ticks(stream); }
+    core::InstrumentSink instruments(StreamName streamtype) override { return impl_->instruments(streamtype); }
 private:
     std::unique_ptr<ImplT> impl_;
 };

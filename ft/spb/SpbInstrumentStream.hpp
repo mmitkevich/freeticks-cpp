@@ -11,11 +11,11 @@
 namespace ft::spb {
 
 template<typename ProtocolT>
-class SpbInstrumentStream : public BasicSpbStream<SpbInstrumentStream<ProtocolT>, ProtocolT, core::VenueInstrumentStream>
+class SpbInstrumentStream : public BasicSpbStream<SpbInstrumentStream<ProtocolT>, ProtocolT, core::InstrumentStream>
 {
 public:
     using This = SpbInstrumentStream<ProtocolT>;
-    using Base = BasicSpbStream<This, ProtocolT, core::VenueInstrumentStream>;
+    using Base = BasicSpbStream<This, ProtocolT, core::InstrumentStream>;
     using Protocol = typename Base::Protocol;
     using Decoder = typename Base::Decoder;
     using Schema = typename Base::Schema;
@@ -57,7 +57,7 @@ public:
             }
         }
     }
-    void on_started() {
+    void open() {
         if(!snapshot_xml_url_.empty())
             snapshot_xml(snapshot_xml_url_);
     }
