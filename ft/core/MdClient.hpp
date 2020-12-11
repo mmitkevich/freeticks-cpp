@@ -29,30 +29,32 @@ public:
 };
 
 
+// wrap MD client into dynamic interface
 template<typename ImplT>
 class MdClientImpl : public IMdClient {
 public:
-    MdClientImpl(std::unique_ptr<ImplT> &&impl)
-    : impl_(std::move(impl)) {}
+    template<typename...ArgsT>
+    MdClientImpl(ArgsT...args)
+    : impl_(std::forward<ArgsT>(args)...) {}
 
-    void start() override { impl_->start(); }
-    void stop() override { impl_->stop(); }
+    void start() override { impl_.start(); }
+    void stop() override { impl_.stop(); }
     
-    void url(std::string_view url) { impl_->url(url);}
-    std::string_view url() const { return impl_->url(); }
+    void url(std::string_view url) { impl_.url(url);}
+    std::string_view url() const { return impl_.url(); }
 
-    State state() const override { return impl_->state(); }
-    StateSignal& state_changed() override { return impl_->state_changed(); };
+    State state() const override { return impl_.state(); }
+    StateSignal& state_changed() override { return impl_.state_changed(); };
 
-    core::StreamStats& stats() override { return impl_->stats(); }
+    core::StreamStats& stats() override { return impl_.stats(); }
 
-    void parameters(const Parameters& parameters, bool replace=false) override { impl_->parameters(parameters, replace); }
-    const Parameters& parameters() const override { return impl_->parameters(); }
+    void parameters(const Parameters& parameters, bool replace=false) override { impl_.parameters(parameters, replace); }
+    const Parameters& parameters() const override { return impl_.parameters(); }
     
-    core::TickStream& ticks(StreamName stream) override { return impl_->ticks(stream); }
-    core::InstrumentStream& instruments(StreamName streamtype) override { return impl_->instruments(streamtype); }
+    core::TickStream& ticks(StreamName stream) override { return impl_.ticks(stream); }
+    core::InstrumentStream& instruments(StreamName streamtype) override { return impl_.instruments(streamtype); }
 private:
-    std::unique_ptr<ImplT> impl_;
+    ImplT impl_;
 };
 
 

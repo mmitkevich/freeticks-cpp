@@ -47,7 +47,7 @@ public:
     using This = SpbProtocol<Schema, BinaryPacket>;
     using BestPriceStream = SpbBestPriceStream<This>;
     using InstrumentStream = SpbInstrumentStream<This>;
-    using StreamsTuple = std::tuple<BestPriceStream&, InstrumentStream&>;
+    using StreamsTuple = std::tuple<BestPriceStream*, InstrumentStream*>;
     using Decoder = SpbDecoder<spb::Frame, SchemaT, BinaryPacketT, StreamsTuple>;
 
     static constexpr std::int64_t PriceMultiplier = 100'000'000;
@@ -58,18 +58,22 @@ public:
     static constexpr std::string_view Venue = Decoder::name();
 public:
     SpbProtocol()
-    : decoder_(streams())
-    , bestprice_(*this)
-    , instruments_(*this) {
-        
+    : bestprice_(*this)
+    , instruments_(*this)
+    , decoder_(StreamsTuple{&bestprice_, &instruments_}) {  
+        TOOLBOX_DUMP_THIS; 
     }
 
     SpbProtocol(const SpbProtocol&) = delete;
+    SpbProtocol& operator=(const SpbProtocol&) = delete;
+
     SpbProtocol(SpbProtocol&&) = delete;
+    SpbProtocol& operator=(SpbProtocol&&) = delete;
+    
     
     constexpr std::string_view name() {  return Decoder::name(); }
     
-    StreamsTuple streams() { return StreamsTuple(bestprice_, instruments_); }
+    StreamsTuple streams() { return StreamsTuple(&bestprice_, &instruments_); }
 
     Decoder& decoder() { return decoder_; }
     auto& stats() {return decoder().stats(); }
@@ -86,9 +90,9 @@ public:
         for(auto e: params) {
             auto strm = e.value_or("stream", std::string{});
             StreamsTuple strms = streams();
-            mp::tuple_for_each(strms, [&](auto &s) {
-                if(s.name() == strm) {
-                    s.on_parameters_updated(e);
+            mp::tuple_for_each(strms, [&](auto* s) {
+                if(s->name() == strm) {
+                    s->on_parameters_updated(e);
                 }
             });
         }

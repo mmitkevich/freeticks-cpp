@@ -34,6 +34,14 @@ enum class StreamState : int8_t {
 class StreamBase :  public BasicComponent<core::StreamState>, public Sequenced<std::uint64_t> 
 {
 public:
+    StreamBase() = default;
+
+    StreamBase(const StreamBase&) = delete;
+    StreamBase& operator=(const StreamBase&) = delete;
+
+    StreamBase(StreamBase&&) = delete;
+    StreamBase& operator=(StreamBase&&) = delete;
+
     core::StreamStats& stats() { return stats_; }
     void open() {}
     void close() {}
@@ -89,6 +97,15 @@ inline std::ostream& operator<<(std::ostream& os, const StreamType self) {
 
 class ProtocolBase {
 public:
+    ProtocolBase() = default;
+    // Copy
+    ProtocolBase(const ProtocolBase&) = delete;
+    ProtocolBase&operator=(const ProtocolBase&) = delete;
+
+    // Move
+    ProtocolBase(ProtocolBase&&) = default;
+    ProtocolBase& operator=(ProtocolBase&&) = default;
+
     void open() {}
     void close() {}
 };

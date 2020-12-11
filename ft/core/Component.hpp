@@ -119,6 +119,7 @@ public:
         state(State::Stopping);
         state(State::Stopped);
     }
+
     void state(State state, ExceptionPtr err=nullptr) {
         if(state != state_) {
             auto old_state = state_.load(std::memory_order_acquire);

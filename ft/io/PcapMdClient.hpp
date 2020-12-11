@@ -35,9 +35,6 @@ public:
     {
         device_.packets().connect(tbu::bind<&PcapMdClient::on_packet_>(this));
     }
-
-    using Base::stop;
-
     Protocol& protocol() {   return protocol_; }
     toolbox::PcapDevice& device() { return device_; }
     
@@ -72,8 +69,8 @@ public:
         params["src"].copy(filter_.sources);
     }
 
-    void run() {
-        protocol_.start();
+    void start() {
+        protocol_.open();
         for(auto& input: inputs_) {
             TOOLBOX_INFO<<"pcap replay started: "<<input;
             device_.input(input);
@@ -81,6 +78,10 @@ public:
             TOOLBOX_INFO<<"pcap replay finished: "<<input;
         }
         stop();
+    }
+    void stop() {
+        protocol_.close();
+        Base::stop();
     }
     void report(std::ostream& os) {
         //protocol_.stats().report(os);

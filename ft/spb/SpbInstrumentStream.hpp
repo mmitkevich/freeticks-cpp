@@ -26,7 +26,11 @@ public:
     using TypeList = mp::mp_list<InstrumentSnapshot>;
 
 public:
-    using Base::Base;
+    SpbInstrumentStream(Protocol& protocol)
+    : Base(protocol) 
+    {
+        TOOLBOX_DUMP_THIS
+    }
     using Base::decoder;
     using Base::invoke;
     using Base::protocol;
@@ -36,14 +40,13 @@ public:
     void on_packet(const SpbPacket<InstrumentSnapshot>& pkt) {
         //TOOLBOX_INFO << pkt;
         auto& d = pkt.value().value();
-        core::VenueInstrument vi;
-        vi.venue(protocol().venue());
-        vi.exchange(protocol().exchange());
-        vi.instrument().symbol(d.symbol.str());
-        auto id = std::hash<std::string>{}(vi.venue_symbol());
-        vi.id(id);
-        vi.venue_instrument_id(d.instrument_id);
-        invoke(vi);
+        core::BasicInstrumentUpdate<4096> u;
+        u.symbol(d.symbol.str());
+        u.exchange(protocol().exchange());
+        auto id = std::hash<std::string>{}(u.exchange_symbol());
+        u.instrument_id(id);
+        u.venue_instrument_id(d.instrument_id);
+        invoke(u.as_size<0>());
     }
     
     void on_parameters_updated(const core::Parameters& params) {
@@ -52,32 +55,40 @@ public:
         if(type == "snapshot.xml") {
             for(auto e:params["urls"]) {
                 std::string url = std::string{e.get_string()};
+                TOOLBOX_DUMP_THIS;
                 snapshot_xml_url_ = url;
                 //parent().state_hook(core::State::Started, [url, this] { snapshot_xml(url); });
             }
         }
     }
     void open() {
+        TOOLBOX_DUMP_THIS;
         if(!snapshot_xml_url_.empty())
             snapshot_xml(snapshot_xml_url_);
     }
     void snapshot_xml(std::string_view path) {
+        TOOLBOX_DEBUG<<"start load snapshot file "<<path;
         tb::xml::Parser p;
         tb::xml::MutableDocument d = p.parse_file(path);
-        core::VenueInstrument vi;
-        vi.venue(protocol().venue());
-        vi.exchange(protocol().exchange());
         for(auto e:d.child("exchange").child("traded_instruments")) {
             std::string_view sym = e.attribute("symbol").value();
             std::string_view is_test = std::string_view(e.attribute("is_test").value());
-            vi.instrument().symbol(sym);
-            auto id = std::hash<std::string>{}(vi.venue_symbol());
-            vi.id(id);
+            
+            core::BasicInstrumentUpdate<4096> u;
+            u.symbol(sym);
+            u.exchange(protocol().exchange());
+            u.venue_symbol(sym);
+            auto exchange_symbol = std::string{sym};
+            exchange_symbol += "@";
+            exchange_symbol += u.exchange();
+            auto id = std::hash<std::string>{}(exchange_symbol);
+            u.instrument_id(id);    // hash function of symbol@exchange
             std::int64_t vid = std::atoll(e.attribute("instrument_id").value());
-            vi.venue_instrument_id(vid);
+            u.venue_instrument_id(vid);
             if(is_test!="true")
-                invoke(vi);
+                invoke(u.as_size<0>());
         }
+        TOOLBOX_DEBUG<<"done loading snapshot file "<<path;
     }
 private:
     std::string snapshot_xml_url_;

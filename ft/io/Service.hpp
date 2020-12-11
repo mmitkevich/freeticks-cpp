@@ -21,8 +21,11 @@ public:
     using Connections = std::vector<Connection>;
     using Reactor = ReactorT;
 public:
-    BasicService(Reactor* reactor)
-    : Base{ reactor } {}
+    template<typename...ArgsT>
+    BasicService(Reactor* reactor, ArgsT...args)
+    : Base{ reactor }
+    , protocol_ {std::forward<ArgsT>(args)...} 
+    {}
 
     using Base::state, Base::reactor;
 
@@ -82,6 +85,35 @@ public:
         close();
         idle_timer_.cancel();
         state(State::Stopped);
+    }
+
+    Connections make_connections(const core::Parameters& params) {
+        Connections conns;
+        for(auto p: params) {
+            std::string_view type = p["type"].get_string();
+            auto proto = utils::str_suffix(type, '.');
+            auto iface = p.value_or("interface", std::string{});
+            if(Connection::supports(proto)) {
+                for(auto e : p["urls"]) {
+                    std::string url = e.get_string().data();
+                    if(!iface.empty())
+                        url = url+"|interface="+iface;
+                    auto& conn = conns.emplace_back(reactor());
+                    conn.url(url);
+                    conn.received().connect(tb::bind<&Protocol::on_packet>(&protocol()));
+                }
+            }
+        }
+        return conns;
+    }
+
+    void on_parameters_updated(const core::Parameters& params) {
+       // TOOLBOX_DUMP_THIS;
+        TOOLBOX_INFO<<"MdClient::on_parameters_updated"<<params;
+        auto conns_p = params["connections"];
+        protocol().on_parameters_updated(conns_p);
+        auto conns = make_connections(conns_p);
+        reopen(conns);
     }
    
     void report(std::ostream& os) {

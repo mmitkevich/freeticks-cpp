@@ -28,8 +28,8 @@ std::int64_t QshDecoder::read_leb128() {
     return result;
 }
 
-std::int64_t QshDecoder::read_uleb128() {
-    std::int64_t result = 0;
+std::uint64_t QshDecoder::read_uleb128() {
+    std::uint64_t result = 0;
     int shift  = 0;
     int byte;
     do {
@@ -43,7 +43,7 @@ std::int64_t QshDecoder::read_uleb128() {
     return result;
 }
 
-std::int64_t QshDecoder::read_relative(std::int64_t previous) {
+std::uint64_t QshDecoder::read_relative(std::uint64_t previous) {
     previous += read_leb128();
     return previous;
 }
@@ -57,18 +57,18 @@ std::string QshDecoder::read_string() {
     return result;
 }
 
-std::int64_t QshDecoder::read_growing(std::int64_t previous) {
-    std::int64_t delta = read_uleb128();
+std::uint64_t QshDecoder::read_growing(std::uint64_t previous) {
+    std::uint64_t delta = read_uleb128();
     if(delta == 268435455) {
         std::int64_t delta2 = read_leb128();
-        return previous + delta2;
+        return ((std::int64_t)previous) + delta2;
     }else {
         return previous + delta;
     }
 }
 
 ftu::HundredNanos QshDecoder::read_datetime() {
-    std::int64_t val;
+    std::uint64_t val;
     input_stream().read((char*)&val, sizeof(val));
     if(input_stream().fail())
         throw std::runtime_error("EOF in read_datetime");
@@ -76,8 +76,8 @@ ftu::HundredNanos QshDecoder::read_datetime() {
 }
 
 ftu::HundredNanos QshDecoder::read_grow_datetime(ftu::HundredNanos previous) {
-    std::int64_t pval = previous.count();
-    std::int64_t val = read_growing(pval / 10000) * 10000;
+    std::uint64_t pval = previous.count();
+    std::uint64_t val = read_growing(pval / 10000) * 10000;
     return ftu::HundredNanos(val);
 }
 
@@ -182,10 +182,10 @@ void QshDecoder::read_order_log() {
     ti.send_time(ts);
     if(flags & OL_ID) {
         if(plaza_flags & PLAZA_ADD) {
-            state_.exchange_id = read_growing(state_.exchange_id);
+            state_.exchange_id = read_growing(state_.exchange_id.low);
             order.server_id(state_.exchange_id);
         } else {
-            order.server_id(read_relative(state_.exchange_id));
+            order.server_id(read_relative(state_.exchange_id.low));
         }
         FT_TRACE("exchange_id "<<e.exchange_id)
     } else {
@@ -206,7 +206,7 @@ void QshDecoder::read_order_log() {
             FT_TRACE("qty_left "<<e.qty_left)
         }
         if(flags&OL_FILL_ID) {
-            state_.fill_id = read_growing(state_.fill_id);
+            state_.fill_id = read_growing(state_.fill_id.low);
             FT_TRACE("trade_id "<<d.fill_id)
         }
         fill.server_id(state_.fill_id);        

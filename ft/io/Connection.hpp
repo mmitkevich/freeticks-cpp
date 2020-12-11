@@ -81,9 +81,15 @@ public:
     void open() {
         Base::open(reactor_, remote().protocol());
         Base::bind(local());
-        if constexpr (tb::SocketTraits::has_connect<This>) {
-            Base::connect(remote());
+        if constexpr (tb::SocketTraits::has_connect<Base>) {
+            Base::async_connect(remote(), tb::bind<&This::on_connect>(this));
+        } else {
+            on_connect({});
         }
+    }
+
+    void on_connect(std::error_code ec) {
+        Base::async_recv(buffer_.prepare(4096), 0, tb::bind<&This::on_recv>(this));
     }
 
     Stats& stats() { return stats_; }
@@ -152,11 +158,13 @@ public:
     void url(const std::string& url) {
         Endpoint ep =  tb::TypeTraits<Endpoint>::from_string(url);
         remote(ep);
+        local(ep);
     }
 
     void remote(Endpoint ep) {
         ep.interface(tb::os::if_addrtoname(ep.interface()));
         Base::remote(ep);
+        packet().header().dst(ep);  // for filter
     }
 
     Endpoint remote() const {

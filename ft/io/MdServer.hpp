@@ -15,6 +15,8 @@ namespace ft::io {
 namespace tb = toolbox;
 
 
+/// Stateless server endpoint
+
 template<typename ProtocolT, typename ConnT, typename ReactorT=tb::Reactor>
 class BasicMdServer :  public io::BasicService<BasicMdServer<ProtocolT, ConnT, ReactorT>
                                               ,ProtocolT, ConnT, ReactorT>
@@ -62,16 +64,16 @@ public:
 
     core::SubscriptionSignal& subscriptions(core::StreamName id) { return subscriptions_; }
 
-    core::TickSink ticks(core::StreamName id) {
-      return tb::bind<&This::write_tick>(this);
+    core::TickSink& ticks(core::StreamName id) {
+      return ticks_;
     }
 
-    core::InstrumentSink instruments(core::StreamName id) {
-      return tb::bind<&This::write_instrument>(this);
+    core::InstrumentSink& instruments(core::StreamName id) {
+      return instruments_;
     }
 
     void write_tick(const core::Tick& tick) {
-      for(auto &conn: connections()) {
+      for(auto& conn: connections()) {
         conn.async_write(tb::ConstBuffer{&tick, tick.length()}, tb::bind<&This::on_write>(this));
       }
       //conn_.async_write(ConstBuffer buffer, Slot<ssize_t, std::error_code> slot)
@@ -81,14 +83,18 @@ public:
 
     }
 
-    void write_instrument(const core::VenueInstrument& ins) {
-
+    void write_instrument(const core::InstrumentUpdate& ins) {
+      for(auto& conn: connections()) {
+        conn.async_write(tb::ConstBuffer{&ins, ins.length()}, tb::bind<&This::on_write>(this));
+      }
     }
 
 private:
     Connections connections_;
     Protocol protocol_;
     core::SubscriptionSignal subscriptions_;
+    core::TickSink ticks_ = tb::bind<&This::write_tick>(this) ;
+    core::InstrumentSink instruments_  = tb::bind<&This::write_instrument>(this);
 };
 
 }

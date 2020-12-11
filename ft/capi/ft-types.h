@@ -7,7 +7,10 @@ extern "C" {
 
 typedef uint16_t ft_len_t;
 typedef int64_t  ft_flags_t;
-typedef uint64_t ft_id_t;
+typedef struct fd_it_s {
+    uint64_t low;
+    uint64_t high;
+} ft_id_t;
 typedef unsigned long long ft_time_t;
 typedef int64_t  ft_qty_t;
 typedef uint16_t ft_slen_t;
@@ -18,6 +21,7 @@ typedef int8_t ft_side_t;
 typedef uint16_t ft_msg_type_t;
 typedef uint8_t ft_topic_t;
 typedef uint8_t ft_event_t;
+typedef uint8_t ft_instrument_type_t;
 
 /// events occur in topics and form messages
 typedef struct {
@@ -107,12 +111,16 @@ struct ft_tick_t {
     ft_byte ft_items[0];                // data block, SBE: "repeating group"
 };
 
-// instrument metadata update
+// instrument update
 typedef struct  {
     ft_hdr_t ft_hdr;
-    ft_id_t ft_instrument_id;       // hash of instrument symbol or some other object
-    ft_slen_t ft_symbol_len;
-    ft_char   ft_symbol[0];
+    ft_id_t ft_instrument_id;             // listed instrument numeric id, e.g. MSFT@NASDSAQ != MSFT@NYSE
+    ft_id_t ft_venue_instrument_id;       // venue-specific numeric instrument id, e.g. 100500
+    ft_instrument_type_t ft_instrument_type;    // type code
+    ft_slen_t ft_symbol_len;              // well-known symbol, e.g. MSFT
+    ft_slen_t ft_exchange_len;            // exchange name, e.g. XNAS
+    ft_slen_t ft_venue_symbol_len;        // venue-specific symbol, e.g. BBG1230ABCDE
+    ft_char   ft_items[0];
 } ft_instrument_t;
 
 /// subscription or unsubscription request

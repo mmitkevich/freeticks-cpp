@@ -45,22 +45,6 @@
 namespace ft {
 
 namespace tb = toolbox;
-template<typename ProtocolT> 
-using UdpMdServer = io::BasicMdServer<ProtocolT, io::DgramConn, tb::Reactor>;
-
-template<typename ProtocolT> 
-using McastMdClient = io::BasicMdClient<ProtocolT, io::McastConn, tb::Reactor>;  
-template<typename ProtocolT>
-using UdpMdClient = io::BasicMdClient<ProtocolT, io::DgramConn, tb::Reactor>;
-template<typename ProtocolT>
-using PcapMdClient = io::PcapMdClient<ProtocolT>;
-
-using UdpPacket = io::DgramConn::Packet;
-using McastPacket = io::McastConn::Packet;
-using PcapPacket = tb::PcapDevice::Packet;
-
-using TbricksProtocol = ft::tbricks::TbricksProtocol<UdpPacket>;
-
 
 class MdServApp {
 public:
@@ -111,7 +95,7 @@ public:
       out_ << "m:tick,sym:'" << ins.venue_symbol() << "'," << e << std::endl;
   }
 
-  void on_instrument(const core::VenueInstrument &e) {
+  void on_instrument(const core::InstrumentUpdate &e) {
     // TOOLBOX_INFO  << e;
     instruments_.update(e);
     if(out_.is_open()) {
@@ -119,24 +103,41 @@ public:
     }
   }
   
-  using MdClientFactory = std::function<std::unique_ptr<core::IMdClient>(std::string_view venue)>;
+  using MdClientFactory = std::function<std::unique_ptr<core::IMdClient>(std::string_view venue, tb::Reactor *r)>;
 
-  template<typename BinaryPacketT, template<typename ProtocolT> typename GatewayT>
+  template<typename BinaryPacketT, 
+          template<typename ProtocolT> typename ClientTT>
   MdClientFactory make_mdclients_factory () {
-    using SpbMdClient = GatewayT<spb::SpbUdpProtocol<BinaryPacketT>>;
-    using TbricksMdClient = GatewayT<tbricks::TbricksProtocol<BinaryPacketT>>;
-    using Factory = ftu::Factory<core::IMdClient, core::MdClientImpl>;
-  
-    return [this](std::string_view venue)->std::unique_ptr<core::IMdClient> { 
-      return Factory::make_unique(
-         ftu::IdFn{"SPB_MDBIN", [this] { return std::make_unique<SpbMdClient>(reactor_); }}
-        ,ftu::IdFn{"QSH", [this] { return std::make_unique<qsh::QshMdClient>(reactor_); }}
-        ,ftu::IdFn{"TB1", [this] { return std::make_unique<TbricksMdClient>(reactor_); }}
-      )(venue); 
+    return [this](std::string_view venue, tb::Reactor* r) { 
+      if (venue=="SPB_MDBIN") {
+          using ClientImpl = ClientTT<spb::SpbUdpProtocol<BinaryPacketT>>;
+          return std::unique_ptr<core::IMdClient>(new core::MdClientImpl<ClientImpl>(r));
+      } else if(venue=="QSH") {
+          using ClientImpl = qsh::QshMdClient;
+          return std::unique_ptr<core::IMdClient>(new core::MdClientImpl<ClientImpl>(r));
+      } else if(venue=="TB1") {
+          using ClientImpl = ClientTT<tbricks::TbricksProtocol<BinaryPacketT>>;
+          return std::unique_ptr<core::IMdClient>(new core::MdClientImpl<ClientImpl>(r));
+      } else throw std::logic_error("Unknown venue");
     };
   }
-  MdClientFactory make_mdclients_factory(const core::Parameters& params) {
-    std::string mode = params.value_or("mode", std::string{"mcast"});
+  
+  // type functions to get concrete MdClient from Protocol, connections types and reactor
+  template<typename ProtocolT> 
+  using McastMdClient = io::BasicMdClient<ProtocolT, io::McastConn, tb::Reactor>;  
+  template<typename ProtocolT>
+  using UdpMdClient = io::BasicMdClient<ProtocolT, io::DgramConn, tb::Reactor>;
+  template<typename ProtocolT>
+  using PcapMdClient = io::PcapMdClient<ProtocolT>;
+  template<typename ProtocolT> 
+  using UdpMdServer = io::BasicMdServer<ProtocolT, io::DgramConn, tb::Reactor>;
+
+  // concrete packet types decoded by Protocols. FIXME: UdpPacket==McastPacket?
+  using UdpPacket = io::DgramConn::Packet;
+  using McastPacket = io::McastConn::Packet;
+  using PcapPacket = tb::PcapDevice::Packet;
+
+  MdClientFactory make_mdclients_factory(std::string_view mode) {
     if(mode=="mcast") {
       return make_mdclients_factory<McastPacket, McastMdClient>();
     } else if(mode=="pcap") {
@@ -149,12 +150,12 @@ public:
       throw std::runtime_error(ss.str());
     }
   }
-  std::unique_ptr<core::IMdClient> make_mdclient(std::string_view venue, const core::Parameters &params) {
+  std::unique_ptr<core::IMdClient> make_mdclient(std::string_view venue, std::string_view mode, const core::Parameters &params) {
     //TOOLBOX_DEBUG<<"run venue:'"<<venue<<"', params:"<<params;
-
-    MdClientFactory factory = make_mdclients_factory(params);
-    std::unique_ptr<core::IMdClient> client = factory(venue);
-    start_timestamp_ = tb::MonoClock::now();
+    //start_timestamp_ = tb::MonoClock::now();
+    MdClientFactory make_mdclient = make_mdclients_factory(mode);
+    TOOLBOX_DUMP<<"make_mdclient venue:"<<venue<<", mode:"<<mode;
+    std::unique_ptr<core::IMdClient> client = make_mdclient(venue, reactor_);
     auto& c = *client;
     c.url(venue);
     c.parameters(params);
@@ -196,7 +197,7 @@ public:
 
   /// returns true if something has really started and reactor thread is required
   bool start(core::Parameters& opts) {
-      std::string output_path = opts.value_or("output", std::string{"/dev/null"});
+      std::string output_path = opts.value_or("output", std::string{"/dev/stdout"});
       if(output_path!="/dev/null")
         out_.open(output_path);
       
@@ -209,9 +210,9 @@ public:
           nstarted++;
         mdservers_.emplace(venue, std::move(server));
       }
-
       for(auto [venue, venue_opts]: opts["clients"]) {
-        auto client = make_mdclient(venue, venue_opts);
+        std::string_view mode = venue_opts.value_or("mode", std::string_view{"mcast"});
+        auto client = make_mdclient(venue, mode, venue_opts);
         client->start(); 
         if(client->state()!=core::State::Stopped)
           nstarted++;
@@ -231,8 +232,8 @@ public:
       bool help = false;
 
       parser('h', "help", tb::Switch{help}, "print help")
-        ('v', "verbose", tb::Value{opts["verbose"], std::uint32_t{}}, "log level")
-        ('o', "output", tb::Value{opts["output"], std::string{}}, "output file")
+        ('v', "verbose", tb::Value{opts, "verbose", std::uint32_t{}}, "log level")
+        ('o', "output", tb::Value{opts, "output", std::string{}}, "output file")
         (tbu::Value{config_file}.required(), "config.json file")
       .parse(argc, argv);
 

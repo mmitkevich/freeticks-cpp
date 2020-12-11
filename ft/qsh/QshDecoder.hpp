@@ -99,9 +99,9 @@ private:
     bool read_frame_header();
     std::string read_string();
     std::int64_t read_leb128();
-    std::int64_t read_uleb128();
-    std::int64_t read_growing(std::int64_t previous);
-    std::int64_t read_relative(std::int64_t previous);
+    std::uint64_t read_uleb128();
+    std::uint64_t read_growing(std::uint64_t previous);
+    std::uint64_t read_relative(std::uint64_t previous);
     ftu::HundredNanos read_datetime();
     ftu::HundredNanos read_grow_datetime(ftu::HundredNanos previous);
     int read_byte();

@@ -60,8 +60,9 @@ public:
     using SpbPacket = typename Decoder::template SpbPacket<MessageT>;
     using Multiplexor = SequenceMultiplexor<DerivedT>;
 public:
-    BasicSpbStream(Protocol& protocol)
+    explicit BasicSpbStream(Protocol& protocol)
     : protocol_(protocol) {
+        TOOLBOX_DUMP_THIS;
         //auto& ex = protocol.parent();
         //ex.state_changed().connect(tb::bind<&DerivedT::on_gateway_state_changed>(&impl()));
     }
@@ -126,8 +127,9 @@ public:
 public:
     SpbDecoder(const SpbDecoder&) = delete;
     SpbDecoder(SpbDecoder&&) = delete;
+    template<typename...StreamsT>
     SpbDecoder(StreamsTuple&& streams)
-        : streams_(streams) { }
+        : streams_(std::move(streams)) { }
     
     static constexpr std::string_view name() { return "SPB_MDBIN"; }
 
@@ -150,8 +152,8 @@ public:
             stats_.on_received(frame);
 
             bool found = false;
-            mp::tuple_for_each(streams_, [&](auto &stream) {
-                using Stream = std::decay_t<decltype(stream)>;
+            mp::tuple_for_each(streams_, [&](auto* stream) {
+                using Stream = std::decay_t<decltype(*stream)>;
                 using TypeList = typename Stream::TypeList;//Message = typename CB::value_type::value_type;
 
                 mp::mp_for_each<TypeList>([&](auto &&message) {
@@ -160,7 +162,7 @@ public:
                         found = true;
                         //TOOLBOX_DEBUG << "["<<(ptr-begin)<<"] msgid "<<frame.msgid<<" seq "<<frame.seq;
                         SpbPacket<Message> spbpkt(packet);
-                        stream.on_decoded(spbpkt);
+                        stream->on_decoded(spbpkt);
                     }
                 });
             });

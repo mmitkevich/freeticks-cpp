@@ -47,7 +47,11 @@ public:
     // list of supported messages
     using TypeList = mp::mp_list<PriceOnline, PriceSnapshot, SnapshotStart, SnapshotFinish, Heartbeat>;
 public:
-    using Base::Base;
+    SpbBestPriceStream(Protocol& protocol)
+    : Base(protocol) 
+    {
+        TOOLBOX_DUMP_THIS;
+    }
     using Base::stats;
     using Base::protocol;
     using Base::invoke;

@@ -18,9 +18,9 @@ public:
     virtual SubscriptionSignal& subscriptions(StreamName id) = 0;
 
     // "instruments"
-    virtual core::InstrumentSink instruments(StreamName id) = 0;
+    virtual core::InstrumentSink& instruments(StreamName id) = 0;
     // "bestprice", "orderbook", etc
-    virtual core::TickSink ticks(StreamName id) = 0;
+    virtual core::TickSink& ticks(StreamName id) = 0;
 };
 
 
@@ -43,8 +43,8 @@ public:
     const Parameters& parameters() const override { return impl_->parameters(); }
     
     SubscriptionSignal& subscriptions(StreamName id) override { return impl_->subscriptions(id); }
-    core::TickSink ticks(StreamName stream) override { return impl_->ticks(stream); }
-    core::InstrumentSink instruments(StreamName streamtype) override { return impl_->instruments(streamtype); }
+    core::TickSink& ticks(StreamName stream) override { return impl_->ticks(stream); }
+    core::InstrumentSink& instruments(StreamName streamtype) override { return impl_->instruments(streamtype); }
 private:
     std::unique_ptr<ImplT> impl_;
 };

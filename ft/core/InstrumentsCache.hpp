@@ -20,11 +20,12 @@ public:
     core::VenueInstrument& operator[](VenueInstrumentId id) { 
         return instruments_[id]; 
     }
-    void update(const core::VenueInstrument& val) { 
+    void update(const core::InstrumentUpdate& val) { 
         auto id = val.venue_instrument_id();
-        auto &ins = instruments_[id] = val;
-        auto sym = symbols_.intern(ins.instrument().symbol());
-        ins.instrument().symbol(sym);
+        auto &ins = instruments_[id];
+        ins.instrument().symbol(strpool_.intern(val.symbol()));
+        ins.exchange(strpool_.intern(val.exchange()));
+        ins.instrument_id(val.instrument_id());
     }
     template<typename GatewayT>
     void connect(GatewayT &gw) {
@@ -34,11 +35,11 @@ public:
     void disconnect(GatewayT &gw) {
         gw.instruments().connect(tbu::bind<&InstrumentsCache::on_instrument>(this));
     }
-    void on_instrument(const core::VenueInstrument& vi) {
+    void on_instrument(const core::InstrumentUpdate& vi) {
         update(vi);
     }
 private:
     utils::FlatMap<VenueInstrumentId, core::VenueInstrument> instruments_;
-    toolbox::util::InternedStrings symbols_;
+    toolbox::util::InternedStrings strpool_;
 };
 };

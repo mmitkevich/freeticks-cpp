@@ -2,8 +2,8 @@
 "clients": {
     "SPB_MDBIN":{
         "enabled": true
-        //,"mode": "pcap"
-        ,"mode": "mcast"
+        ,"mode": "pcap"
+        //,"mode": "mcast"
         ,"connections":[                                                   // channel A,            channel B
             { "stream":"bestprice",  "type": "snapshot.mcast", "interface":"10.1.110.55", "urls": ["233.26.38.16:6016", "233.26.38.144:6144"] }
             ,{ "stream":"bestprice",  "type": "update.mcast",  "interface":"10.1.110.55", "urls": ["233.26.38.17:6017", "233.26.38.145:6145"],    "recovery": "BEX.TOB" }
@@ -11,7 +11,6 @@
             //,{ "stream":"instrument", "type": "update.mcast",  "interface":"10.1.110.55", "urls": ["233.26.38.37:6037", "233.26.38.165:6165"] }
             ,{ "stream":"instrument", "type": "snapshot.xml", "urls": ["/opt/tbricks/instr-2020-11-02.xml"]}
         ]
-//        ,"interface": "10.1.110.55" // "eth5", "eno2"
         ,"pcaps": ["/opt/tbricks/spb_20201013.pcap"]
         ,"filter": {
             "protocols": ["udp"]
