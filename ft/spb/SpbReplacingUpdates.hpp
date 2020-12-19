@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ft/utils/Common.hpp"
+
 namespace ft::spb {
 
 template<typename K, typename V>
@@ -80,7 +82,7 @@ public:
 private:
     std::string_view name_ {};
     
-    utils::FlatMap<K, SeqValue<V>> snapshot_;
+    ft::unordered_map<K, SeqValue<V>> snapshot_;
 
     std::uint64_t snapshot_start_seq_{};    // when started
     std::uint64_t snapshot_last_seq_{};     // last snapshot seq

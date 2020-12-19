@@ -12,7 +12,7 @@
 #include "ft/capi/ft-types.h"
 #include "ft/core/Requests.hpp"
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 using Timestamp = toolbox::WallTime;
 using WallClock = toolbox::WallClock;
@@ -32,8 +32,8 @@ struct DefaultPolicy {
     //using Qty = ft::core::Qty;
     //using Timestamp = ft::core::Timestamp;
     //using VenueInstrumentId = ft::core::VenueInstrumentId;
-    using PriceConv = ft::utils::DoubleConversion<std::int64_t>;
-    using QtyConv = ft::utils::DoubleConversion<std::int64_t>;
+    using PriceConv = ft::DoubleConversion<std::int64_t>;
+    using QtyConv = ft::DoubleConversion<std::int64_t>;
     
     static constexpr DefaultPolicy instance() { return DefaultPolicy(); }
     constexpr PriceConv price_conv() { return PriceConv(CorePriceMultiplier); }
@@ -81,10 +81,10 @@ inline std::ostream& operator<<(std::ostream& os, const TickSide self) {
     }
 }
 template<typename ValueT, std::int64_t Multiplier>
-using PriceConversion = ft::utils::NumericConversion<ValueT, Multiplier, Price, CorePriceMultiplier>;
+using PriceConversion = ft::NumericConversion<ValueT, Multiplier, Price, CorePriceMultiplier>;
 
 template<typename ValueT, std::int64_t Multiplier>
-using QtyConversion = ft::utils::NumericConversion<ValueT, Multiplier, Qty, CoreQtyMultiplier>;
+using QtyConversion = ft::NumericConversion<ValueT, Multiplier, Qty, CoreQtyMultiplier>;
 
 using Sequence = std::uint64_t;
 
@@ -137,8 +137,11 @@ public:
     Timestamp send_time() const { return Timestamp(tb::Nanos(ft_hdr.ft_send_time)); }
     void send_time(Timestamp val) { ft_hdr.ft_send_time = val.time_since_epoch().count(); }    
 
-    VenueInstrumentId venue_instrument_id() const { return ft_instrument_id; }
-    void venue_instrument_id(VenueInstrumentId val) { ft_instrument_id = val; }
+    InstrumentId instrument_id() const { return ft_instrument_id; }
+    void instrument_id(VenueInstrumentId val) { ft_instrument_id = val; }
+
+    VenueInstrumentId venue_instrument_id() const { return ft_venue_instrument_id; }
+    void venue_instrument_id(VenueInstrumentId val) { ft_venue_instrument_id = val; }
 
     const T* begin() const { return &operator[](0); }
     const T* end() const { return &operator[](size()-1); }
@@ -204,4 +207,4 @@ inline std::ostream & operator<<(std::ostream& os, const BasicTicks<DataT, SizeI
     return os;
 }
 
-} // namespace
+}} // namespace

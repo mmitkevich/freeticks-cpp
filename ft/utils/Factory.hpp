@@ -1,7 +1,7 @@
 #pragma once
 #include "ft/utils/Common.hpp"
 
-namespace ft::utils {
+namespace ft{ inline namespace util {
 
 /// associate function with string name and call it lazily
 template<typename FnT>
@@ -57,4 +57,4 @@ public:
     template<typename...FactoriesT>
     static auto make_unique(FactoriesT&&... args) { return detail::UniquePtr<Interface, AdapterT, FactoriesT...> {args...}; }
 };
-} // ft::utils
+}} // ft::util

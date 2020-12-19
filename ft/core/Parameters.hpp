@@ -2,11 +2,11 @@
 #include "ft/utils/Common.hpp"
 #include "toolbox/util/Json.hpp"
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
-using MutableParameters = toolbox::json::MutableDocument;
-using Parameters = toolbox::json::MutableElement;
-using ParametersSignal = tbu::Signal<const Parameters&>;
+using MutableParameters = tb::json::MutableDocument;
+using Parameters = tb::json::MutableElement;
+using ParametersSignal = tb::Signal<const Parameters&>;
 
 class IParameterized {
 public:
@@ -38,4 +38,4 @@ protected:
     MutableParameters parameters_;  // size is two sizeof(vector)
 };
 
-};
+}} // ft::core

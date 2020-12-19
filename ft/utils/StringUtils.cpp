@@ -2,7 +2,7 @@
 #include <locale>
 #include <boost/algorithm/hex.hpp> 
 
-namespace ft::utils {
+namespace ft { inline namespace util {
 
 std::string to_hex(std::string_view sv) {
     std::string result(sv.size()*2,'\0');
@@ -26,4 +26,4 @@ std::wstring to_wstring(std::string_view sv) {
     return wstr;
 }
 
-}
+}} //ft::util

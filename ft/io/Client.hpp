@@ -4,36 +4,46 @@
 #include "ft/core/Parameters.hpp"
 #include "ft/core/Component.hpp"
 #include "toolbox/io/Reactor.hpp"
+#include <sstream>
+#include <toolbox/io/Socket.hpp>
+#include <ft/utils/StringUtils.hpp>
 
 namespace ft::io {
 
-template<typename DerivedT, typename ProtocolT, typename ConnT, typename ReactorT = tb::Reactor>
-class BasicService : public core::BasicComponent<DerivedT, core::State> {
-    using This = BasicService<DerivedT, ProtocolT, ConnT>;
-    using Base = core::BasicComponent<DerivedT, core::State>;
+
+/// client could have many connections, but they all conform to single protocol
+template<typename DerivedT, typename ProtocolT, typename ConnT
+> class BasicClient : public core::BasicComponent<core::State>,
+    public core::BasicParameterized<DerivedT>
+{
+    using This = BasicClient<DerivedT, ProtocolT, ConnT>;
+    using Base = core::BasicComponent<core::State>;
 public:
-    using Protocol = ProtocolT;
     using Connection = ConnT;
     using BinaryPacket = typename Connection::Packet;
     using Socket = typename Connection::Socket;
     using Endpoint = typename Connection::Endpoint;
-    using State = typename Base::State;
-    using Connections = std::vector<Connection>;
-    using Reactor = ReactorT;
+    using typename Base::State;
+    using Connections = tb::unordered_map<Endpoint, Connection>;
+    using Reactor = typename ConnT::Reactor;    // reactor-aware connection
+    using Protocol = ProtocolT;
 public:
     template<typename...ArgsT>
-    BasicService(Reactor* reactor, ArgsT...args)
-    : Base{ reactor }
-    , protocol_ {std::forward<ArgsT>(args)...} 
+    BasicClient(Reactor* reactor, ArgsT...args)
+    : reactor_{ reactor }
+    , protocol_(std::forward<ArgsT>(args)...)
     {}
 
-    using Base::state, Base::reactor;
+    using Base::state;
 
-    Protocol& protocol() {   return protocol_; }
+    Reactor& reactor() { assert(reactor_); return *reactor_; }
+
     Connections& connections() { return connections_; }
 
     auto& stats() { return protocol_.stats(); }
-        
+    
+    Protocol& protocol() {   return protocol_; }
+
     bool is_open() const { 
         auto s = state();
         switch(s) {
@@ -45,8 +55,8 @@ public:
     void open() {
         //TOOLBOX_DUMP_THIS;
         TOOLBOX_INFO << "Opening "<< connections_.size() << " connections";
-        for(auto& c : connections_) {
-            c.open();
+        for(auto& [ep, c] : connections_) {
+            c.open(reactor_, {});
         }
         protocol_.open();        
     }
@@ -54,7 +64,7 @@ public:
     void close() {
         protocol_.close();
         TOOLBOX_INFO << "Closing "<< connections_.size() << " connections";
-        for(auto &c : connections_) {
+        for(auto & [ep, c] : connections_) {
             c.close();
         }
     }
@@ -75,10 +85,7 @@ public:
             tb::Priority::Low, tb::bind<&This::on_idle_timer>(this));
         open();
         state(State::Started);
-        run();
     }
-
-    void run() { }
 
     void stop() {
         state(State::Stopping);
@@ -91,44 +98,38 @@ public:
         Connections conns;
         for(auto p: params) {
             std::string_view type = p["type"].get_string();
-            auto proto = utils::str_suffix(type, '.');
+            auto proto = ft::str_suffix(type, '.');
             auto iface = p.value_or("interface", std::string{});
             if(Connection::supports(proto)) {
                 for(auto e : p["urls"]) {
-                    std::string url = e.get_string().data();
+                    std::string url {e.get_string()};
                     if(!iface.empty())
                         url = url+"|interface="+iface;
-                    auto& conn = conns.emplace_back(reactor());
-                    conn.url(url);
-                    conn.received().connect(tb::bind<&Protocol::on_packet>(&protocol()));
+                    Connection c;
+                    c.url(url);
+                    auto res = conns.emplace(c.remote(), std::move(c));
+                    if(res.second) {
+                        res.first->second.packet().connect(tb::bind<&This::on_packet>(this));
+                    }
                 }
             }
         }
         return conns;
     }
 
-    void on_parameters_updated(const core::Parameters& params) {
-       // TOOLBOX_DUMP_THIS;
-        TOOLBOX_INFO<<"MdClient::on_parameters_updated"<<params;
-        auto conns_p = params["connections"];
-        protocol().on_parameters_updated(conns_p);
-        auto conns = make_connections(conns_p);
-        reopen(conns);
+    void on_packet(const BinaryPacket& packet, tb::Slot<std::error_code> slot) {
+        protocol_.on_packet(packet);    // will do all the stuuf
+        slot({});   // done
     }
-   
-    void report(std::ostream& os) {
-        protocol_.stats().report(os);
-    }
-    
     void on_idle_timer(tb::CyclTime now, tb::Timer& timer) {
-        on_idle();
-    }
-    void on_idle() {
-        report(std::cerr);
+        std::stringstream ss;
+        protocol_.stats().report(ss);
+        TOOLBOX_INFO << ss.str();
     }
 protected:
-    Connections connections_;
+    Reactor* reactor_{nullptr};
     Protocol protocol_;
+    Connections connections_;
     tb::Timer idle_timer_; 
 };
 

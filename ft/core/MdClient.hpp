@@ -9,7 +9,7 @@
 #include "ft/core/Component.hpp"
 
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 
 namespace streams {
@@ -59,4 +59,4 @@ private:
 
 
 
-} // namespace ft::core
+}} // ft::core

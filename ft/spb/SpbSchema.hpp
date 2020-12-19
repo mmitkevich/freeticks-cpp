@@ -288,7 +288,7 @@ struct Instrument {
         switch(self) {
             case AuctionDir::Direct: return os<<"Direct";
             case AuctionDir::Inverse: return os<<"Inverse";
-            default: return os << tbu::unbox(self);
+            default: return os << tb::unbox(self);
         }
     }
     friend std::ostream& operator<<(std::ostream& os, const Type& self) {
@@ -301,7 +301,7 @@ struct Instrument {
             case Type::Swap: return os<<"Swap";
             case Type::CalendarSpread: return os<<"CalendarSpread";
             case Type::DVP: return os<<"dvp";
-            default: return os << tbu::unbox(self);
+            default: return os << tb::unbox(self);
         }
     }
 };

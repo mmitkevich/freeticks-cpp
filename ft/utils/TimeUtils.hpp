@@ -5,7 +5,7 @@
 
 #include "toolbox/sys/Time.hpp"
 
-namespace ft::utils {
+namespace ft { inline namespace util {
 
 using HundredNanos = std::chrono::duration<std::int64_t,
     std::ratio_multiply<std::ratio<100>, std::nano>>;
@@ -28,5 +28,5 @@ inline toolbox::WallTime to_wall_time(HundredNanos value) {
     return toolbox::WallTime(HundredNanos{val});
 }
 
-} // ft::utils
+}} // ft::util
 

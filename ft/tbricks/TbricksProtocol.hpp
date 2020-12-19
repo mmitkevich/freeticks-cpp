@@ -24,13 +24,20 @@ public:
             case MsgType::SubscriptionRequest: {
                 core::SubscriptionRequest req;
                 req.symbol() = msg.subscription.symbol;
+                req.request_type(core::RequestType::Subscribe);
                 subscribe_req().invoke(std::move(req));
             } break;
             case MsgType::SubscriptionCancelRequest: {
-
+                core::SubscriptionRequest req;
+                req.symbol() = msg.subscription.symbol;
+                req.request_type(core::RequestType::Unsubscribe);
+                subscribe_req().invoke(std::move(req));
             } break;
             case MsgType::ClosingEvent: {
-
+                core::SubscriptionRequest req;
+                req.symbol() = msg.subscription.symbol;
+                req.request_type(core::RequestType::UnsubscribeAll);
+                subscribe_req().invoke(std::move(req));
             } break;
             case MsgType::HeartBeat: {
 

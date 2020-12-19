@@ -9,7 +9,7 @@
 #include <atomic>
 #include <exception>
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 using State = toolbox::io::State;
 using ExceptionPtr = const std::exception*;
@@ -79,51 +79,23 @@ Reactor* current_reactor();
 
 class Component : public Identifiable {
 public:
-    explicit Component(Reactor* reactor=nullptr)
-    : reactor_(reactor)
-    {}
-
-    Component(const Component& rhs) = default;
-    Component(Component&& rhs) = default;
-
-    Reactor& reactor() { assert(reactor_); return *reactor_; }
-
+    using Identifiable::Identifiable;
     void url(std::string_view url) { url_ = url; }
     std::string_view url() const { return url_; }
 protected:
-    Reactor* reactor_;
     std::string url_;
 };
-/// Component = Identifier + Parameters + State + Reactor
-template<typename DerivedT, typename StateT=core::State>
-class BasicComponent : public Component, public BasicParameterized<DerivedT> {
+
+template<typename StateT>
+class BasicState {
 public:
-    using Base = Component;
     using State = StateT;
     using StateSignal = tb::Signal<State, State, ExceptionPtr>;
 public:
-    using Base::Base;
-    BasicComponent(const BasicComponent& rhs)
-    : Base(rhs)
-    , state_(rhs.state_.load(std::memory_order_relaxed)) // TODO: make non-atomic, patch setters/getters?
-    , state_changed_(rhs.state_changed_)
-    , stopped_hooks_(rhs.stopped_hooks_)
-    , started_hooks_(rhs.started_hooks_)
-    {}
-
-    void start() {
-        state(State::Starting);
-        state(State::Started);
-    }
-    void stop() {
-        state(State::Stopping);
-        state(State::Stopped);
-    }
-
     void state(State state, ExceptionPtr err=nullptr) {
         if(state != state_) {
-            auto old_state = state_.load(std::memory_order_acquire);
-            state_.store(state, std::memory_order_release);
+            auto old_state = state_;
+            state_ = state;
             switch(state) {
                 case State::Started: started_hooks_.invoke(); break;
                 case State::Stopped: stopped_hooks_.invoke(); break;
@@ -147,12 +119,17 @@ public:
     }
     StateSignal& state_changed() { return state_changed_; }
 protected:
-    std::atomic<State> state_ {};
+    State state_ {};
     StateSignal state_changed_; 
     BasicHooks<> stopped_hooks_;
     BasicHooks<> started_hooks_;
 };
 
+template<typename StateT> 
+class BasicComponent : public Component, public BasicState<StateT> {
+public:
+    using Component::Component;
+};
 
 
-} // ns ft::core
+}} // ns ft::core

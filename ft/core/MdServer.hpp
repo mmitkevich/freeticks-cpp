@@ -10,12 +10,12 @@
 #include "ft/core/Component.hpp"
 
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 
 class IMdServer : public IComponent {
 public:
-    virtual SubscriptionSignal& subscriptions(StreamName id) = 0;
+    virtual SubscriptionSignal& subscribe(StreamName id) = 0;
 
     // "instruments"
     virtual core::InstrumentSink& instruments(StreamName id) = 0;
@@ -42,7 +42,7 @@ public:
     void parameters(const Parameters& parameters, bool replace=false) override { impl_->parameters(parameters, replace); }
     const Parameters& parameters() const override { return impl_->parameters(); }
     
-    SubscriptionSignal& subscriptions(StreamName id) override { return impl_->subscriptions(id); }
+    SubscriptionSignal& subscribe(StreamName id) override { return impl_->subscribe(id); }
     core::TickSink& ticks(StreamName stream) override { return impl_->ticks(stream); }
     core::InstrumentSink& instruments(StreamName streamtype) override { return impl_->instruments(streamtype); }
 private:
@@ -51,4 +51,4 @@ private:
 
 
 
-} // namespace ft::core
+}} // ft::core

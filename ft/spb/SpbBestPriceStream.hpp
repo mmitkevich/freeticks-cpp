@@ -15,7 +15,6 @@
 #include "ft/spb/SpbReplacingUpdates.hpp"
 
 namespace ft::spb {
-namespace tbn = toolbox::net;
 
 #define FT_STREAM_DEBUG TOOLBOX_DEBUG << name() << ": "
 

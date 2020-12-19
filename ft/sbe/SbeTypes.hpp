@@ -17,7 +17,7 @@ public:
     constexpr std::size_t capacity() const { return Length; }
     constexpr std::size_t size() const { return std::char_traits<char>::length(data_);}
     constexpr std::string_view str() const { return std::string_view(data_, size()); }
-    std::wstring wstr() const { return ft::utils::to_wstring(str()); }
+    std::wstring wstr() const { return ft::to_wstring(str()); }
     constexpr const char* c_str() const { return data_; }
 
     friend auto& operator<<(std::ostream& os, const FixedString& self) {
@@ -55,7 +55,7 @@ public:
     constexpr std::size_t size() const { return size_;} // FIXME: std::strlen(data_) ?
     void resize(std::size_t val) { size_ = val; }
     constexpr std::string_view str() const { return std::string_view(data(), size()); }
-    std::wstring wstr() const { return ft::utils::to_wstring(str()); }
+    std::wstring wstr() const { return ft::to_wstring(str()); }
     constexpr const char* c_str() const { return data(); }
     char* data() { return &data_[OffsetI-sizeof(SizeT)]; }
     const char* data() const { return &data_[OffsetI-sizeof(SizeT)]; }

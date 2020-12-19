@@ -3,7 +3,7 @@
 #include "ft/utils/Throttled.hpp"
 #include <ostream>
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 class StreamStats {
 public:
@@ -79,8 +79,8 @@ public:
         report(std::cerr);
     }
 protected:
-    ft::utils::Throttled<toolbox::Slot<std::ostream&>> report_{ toolbox::bind<&DerivedT::on_report>(static_cast<DerivedT*>(this)) };
+    ft::Throttled<toolbox::Slot<std::ostream&>> report_{ toolbox::bind<&DerivedT::on_report>(static_cast<DerivedT*>(this)) };
 };
 
 
-} // namespace ft::core
+}} // namespace ft::core

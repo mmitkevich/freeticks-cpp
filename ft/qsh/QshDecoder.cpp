@@ -67,18 +67,18 @@ std::uint64_t QshDecoder::read_growing(std::uint64_t previous) {
     }
 }
 
-ftu::HundredNanos QshDecoder::read_datetime() {
+ft::HundredNanos QshDecoder::read_datetime() {
     std::uint64_t val;
     input_stream().read((char*)&val, sizeof(val));
     if(input_stream().fail())
         throw std::runtime_error("EOF in read_datetime");
-    return ftu::HundredNanos(val);
+    return ft::HundredNanos(val);
 }
 
-ftu::HundredNanos QshDecoder::read_grow_datetime(ftu::HundredNanos previous) {
+ft::HundredNanos QshDecoder::read_grow_datetime(ft::HundredNanos previous) {
     std::uint64_t pval = previous.count();
     std::uint64_t val = read_growing(pval / 10000) * 10000;
-    return ftu::HundredNanos(val);
+    return ft::HundredNanos(val);
 }
 
 

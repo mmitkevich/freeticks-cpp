@@ -105,7 +105,8 @@ struct ft_price_t {
 /// market data update
 struct ft_tick_t {
     ft_hdr_t ft_hdr;                    // SBE-compatible header
-    ft_id_t ft_instrument_id;       // hash of instrument symbol or some other object
+    ft_id_t ft_instrument_id;           // hash of instrument symbol or some other object
+    ft_id_t ft_venue_instrument_id;       // venue-specific numeric instrument id, e.g. 100500
     ft_slen_t ft_item_len;              // SBE: blockLength
     ft_slen_t ft_items_count;           // SBE: numInGroup
     ft_byte ft_items[0];                // data block, SBE: "repeating group"

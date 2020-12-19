@@ -6,7 +6,7 @@
 #include "ft/core/StreamStats.hpp"
 #include "ft/capi/ft-types.h"
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 /// Stream of events could be viewed as tb::Signal<const T&> from subscriber point of view
 /// and tb::Slot<const T&> (or tb::Slot<T&&>) from publisher point of view
@@ -23,15 +23,15 @@ protected:
 
 
 enum class StreamState : int8_t {
-    Closed,
-    Pending,
-    Open,
-    Stale,
-    Closing,
-    Failed
+    Closed  = 0,
+    Pending = 1,
+    Open    = 2,
+    Stale   = 3,
+    Closing = 4,
+    Failed  = 5
 };
 
-class StreamBase :  public BasicComponent<core::StreamState>, public Sequenced<std::uint64_t> 
+class StreamBase :  public BasicState<core::StreamState>, public Sequenced<std::uint64_t> 
 {
 public:
     StreamBase() = default;
@@ -43,16 +43,13 @@ public:
     StreamBase& operator=(StreamBase&&) = delete;
 
     core::StreamStats& stats() { return stats_; }
-    void open() {}
-    void close() {}
 protected:
   core::StreamStats stats_;
-
 };
 
 /// (Input)Stream = Sequenced Signal
 template<typename ...ArgsT>
-class Stream : public tb::Signal<ArgsT...>, public StreamBase
+class Stream : public StreamBase, public tb::Signal<ArgsT...>
 {
     using Base = tb::Signal<ArgsT...>;
     using Sequenced = Sequenced<std::uint64_t>;
@@ -64,16 +61,15 @@ public:
 };
 
 /// (Output) Sink is Sequenced Slot
-template<typename... ArgsT>
-class Sink: public tb::Slot<ArgsT...>, public StreamBase {
-    using Base = tb::Slot<ArgsT...>;
+template<typename MessageT>
+class Sink: public StreamBase, public tb::Slot<const MessageT&, tb::SizeSlot> {
+    using Base = tb::Slot<const MessageT&, tb::SizeSlot>;
+    using Slot = Base;
     using Sequenced = Sequenced<std::uint64_t>;
 public:
-    Sink(Base&& slot): Base(slot) {}
     using Base::Base;
-    using Base::invoke;
-    using Base::operator();
-    using Sequenced::sequence;
+    Sink(Slot slot)
+    : Base(slot) {}
 };
 
 enum class StreamType {
@@ -110,4 +106,4 @@ public:
     void close() {}
 };
 
-};
+}} // ft::core

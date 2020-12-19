@@ -1,17 +1,20 @@
 #pragma once
 
+#include "ft/utils/Common.hpp"
 #include "toolbox/util/Slot.hpp"
 #include <boost/mp11/algorithm.hpp>
 #include <boost/mp11/tuple.hpp>
 
-namespace ft::utils {
-
-namespace tbu = toolbox::util;
 namespace mp = boost::mp11;
 
-template<typename T> 
-struct Signal : public tbu::Signal<T> {
-    using Base = tbu::Signal<T>;
+namespace tb = toolbox;
+
+namespace ft { inline namespace util {
+
+
+template<typename T, typename ...ArgsT> 
+struct Signal : public tb::Signal<T, ArgsT...> {
+    using Base = tb::Signal<T, ArgsT...>;
     using value_type = T;
     using Base::Base;
     using Base::operator();
@@ -28,13 +31,13 @@ struct SignalTuple
     : impl_(std::forward<Args>(args)...) {}
 
     template<typename T>
-    void connect(tbu::BasicSlot<T> fn)
+    void connect(tb::BasicSlot<T> fn)
     {
         std::get< mp::mp_find<TypeListT, T>::value >(impl_).connect(fn);
     }
     
     template<typename T>
-    void disconnect(tbu::BasicSlot<T> fn)
+    void disconnect(tb::BasicSlot<T> fn)
     {
         std::get< mp::mp_find<TypeListT, T>::value >(impl_).disconnect(fn);
     }    
@@ -46,4 +49,4 @@ struct SignalTuple
     mp::mp_rename<mp::mp_transform<Signal, TypeListT>, std::tuple> impl_;
 };
 
-}
+}} // ft::util

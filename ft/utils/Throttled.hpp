@@ -3,7 +3,7 @@
 #include <memory>
 #include <toolbox/sys/Time.hpp>
 
-namespace ft::utils {
+namespace ft { inline namespace util {
 
 template<typename FnT>
 class Throttled {
@@ -29,4 +29,4 @@ protected:
     toolbox::sys::Duration duration_ {};
 };
 
-}
+}} // ft::util

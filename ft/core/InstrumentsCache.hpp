@@ -7,7 +7,7 @@
 #include "toolbox/util/InternedStrings.hpp"
 #include <stdexcept>
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 class InstrumentError : public std::runtime_error {
 public:
@@ -29,17 +29,18 @@ public:
     }
     template<typename GatewayT>
     void connect(GatewayT &gw) {
-        gw.instruments().connect(tbu::bind<&InstrumentsCache::on_instrument>(this));
+        gw.instruments().connect(tb::bind<&InstrumentsCache::on_instrument>(this));
     }
     template<typename GatewayT>
     void disconnect(GatewayT &gw) {
-        gw.instruments().connect(tbu::bind<&InstrumentsCache::on_instrument>(this));
+        gw.instruments().connect(tb::bind<&InstrumentsCache::on_instrument>(this));
     }
     void on_instrument(const core::InstrumentUpdate& vi) {
         update(vi);
     }
 private:
-    utils::FlatMap<VenueInstrumentId, core::VenueInstrument> instruments_;
-    toolbox::util::InternedStrings strpool_;
+    ft::unordered_map<VenueInstrumentId, core::VenueInstrument> instruments_;
+    tb::InternedStrings strpool_;
 };
-};
+
+}} // ft::core

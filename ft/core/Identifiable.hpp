@@ -5,7 +5,7 @@
 
 #include <ft/capi/ft-types.h>
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 template<typename DerivedT>
 class Hashable {};
@@ -77,7 +77,7 @@ protected:
     Identifier id_ {};
 };
 
-}
+}} // ft::core
 
 namespace std {
     template<>
@@ -89,4 +89,5 @@ namespace std {
             return val.hash_value();
         }
     };
-};
+
+}

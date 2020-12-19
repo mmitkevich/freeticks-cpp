@@ -25,7 +25,7 @@ class SpbDecoderStats: public core::BasicStats<SpbDecoderStats> {
 public:
     using Base = core::BasicStats<SpbDecoderStats>;
     using MsgId = uint32_t;
-    using MsgStats = utils::FlatMap<MsgId, std::size_t>;
+    using MsgStats = ft::unordered_map<MsgId, std::size_t>;
 public:
     void on_report(std::ostream& os) {
         if constexpr(core::ft_stats_enabled()) {
@@ -73,6 +73,8 @@ public:
     Protocol& protocol() { return protocol_; }
     Decoder& decoder() { return protocol_.decoder_; }
 
+    void open() {}
+    
     template<typename PacketT>
     void on_decoded(const PacketT& packet) {
         if(update_.match(packet))

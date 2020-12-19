@@ -1,68 +1,40 @@
+
 #pragma once
 #include <ft/utils/Common.hpp>
+#include <unordered_map>
+#include "ft/core/Identifiable.hpp"
 #include "ft/core/Instrument.hpp"
+#include "ft/core/MdSub.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/Component.hpp"
 #include "ft/core/EndpointStats.hpp"
 #include "ft/core/Requests.hpp"
 #include "ft/core/Tick.hpp"
-#include "ft/io/Connection.hpp"
+#include "ft/io/Conn.hpp"
 #include "toolbox/net/Endpoint.hpp"
-#include "ft/io/Service.hpp"
-
+#include "ft/core/MdClient.hpp"
+#include "ft/io/Server.hpp"
+#include "ft/io/PeerConn.hpp"
 namespace ft::io {
 
-namespace tb = toolbox;
-
-
-/// Stateless server endpoint
-
-template<typename ProtocolT, typename ConnT, typename ReactorT=tb::Reactor>
-class BasicMdServer :  public io::BasicService<BasicMdServer<ProtocolT, ConnT, ReactorT>
-                                              ,ProtocolT, ConnT, ReactorT>
+/// Server handles multiple clients, each client is separate Connection
+template<typename PeerT, typename ServerSocketT>
+class BasicMdServer :  public io::BasicServer<BasicMdServer<PeerT, ServerSocketT>, PeerT, ServerSocketT>
 {
 public:
-    using This = BasicMdServer<ProtocolT, ConnT, ReactorT>;
-    using Base = io::BasicService<This, ProtocolT, ConnT, ReactorT>;
-    using typename Base::Protocol;
-    using typename Base::Connection;
-    using typename Base::BinaryPacket;
-    using typename Base::Socket;
+    using This = BasicMdServer<PeerT, ServerSocketT>;
+    using Base = io::BasicServer<This, PeerT, ServerSocketT>;
+    using ServerSocket = ServerSocketT;
+    using typename Base::Peer;
+    using typename Base::Peers;
     using typename Base::Endpoint;
-    using typename Base::State;
-    using typename Base::Connections;
-
+    using typename Base::Reactor;
+  public:
     using Base::Base;
 
-    using Base::state, Base::is_open, Base::url, Base::reactor;
-    using Base::open, Base::close, Base::reopen, Base::connections;
+    using Base::state, Base::url, Base::reactor, Base::peers;
 
-    Connections prepare(const core::Parameters& params) {
-        Connections conns;
-        for(auto p: params) {
-            std::string_view type = p["type"].get_string();
-            auto proto = utils::str_suffix(type, '.');
-            if(Connection::supports(proto)) {
-                for(auto e : p["urls"]) {
-                    std::string url = e.get_string().data();
-                    auto& conn = conns.emplace_back(reactor());
-                    conn.url(url);
-                    conn.received().connect(tb::bind<&Protocol::on_packet>(&protocol_));
-                }
-            }
-        }
-        return conns;
-    }
-
-    void on_parameters_updated(const core::Parameters& params) {
-        TOOLBOX_INFO<<"MdServer::on_parameters_updated"<<params;
-        auto conns_p = params["connections"];
-        protocol_.on_parameters_updated(conns_p);
-        auto conns = prepare(conns_p);
-        reopen(conns);
-    }
-
-    core::SubscriptionSignal& subscriptions(core::StreamName id) { return subscriptions_; }
+    core::SubscriptionSignal& subscribe(core::StreamName id) { return subscribe_; }
 
     core::TickSink& ticks(core::StreamName id) {
       return ticks_;
@@ -72,29 +44,21 @@ public:
       return instruments_;
     }
 
-    void write_tick(const core::Tick& tick) {
-      for(auto& conn: connections()) {
-        conn.async_write(tb::ConstBuffer{&tick, tick.length()}, tb::bind<&This::on_write>(this));
-      }
-      //conn_.async_write(ConstBuffer buffer, Slot<ssize_t, std::error_code> slot)
-    }
-
-    void on_write(ssize_t size, std::error_code ec) {
-
-    }
-
-    void write_instrument(const core::InstrumentUpdate& ins) {
-      for(auto& conn: connections()) {
-        conn.async_write(tb::ConstBuffer{&ins, ins.length()}, tb::bind<&This::on_write>(this));
+    template<typename MessageT>
+    void publish(const MessageT& message, tb::SizeSlot slot) {
+      // decide who wants this tick and broadcast
+      for(auto& [ep, peer]: peers()) {
+        auto topic = message.topic();
+        if(peer.subscription().test(topic)) {
+          peer.async_write(message, slot);
+        }
       }
     }
 
 private:
-    Connections connections_;
-    Protocol protocol_;
-    core::SubscriptionSignal subscriptions_;
-    core::TickSink ticks_ = tb::bind<&This::write_tick>(this) ;
-    core::InstrumentSink instruments_  = tb::bind<&This::write_instrument>(this);
+    core::SubscriptionSignal subscribe_;
+    core::TickSink ticks_ = tb::bind<&This::publish<core::Tick>>(this);
+    core::InstrumentSink instruments_ = tb::bind<&This::publish<core::InstrumentUpdate>>(this);
 };
 
 }

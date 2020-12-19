@@ -6,7 +6,7 @@
 #include "ft/core/Stream.hpp"
 #include "ft/capi/ft-types.h"
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 class InstrumentStatus
 {
@@ -63,7 +63,7 @@ inline std::ostream& operator<<(std::ostream&os, const InstrumentType& self) {
         case InstrumentType::Repo: return os <<"Repo";
         case InstrumentType::Spot: return os << "Spot";
         case InstrumentType::CalendarSpread: return os <<"CalSpr";
-        default: return os << tbu::unbox(self);
+        default: return os << tb::unbox(self);
     }
 }
 
@@ -81,7 +81,8 @@ public:
     BasicInstrumentUpdate() {
         std::memset(this, 0, sizeof(ft_instrument_t));
     }
-    
+    StreamType topic() const { return (StreamType) ft_hdr.ft_type.ft_topic; }
+
     VenueInstrumentId venue_instrument_id() const { return ft_venue_instrument_id; }
     void venue_instrument_id(VenueInstrumentId val) { ft_venue_instrument_id = val; }
     InstrumentId instrument_id() const { return ft_instrument_id;}
@@ -94,7 +95,10 @@ public:
     std::string_view venue_symbol() const { return std::string_view(data_+ft_symbol_len+ft_exchange_len, ft_venue_symbol_len); }    
     std::string exchange_symbol() const {
         std::stringstream ss;
-        ss<<symbol()<<"@"<<exchange();
+        ss<<symbol();
+        if(!exchange().empty()) {
+            ss<<"|"<<exchange();
+        }
         return ss.str();
     }
     InstrumentType instrument_type() const { return static_cast<InstrumentType>(ft_instrument_type); }
@@ -103,22 +107,19 @@ public:
     void symbol(std::string_view val) {
         assert(ft_venue_symbol_len==0); // should be called before venue_symbol and before exchange
         assert(ft_exchange_len==0);
-        ft_symbol_len = val.size() + 1;
+        ft_symbol_len = val.size();
         std::memcpy(const_cast<char*>(symbol().data()), val.data(), val.size());
-        const_cast<char*>(symbol().data())[ft_symbol_len-1] = 0;
         update_hdr();
     }
     void exchange(std::string_view val) {
         assert(ft_venue_symbol_len==0); // should be called before venue_symbol
-        ft_exchange_len = val.size() + 1;
+        ft_exchange_len = val.size();
         std::memcpy(const_cast<char*>(exchange().data()), val.data(), val.size());
-        const_cast<char*>(exchange().data())[ft_exchange_len-1] = 0;
         update_hdr();
     }
     void venue_symbol(std::string_view val) {
-        ft_venue_symbol_len = val.size() + 1;
+        ft_venue_symbol_len = val.size();
         std::memcpy(const_cast<char*>(venue_symbol().data()), val.data(), val.size());
-        const_cast<char*>(venue_symbol().data())[ft_venue_symbol_len-1] = 0;
         update_hdr();
     }
     void update_hdr() {
@@ -248,12 +249,14 @@ public:
     std::string_view symbol() const { return listed_instrument_.symbol(); }
     void symbol(std::string_view val) { listed_instrument_.symbol(val); }
 
-    /// exchange-specific symbol, e.g. MSFT@NASDAQ, AAPL@SPB, RIM2020@MOEX
+    /// exchange-specific symbol, e.g. MSFT|NASDAQ, AAPL|SPB, RIM2020|MOEX
     std::string exchange_symbol() const { 
         std::stringstream ss;
         ss << symbol();
-        ss << '@';
-        ss << exchange();
+        if(!exchange().empty()) {
+            ss << "|";
+            ss << exchange();
+        }
         return ss.str();
     }
 
@@ -261,10 +264,14 @@ public:
     std::string venue_symbol() const {
         std::stringstream ss;
         ss << symbol();
-        ss << '@';
-        ss << exchange();
-        ss << '.';
-        ss << venue();
+        if(!exchange().empty()) {
+            ss << "|";
+            ss << exchange();
+        }
+        if(!venue().empty()) {
+            ss << "|";
+            ss << venue();
+        }
         return ss.str();
     }
 
@@ -288,4 +295,4 @@ protected:
     std::string_view venue_;
 };
 
-};
+}} // ft::core

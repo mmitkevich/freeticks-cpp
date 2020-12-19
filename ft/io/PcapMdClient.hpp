@@ -20,20 +20,20 @@ namespace ft::io {
 
 
 template<typename ProtocolT>
-class PcapMdClient : public core::BasicComponent<PcapMdClient<ProtocolT>, core::State> {
+class PcapMdClient : public core::BasicComponent<core::State>,
+    public core::BasicParameterized<PcapMdClient<ProtocolT>> {
 public:
     using This = PcapMdClient<ProtocolT>;
-    using Base = core::BasicComponent<This, core::State>;
+    using Base = core::BasicComponent<core::State>;
     using Protocol = ProtocolT;
     using Stats = core::EndpointStats<tb::IpEndpoint>;
     using BinaryPacket = tb::PcapPacket;
 public:
-    template<typename...ArgsT>
-    explicit PcapMdClient(tb::Reactor* reactor, ArgsT...args)
-    : Base(reactor)
-    , protocol_(std::forward<ArgsT>(args)...)
+    template<typename ReactorT, typename...ArgsT>
+    explicit PcapMdClient(ReactorT* r, ArgsT...args)
+    : protocol_(std::forward<ArgsT>(args)...)
     {
-        device_.packets().connect(tbu::bind<&PcapMdClient::on_packet_>(this));
+        device_.packets().connect(tb::bind<&PcapMdClient::on_packet_>(this));
     }
     Protocol& protocol() {   return protocol_; }
     toolbox::PcapDevice& device() { return device_; }
@@ -81,7 +81,6 @@ public:
     }
     void stop() {
         protocol_.close();
-        Base::stop();
     }
     void report(std::ostream& os) {
         //protocol_.stats().report(os);

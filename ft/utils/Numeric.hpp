@@ -2,7 +2,7 @@
 
 #include "ft/utils/Common.hpp"
 
-namespace ft::utils {
+namespace ft{ inline namespace util {
 
 template<typename T> 
 struct DoubleConversion {
@@ -36,4 +36,4 @@ struct NumericConversion {
     constexpr VenueQtyT from_core(CoreQtyT core_qty) { return core_qty * VenueMultiplier / CoreMultiplier; }
 };
 
-};
+}} // ft::util

@@ -2,14 +2,14 @@
 #include "ft/utils/Common.hpp"
 #include "ft/core/StreamStats.hpp"
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 template<typename EndpointT>
 class EndpointStats: public BasicStats<EndpointStats<EndpointT>> {
     using Base = BasicStats<EndpointStats<EndpointT>>;
 public:
     using Endpoint = EndpointT;    
-    using DstStat = utils::FlatMap<Endpoint, std::size_t>;
+    using DstStat = ft::unordered_map<Endpoint, std::size_t>;
 public:
     using Base::Base;
     using Base::report;
@@ -39,4 +39,4 @@ protected:
     DstStat dst_stat_;
 };
 
-}
+}} // ft::core

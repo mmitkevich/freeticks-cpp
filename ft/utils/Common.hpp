@@ -28,21 +28,14 @@
 
 
 namespace toolbox {
-    inline namespace util{}
-    inline namespace net{}
 }
 
-namespace tb = toolbox;
+//namespace tb = toolbox;
 
 namespace mp = boost::mp11;
-namespace ftu = ft::utils;
-namespace tbu = tb::util;
-namespace tbn = tb::net;
 
-namespace ft {
-    namespace utils {
+namespace ft { inline namespace util {
         template<typename KeyT, typename ValueT, typename HashT = toolbox::util::RobinHash<KeyT>,
           typename KeyEqualT = std::equal_to<KeyT>, std::size_t MaxLoadFactor100N = 80>
-        using FlatMap = toolbox::util::RobinFlatMap<KeyT,ValueT,HashT,KeyEqualT,MaxLoadFactor100N>;
-    }
-}
+        using unordered_map = toolbox::util::unordered_map<KeyT,ValueT,HashT,KeyEqualT,MaxLoadFactor100N>;
+}} // ft::util

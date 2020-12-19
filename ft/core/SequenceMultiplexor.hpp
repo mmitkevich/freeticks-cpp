@@ -8,7 +8,7 @@
 #include "toolbox/net/Endpoint.hpp"
 
 
-namespace ft::core {
+namespace ft { inline namespace core {
 
 /// list of source endpoints multiplexed using same sequence id
 template<typename ImplT, typename EndpointT = tb::IpEndpoint, typename SequenceT = std::uint64_t>
@@ -34,7 +34,7 @@ public:
         if(endpoints_.size()==0)
             return true;
         for(auto &ep : endpoints_) {
-            //TOOLBOX_DEBUG<<"match filter "<<ep<<" packet src "<<packet.header().dst()
+            //TOOLBOX_DUMP<<"match filter "<<ep<<" packet src "<<packet.header().dst();
             if(ep == packet.header().dst()) {
                 return true;
             }
@@ -60,7 +60,7 @@ public:
         endpoints_.clear();
         for(auto e: params["urls"]) {
             std::string url = e.get_string().data();
-            Endpoint ep =  tbu::TypeTraits<Endpoint>::from_string(url);
+            Endpoint ep =  tb::TypeTraits<Endpoint>::from_string(url);
             endpoints_.push_back(ep);
             TOOLBOX_DEBUG<<name()<<": add url "<<ep;
         }
@@ -72,4 +72,4 @@ private:
 };
 
 
-}
+}} // ft::core

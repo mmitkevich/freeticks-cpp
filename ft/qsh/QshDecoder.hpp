@@ -17,6 +17,7 @@
 #include "toolbox/util.hpp"
 
 namespace ft::qsh {
+    
 using QshTick = ft::core::Ticks<2>;
 using Timestamp = ft::core::Timestamp;
 
@@ -68,13 +69,13 @@ public:
     struct State {
         std::string app;
         std::string comment;
-        ftu::HundredNanos ctime {0};
+        ft::HundredNanos ctime {0};
         int nstreams {0};
         std::size_t cur_stream {0};
         std::array<std::string, 7> instruments;
         std::array<int, 7> stream_ids;
-        ftu::HundredNanos frame_ts {0};
-        ftu::HundredNanos ts {0};
+        ft::HundredNanos frame_ts {0};
+        ft::HundredNanos ts {0};
         Price price {0};
         ExchangeId fill_id {0};
         Price fill_price {0};
@@ -102,8 +103,8 @@ private:
     std::uint64_t read_uleb128();
     std::uint64_t read_growing(std::uint64_t previous);
     std::uint64_t read_relative(std::uint64_t previous);
-    ftu::HundredNanos read_datetime();
-    ftu::HundredNanos read_grow_datetime(ftu::HundredNanos previous);
+    ft::HundredNanos read_datetime();
+    ft::HundredNanos read_grow_datetime(ft::HundredNanos previous);
     int read_byte();
     std::uint16_t read_uint16();
 private:
