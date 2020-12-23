@@ -163,15 +163,16 @@ void QshDecoder::read_order_log() {
     auto& fill = ti[1];
     FT_TRACE("flags 0x"<<std::hex<<flags<<" plaza_flags 0x"<<plaza_flags);
     if(plaza_flags & (PLAZA_ADD|PLAZA_MOVE|PLAZA_COUNTER)) {
-        ti.type(core::TickType::Tick);
-        order.type(core::TickType::Add);
+        ti.event(core::Event::Update);
+        order.event(core::TickEvent::Add);
     }
     if(plaza_flags & (PLAZA_CANCEL|PLAZA_MOVE)) {
-        ti.type(core::TickType::Tick);
-        order.type(core::TickType::Remove);
+        ti.event(core::Event::Update);
+        order.event(core::TickEvent::Delete);
     }
     if(plaza_flags & PLAZA_FILL) {
-        fill.type(core::TickType::Fill);
+        ti.event(core::Event::Update);
+        order.event(core::TickEvent::Fill);
     }
     if(flags & OL_TIMESTAMP) {
         state_.ts = read_grow_datetime(state_.ts);
@@ -221,7 +222,7 @@ void QshDecoder::read_order_log() {
         }
         //fill.open_interest(state_.open_interest);
     }
-    if(ti.type()==core::TickType::Invalid) {
+    if(ti.empty()) {
         TOOLBOX_WARNING<<"qsh: invalid flags "<<std::hex<<flags<<" plaza "<<std::hex<<plaza_flags;
         ticks().stats().on_rejected(flags);
     }else {

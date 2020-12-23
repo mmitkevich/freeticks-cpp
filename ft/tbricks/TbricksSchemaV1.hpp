@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <stdexcept>
+#include "ft/core/Requests.hpp"
 #include "ft/sbe/SbeTypes.hpp"
 
 namespace ft::tbricks::v1 {
@@ -11,7 +12,9 @@ enum class MessageType: uint8_t {
     SubscriptionCancelRequest, 
     ClosingEvent, 
     MarketData, 
-    HeartBeat
+    HeartBeat,
+    SubscriptionRequestBBO,
+    MarketDataBBO
 };
 
 enum  class Phase:  uint8_t {NotSet, Trading, Closed, Halted, Auction};
@@ -32,9 +35,11 @@ struct Timestamp {
 struct SubscriptionPayload {
     String symbol;
     Sequence seq;
+    std::size_t length() const { return symbol.length()+sizeof(seq); }
 };
 struct SequencePayload {
     Sequence seq;
+    std::size_t length() const { return sizeof(seq); }
 };
 struct MarketDataPayload {
     String symbol;
@@ -45,8 +50,8 @@ struct MarketDataPayload {
     Timestamp time;
     Sequence seq;
     
-    std::size_t size() const {
-        return symbol.size()
+    std::size_t length() const {
+        return symbol.length()
             + sizeof(bid)
             + sizeof(ask)
             + sizeof(phase)
@@ -63,12 +68,35 @@ struct Message {
         MarketDataPayload marketdata;
         SequencePayload sequence;
     };
+    
+    Message(MessageType msgtype = MessageType::NotAMessage)
+    : msgtype(msgtype)
+    {}
+
+    std::size_t length() const { 
+        switch(msgtype) {
+            case MessageType::SubscriptionRequest: 
+            case MessageType::SubscriptionRequestBBO:
+            case MessageType::SubscriptionCancelRequest:
+                return sizeof(msgtype) + subscription.length();
+            case MessageType::MarketData:
+            case MessageType::MarketDataBBO:
+                return sizeof(msgtype) + marketdata.length();
+            case MessageType::HeartBeat:
+            case MessageType::ClosingEvent:            
+                return sizeof(msgtype) + sequence.length();
+            default: 
+                assert(false);
+                return sizeof(msgtype);
+        }
+    }
     bool is_valid() {
         switch(msgtype) {
             case MessageType::SubscriptionRequest:
             case MessageType::SubscriptionCancelRequest: 
             case MessageType::MarketData: 
             case MessageType::ClosingEvent: 
+            case MessageType::HeartBeat:
                 return true;
             default: return false;
         }
@@ -78,23 +106,52 @@ struct Message {
             case MessageType::SubscriptionRequest: 
             case MessageType::SubscriptionCancelRequest: 
                 return subscription.seq;
-            case MessageType::MarketData: return marketdata.seq;
-            case MessageType::ClosingEvent: return sequence.seq;
+            case MessageType::MarketData:
+                return marketdata.seq;
+            case MessageType::ClosingEvent: 
+            case MessageType::HeartBeat:
+                return sequence.seq;
             default: throw std::runtime_error("bad_msgtype");
         }
     }
     void seq(Sequence seq) {
         switch(msgtype) {
             case MessageType::SubscriptionRequest: 
+            case MessageType::SubscriptionRequestBBO:
             case MessageType::SubscriptionCancelRequest: 
                 subscription.seq = seq;
-            case MessageType::MarketData: marketdata.seq = seq;
-            case MessageType::ClosingEvent: sequence.seq = seq;
+                break;
+            case MessageType::MarketData: 
+                marketdata.seq = seq;
+                break;
+            case MessageType::ClosingEvent:
+            case MessageType::HeartBeat:
+                sequence.seq = seq;
+                break;
             default: throw std::runtime_error("bad_msgtype");
         }
     }
-    std::size_t size() const {
-        return sizeof(msgtype) + MarketDataPayload().size();
+    void symbol(std::string_view val) {
+        switch(msgtype) {
+            case MessageType::SubscriptionRequest: 
+            case MessageType::SubscriptionRequestBBO:
+            case MessageType::SubscriptionCancelRequest:
+                subscription.symbol = val;
+                break;
+            default:
+                assert(false);
+        }
+    }
+    std::string_view symbol() const {
+        switch(msgtype) {
+            case MessageType::SubscriptionRequest: 
+            case MessageType::SubscriptionRequestBBO:
+            case MessageType::SubscriptionCancelRequest:
+                return subscription.symbol.str();
+            default:
+                assert(false);
+                return {};
+        }
     }
 };
 

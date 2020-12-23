@@ -44,7 +44,7 @@ void maybe_bench(const char*name, std::size_t N, F fn, Args...args) {
 BOOST_AUTO_TEST_CASE(Parser)
 {
     using SpbSchema = SpbSchema<MdHeader>;
-    using BinaryPacket = tb::Packet<tb::PacketHeader<IpEndpoint>, tb::MutableBuffer>;
+    using BinaryPacket = tb::Packet<IpEndpoint, tb::MutableBuffer>;
     using SpbProtocol = SpbProtocol<SpbSchema, BinaryPacket>;
     using SpbDecoder = typename  SpbProtocol::Decoder;
     std::size_t n_snapshot_start = 0;

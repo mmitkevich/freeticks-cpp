@@ -8,7 +8,7 @@ set(lib_SOURCES
     matching/OrderBook.cpp
     qsh/QshDecoder.cpp
     utils/StringUtils.cpp
-    core/Component.cpp
+    io/Service.cpp
 )
 
 add_library(${lib_NAME}-static STATIC ${lib_SOURCES})

@@ -8,7 +8,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "ft/core/MdSub.hpp"
+#include "ft/core/Subscriber.hpp"
 #include "ft/io/PeerConn.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/capi/ft-types.h"
@@ -20,11 +20,10 @@
 #include "ft/io/Conn.hpp"
 #include "ft/io/MdClient.hpp"
 
-#include "toolbox/io/PollHandle.hpp"
-#include "toolbox/io/Reactor.hpp"
-#include "toolbox/io/Runner.hpp"
+#include "ft/io/Service.hpp"
 #include "toolbox/io/Socket.hpp"
 #include "toolbox/net/DgramSock.hpp"
+#include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/EndpointFilter.hpp"
 #include "toolbox/sys/Log.hpp"
 #include "toolbox/sys/Time.hpp"
@@ -61,7 +60,7 @@ public:
     tb::optional<std::string> output;
   };  
 public:
-  MdServApp(core::Reactor* reactor)
+  MdServApp(io::Reactor* reactor)
   : reactor_(reactor)
   {
       This::reactor().state_changed().connect(tb::bind<&This::on_reactor_state_changed>(this));
@@ -76,6 +75,7 @@ public:
       return result;
   }
 
+  
   void on_state_changed(core::State state, core::State old_state,
                         core::ExceptionPtr err) {
     TOOLBOX_DEBUG << "gateway state: "<<state;
@@ -92,34 +92,28 @@ public:
     }
   };
 
-  void on_tick(const core::Tick &e) {
-    // TOOLBOX_INFO << e;
+  void on_tick(const core::Tick& e) {
     auto &ins = instruments_[e.venue_instrument_id()];
-    if(out_.is_open())
-      out_ << "m:tick,sym:'" << ins.venue_symbol() << "'," << e << std::endl;
-    for(auto &[k, server]: mdservers_) {
-      //auto mut = [e](tb::MutableBuffer& buf, std::error_code&ec) { *static_cast<core::Tick*>(buf.data()) = e; };
-      //server->ticks(core::streams::BestPrice).async_zc_write(e.length(), tb::bind(&mut), tb::bind<&This::on_write_tick>(this));
+    for(auto& [venue, server]: mdservers_) {
+      auto& sink = server->ticks(e.topic());
+      sink(e);
     }
-  }
-  void on_mut_tick(tb::MutableBuffer buf, core::Tick& tick) {
-    core::Tick& e=*static_cast<core::Tick*>(buf.data());
-
-  }
-  
-  void on_write_tick(ssize_t size, std::error_code ec) {
-    
+    if(out_.is_open())
+      out_ << "m:tick,sym:'" << ins.venue_symbol() << "'," << e << std::endl;    
   }
 
-  void on_instrument(const core::InstrumentUpdate &e) {
-    // TOOLBOX_INFO  << e;
+  void on_instrument(const core::InstrumentUpdate& e) {
     instruments_.update(e);
+    for(auto& [venue, server]: mdservers_) {
+      auto& sink = server->instruments(e.topic());
+      sink(e);
+    }
     if(out_.is_open()) {
       out_ << "m:ins,"<<e<<std::endl;
     }
   }
   
-  using MdClientFactory = std::function<std::unique_ptr<core::IMdClient>(std::string_view venue, tb::Reactor *r)>;
+  using MdClientFactory = std::function<std::unique_ptr<core::IMdClient>(std::string_view venue, io::Reactor *r)>;
 
   template<typename BinaryPacketT, 
           template<typename ProtocolT> typename ClientTT>
@@ -138,28 +132,26 @@ public:
     };
   }
   
+
   // type functions to get concrete MdClient from Protocol, connections types and reactor
   template<typename ProtocolT> 
-  using McastMdClient = io::BasicMdClient<ProtocolT, io::McastConn>;  
+  using McastMdClient = io::MdClient<ProtocolT, io::McastConn<tb::Reactor>>;  
   template<typename ProtocolT>
-  using UdpMdClient = io::BasicMdClient<ProtocolT, io::DgramConn>;
+  using UdpMdClient = io::MdClient<ProtocolT, io::DgramConn<tb::Reactor>>;
   template<typename ProtocolT>
   using PcapMdClient = io::PcapMdClient<ProtocolT>;
   template<typename ProtocolT> 
-  using UdpMdServer = io::BasicMdServer<io::PeerConn<ProtocolT, core::MdSub, tb::DgramSocket, tb::Reactor>, tb::DgramSocket>;
+  using UdpMdServer = io::BasicMdServer<io::PeerConn<ProtocolT, core::Subscriber, tb::DgramSocket, tb::Reactor>, tb::DgramSocket>;
 
   // concrete packet types decoded by Protocols. FIXME: UdpPacket==McastPacket?
-  using UdpPacket = io::DgramConn::Packet;
-  using McastPacket = io::McastConn::Packet;
-  using PcapPacket = tb::PcapDevice::Packet;
 
   MdClientFactory make_mdclients_factory(std::string_view mode) {
     if(mode=="mcast") {
-      return make_mdclients_factory<McastPacket, McastMdClient>();
+      return make_mdclients_factory<tb::McastPacket, McastMdClient>();
     } else if(mode=="pcap") {
-      return make_mdclients_factory<PcapPacket, PcapMdClient>();
+      return make_mdclients_factory<tb::PcapPacket, PcapMdClient>();
     } else if(mode=="udp") {
-      return make_mdclients_factory<UdpPacket, UdpMdClient>();
+      return make_mdclients_factory<tb::UdpPacket, UdpMdClient>();
     } else {
       std::stringstream ss;
       ss<<"Invalid mode "<<mode;
@@ -177,29 +169,37 @@ public:
     c.parameters(params);
     c.state_changed().connect(tb:: bind<&This::on_state_changed>(this));
     c
-      .ticks(ft::core::streams::BestPrice)
+      .ticks(core::StreamTopic::BestPrice)
       .connect(tb::bind<&This::on_tick>(this));
     c
-      .instruments(ft::core::streams::Instrument)
+      .instruments(core::StreamTopic::Instrument)
       .connect(tb::bind<&This::on_instrument>(this));    
     return client;
   }
 
+  void subscribe(core::IMdClient& c, const core::Parameters& params) {
+    core::SubscriptionRequest req;
+    req.reset();
+    req.request(core::Request::Subscribe);
+    req.symbol("MSFT");
+    c.async_request(req, nullptr, nullptr);
+  }
+
   std::unique_ptr<core::IMdServer> make_mdserver(std::string_view venue, const core::Parameters &params) {
     //TOOLBOX_DEBUG<<"run venue:'"<<venue<<"', params:"<<params;
-    using TbricksMdServer = UdpMdServer<tbricks::TbricksProtocol<UdpPacket>>;
+    using TbricksMdServer = UdpMdServer<tbricks::TbricksProtocol<tb::UdpPacket>>;
     auto server =  std::unique_ptr<core::IMdServer>(new core::MdServerImpl(std::make_unique<TbricksMdServer>(reactor_)));
     auto &s = *server;
     s.url(venue);
     s.parameters(params);
-    s.subscribe(ft::core::streams::BestPrice)
+    s.subscribe(StreamTopic::BestPrice)
       .connect(tb::bind<&This::on_subscribe>(this));
     return server;
   }
 
   void on_subscribe( const core::SubscriptionRequest& req) {
-    switch(req.request_type()) {
-      case core::RequestType::Subscribe: {
+    switch(req.request()) {
+      case Request::Subscribe: {
         // Instrument->Dest
       } break;
       default: throw std::logic_error("Unknown request");
@@ -236,23 +236,30 @@ public:
       std::size_t nstarted = 0;
 
       for(auto [venue, venue_opts]: opts["servers"]) {
-        auto server = make_mdserver(venue, venue_opts);
-        server->start(); 
-        if(server->state()!=core::State::Stopped)
-          nstarted++;
-        mdservers_.emplace(venue, std::move(server));
+        bool enabled = venue_opts.value_or("enabled", true);
+        if(enabled) {
+          auto server = make_mdserver(venue, venue_opts);
+          server->start(); 
+          if(server->state()!=core::State::Stopped)
+            nstarted++;
+          mdservers_.emplace(venue, std::move(server));            
+        }
       }
       for(auto [venue, venue_opts]: opts["clients"]) {
-        std::string_view mode = venue_opts.value_or("mode", std::string_view{"mcast"});
-        auto client = make_mdclient(venue, mode, venue_opts);
-        client->start(); 
-        if(client->state()!=core::State::Stopped)
-          nstarted++;
-        mdclients_.emplace(venue, std::move(client));
+        bool enabled = venue_opts.value_or("enabled", true);
+        if(enabled) {
+          std::string_view mode = venue_opts.value_or("mode", std::string_view{"mcast"});
+          auto client = make_mdclient(venue, mode, venue_opts);
+          client->start(); 
+          //client->async_connect(tb::bind<&This::on_connect>(this));
+          if(client->state()!=core::State::Stopped)
+            nstarted++;
+          mdclients_.emplace(venue, std::move(client));
+        }
       }
       return nstarted>0; 
   }
-
+  
   int main(int argc, char *argv[]) {
     tb::set_log_level(tb::Log::Dump);
     
@@ -297,7 +304,7 @@ public:
 private:
   tb::MonoTime start_timestamp_;
   core::InstrumentsCache instruments_;
-  core::Reactor* reactor_{nullptr};
+  io::Reactor* reactor_{nullptr};
   std::ofstream out_;
   tb::RobinFlatMap<std::string, std::unique_ptr<core::IMdClient>> mdclients_;
   tb::RobinFlatMap<std::string, std::unique_ptr<core::IMdServer>> mdservers_;
@@ -306,6 +313,6 @@ private:
 } // namespace ft
 
 int main(int argc, char *argv[]) {
-  ft::MdServApp app(ft::core::current_reactor());
+  ft::MdServApp app(ft::io::current_reactor());
   return app.main(argc, argv);
 }

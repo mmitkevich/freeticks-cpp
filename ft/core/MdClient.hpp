@@ -1,12 +1,15 @@
 #pragma once
 
 #include "ft/core/Instrument.hpp"
+#include "ft/core/Requests.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Component.hpp"
+#include "toolbox/util/Slot.hpp"
+#include <system_error>
 
 
 namespace ft { inline namespace core {
@@ -20,14 +23,26 @@ namespace streams {
 
 class IMdClient : public IComponent {
 public:
-    virtual TickStream& ticks(StreamName streamtype) = 0;
+    virtual TickStream& ticks(StreamTopic topic) = 0;
 
-    virtual InstrumentStream& instruments(StreamName streamtype) = 0;
+    virtual InstrumentStream& instruments(StreamTopic topic) = 0;
 
     // very basic stats
     virtual core::StreamStats& stats() = 0;
+
+    virtual void async_connect(tb::DoneSlot done) = 0;
+    virtual void async_request(const core::SubscriptionRequest& req, core::SubscriptionResponse::Slot slot, tb::DoneSlot done) = 0;
 };
 
+
+
+struct MdClientTraits {
+    template<typename T>
+    using async_subscribe_t = decltype(std::declval<T&>().async_request(std::declval<const core::SubscriptionRequest&>(), 
+        std::declval<tb::Slot<const core::SubscriptionResponse&, std::error_code>>(), std::declval<tb::DoneSlot>()));
+    template<typename T>
+    constexpr static  bool has_async_request = boost::is_detected_v<async_subscribe_t, T>;
+};
 
 // wrap MD client into dynamic interface
 template<typename ImplT>
@@ -51,8 +66,29 @@ public:
     void parameters(const Parameters& parameters, bool replace=false) override { impl_.parameters(parameters, replace); }
     const Parameters& parameters() const override { return impl_.parameters(); }
     
-    core::TickStream& ticks(StreamName stream) override { return impl_.ticks(stream); }
-    core::InstrumentStream& instruments(StreamName streamtype) override { return impl_.instruments(streamtype); }
+    core::TickStream& ticks(StreamTopic topic) override { return impl_.ticks(topic); }
+    core::InstrumentStream& instruments(StreamTopic topic) override { return impl_.instruments(topic); }
+
+    template<typename SockT>
+    using async_connect_t = decltype(std::declval<SockT&>().async_connect(std::declval<tb::DoneSlot>));
+    template<typename SockT>
+    constexpr static  bool has_async_connect = boost::is_detected_v<async_connect_t, SockT>;
+
+    void async_connect(tb::DoneSlot done) override {
+        if constexpr (has_async_connect<ImplT>) {
+            impl_.async_connect(done);
+        } else {
+            done({});
+        }
+    }
+
+    void async_request(const core::SubscriptionRequest& req, core::SubscriptionResponse::Slot slot, tb::DoneSlot done) override {
+        if constexpr(MdClientTraits::has_async_request<ImplT>) {
+            impl_.async_request(req, slot, done);
+        } else {
+            done(make_error_code(std::errc::not_supported));
+        }
+    }
 private:
     ImplT impl_;
 };

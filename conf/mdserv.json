@@ -1,12 +1,14 @@
 {
 "clients": {
     "SPB_MDBIN":{
-        "enabled": true
-        //,"mode": "pcap"
-        ,"mode": "mcast"
+        "enabled": false
+        ,"mode": "pcap"
+        //,"mode": "mcast"
         ,"connections":[                                                   // channel A,            channel B
-            { "stream":"bestprice",  "type": "snapshot.mcast", "interface":"10.1.110.55", "urls": ["233.26.38.16:6016", "233.26.38.144:6144"] }
-            ,{ "stream":"bestprice",  "type": "update.mcast",  "interface":"10.1.110.55", "urls": ["233.26.38.17:6017", "233.26.38.145:6145"],    "recovery": "BEX.TOB" }
+            { "stream":"bestprice",  "type": "snapshot.mcast", "interface":"10.1.110.55", 
+                "urls": ["233.26.38.16:6016", "233.26.38.144:6144"] }
+            ,{ "stream":"bestprice",  "type": "update.mcast",  "interface":"10.1.110.55", 
+                "urls": ["233.26.38.17:6017", "233.26.38.145:6145"],    "recovery": "BEX.TOB" }
             //,{ "stream":"instrument", "type": "snapshot.mcast", "interface":"10.1.110.55", "urls": ["233.26.38.36:6036", "233.26.38.164:6164"] }
             //,{ "stream":"instrument", "type": "update.mcast",  "interface":"10.1.110.55", "urls": ["233.26.38.37:6037", "233.26.38.165:6165"] }
             ,{ "stream":"instrument", "type": "snapshot.xml", "urls": ["/opt/tbricks/instr-2020-11-02.xml"]}
@@ -25,7 +27,11 @@
 }, 
 "servers": {
     "TB1": {
-        "enabled": false
+        "enabled": true
+        , "connections" : [
+            {"stream": "bestprice", "type":"snapshot.udp",
+                 "urls":["127.0.0.1:10050","127.0.0.1:10051"]}
+        ]
     }
 }
 }

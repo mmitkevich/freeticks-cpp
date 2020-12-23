@@ -3,12 +3,14 @@
 #include "ft/core/Instrument.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/Tick.hpp"
+#include "ft/io/Conn.hpp"
 #include "ft/spb/SpbFrame.hpp"
 #include "ft/utils/Common.hpp"
 #include "SpbSchema.hpp"
 #include "SpbDecoder.hpp"
 #include "SpbBestPriceStream.hpp"
 #include "SpbInstrumentStream.hpp"
+#include "toolbox/util/Slot.hpp"
 #include "toolbox/util/Tuple.hpp"
 #include <boost/mp11/algorithm.hpp>
 #include <boost/mp11/list.hpp>
@@ -39,7 +41,7 @@ Tup construct_tuple(Args&&... args) {
 template<
 typename SchemaT,
 typename BinaryPacketT
-> class SpbProtocol: public core::ProtocolBase
+> class SpbProtocol : public io::BasicProtocol
 {
 public:
     using Schema = SchemaT;
@@ -78,8 +80,11 @@ public:
     Decoder& decoder() { return decoder_; }
     auto& stats() {return decoder().stats(); }
     
-    void on_packet(const BinaryPacket& e) { 
+    // slot
+    template<typename ConnT>
+    void on_packet(ConnT& conn, const BinaryPacket& e, tb::DoneSlot done) { 
         decoder_.on_packet(e); 
+        done({});
     }
 
     void open() {
@@ -104,11 +109,15 @@ public:
     BestPriceStream& bestprice() { return bestprice_;}
     InstrumentStream& instruments() { return instruments_; }
 
-    core::TickStream& ticks(core::StreamName stream) {
+    core::TickStream& ticks(core::StreamTopic topic) {
         return bestprice();
     }
-    core::InstrumentStream& instruments(core::StreamName stream) {
+    core::InstrumentStream& instruments(core::StreamTopic topic) {
         return  instruments();
+    }
+    template<typename ConnT, typename RequestT>
+    void async_write(ConnT& conn, const RequestT& request, tb::DoneSlot done) {
+        done({});
     }
 private:
     Decoder decoder_;    

@@ -32,8 +32,8 @@ public:
     }
     core::StreamStats& stats() { return decoder_.ticks().stats(); }
     
-    core::TickStream& ticks(core::StreamName stream) { return decoder_.ticks(); }
-    core::InstrumentStream& instruments(core::StreamName stream) { return decoder_.instruments(); }
+    core::TickStream& ticks(core::StreamTopic topic) { return decoder_.ticks(); }
+    core::InstrumentStream& instruments(core::StreamTopic topic) { return decoder_.instruments(); }
 private:
     QshDecoder decoder_;
     std::string url_;

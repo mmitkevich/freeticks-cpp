@@ -73,10 +73,6 @@ private:
 };
 
 
-using Reactor = toolbox::io::Reactor;
-
-Reactor* current_reactor();
-
 class Component : public Identifiable {
 public:
     using Identifiable::Identifiable;

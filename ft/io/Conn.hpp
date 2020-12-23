@@ -11,13 +11,16 @@
 #include "toolbox/net/Packet.hpp"
 #include "toolbox/io/Reactor.hpp"
 #include "toolbox/io/Socket.hpp"
+#include "toolbox/io/DgramSocket.hpp"
 #include "toolbox/io/McastSocket.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/EndpointStats.hpp"
 #include "ft/core/Stream.hpp"
 #include "toolbox/net/ParsedUrl.hpp"
 #include "toolbox/net/Sock.hpp"
+#include "toolbox/sys/Time.hpp"
 #include "toolbox/util/Slot.hpp"
+#include "ft/io/Heartbeats.hpp"
 
 namespace ft::io {
 
@@ -29,25 +32,40 @@ public:
 template<typename ProtocolT>
 std::string_view protocol_name(const ProtocolT& protocol) { return {}; }
 
-inline std::string_view protocol_schema(tb::UdpProtocol& protocol) { return "udp"; }
-inline std::string_view protocol_schema(tb::McastProtocol& protocol) { return "mcast"; }
+constexpr std::string_view protocol_schema(tb::UdpProtocol& protocol) { return "udp"; }
+constexpr std::string_view protocol_schema(tb::McastProtocol& protocol) { return "mcast"; }
 
 
-/// transforms incoming data into packets for various socket types
-/// also handles automatic reconnect and maintains Stream state
-/// multiple connections could share single socket
+/////
+/// [web] WebSocket -- Connection --+              +--- Stream [BestPrice]
+/// [udp] UdpSocket -- Connection --+-- Protocol --+
+/// [tcp] TcpSocket -- Connection --+              +--- Stream [OrderBook]
+///
+///                 Client interconnects connections,  protocol and streams.
+///    Client abstracts if many or single connection is used, does demultiplexing ,etc
+/////
+/// Socket is transport layer, either stream (has_connect) or dgram or mcast
+/// Connection adds:
+///  1) automatic reconnect
+///  2) unified  async_connect/disconnect
+///  3) buffered async_read/async_write 
+/// Protocol is application-layer which could be shared between connections or individual per conn (use std::reference_wrapper)
+
 template<typename DerivedT, typename SocketT, typename ReactorT>
 class BasicConn : public core::BasicComponent<core::StreamState>
+, public io::BasicHeartbeats<DerivedT>
 {
     using This = BasicConn<DerivedT, SocketT, ReactorT>;    
     using Base = core::BasicComponent<core::StreamState>;
+    using Self = DerivedT;
+    auto& self() { return static_cast<DerivedT*>(this); }
+    const auto& self() const { return static_cast<const DerivedT*>(this); }
 public:
     using Socket = SocketT;
     using Endpoint = typename Socket::Endpoint;
-    using Protocol = typename Socket::Protocol;
-    using PacketHeader = tb::PacketHeader<Endpoint>;
-    using Packet = tb::Packet<PacketHeader, tb::ConstBuffer>;
-    using Stats = core::EndpointStats<tb::BasicIpEndpoint<Protocol>>;
+    using Transport = typename Socket::Protocol;
+    using Packet = tb::Packet<Endpoint>;
+    using Stats = core::EndpointStats<tb::BasicIpEndpoint<Transport>>;
     using Reactor = ReactorT;
 public:
     BasicConn() = default;
@@ -69,14 +87,17 @@ public:
     using Base::state;
 
     /// attach to socket
-    void open(Reactor* reactor, Socket&& socket) {
+    void open(Reactor* reactor) {
         reactor_ = reactor;
-        socket_ = std::move(socket);
+        socket_.open(*reactor_, Transport::v4());
+        if(local()!=Endpoint())
+            socket_.bind(local());
     }
 
     void disconnect() {
         if constexpr(tb::SocketTraits::has_connect<SocketT>) {
-            socket().disconnect(remote()); // leave_group
+            if(!socket().empty())
+                socket().disconnect(remote()); // leave_group
         }
     }    
     
@@ -87,22 +108,27 @@ public:
     
     /// attached socket
     Socket& socket() { return socket_; }
+    const Socket& socket() const { return socket_; }
     Reactor& reactor() { return *reactor_; }
+    const Reactor& reactor() const { return *reactor_; }
 
     /// connect  attached socket via async_connect if supported
-    void connect() { 
-        if constexpr (tb::SocketTraits::has_connect<SocketT>) {
-            socket().async_connect(remote(), tb::bind<&This::on_connect>(this));
+    void async_connect(tb::DoneSlot slot) { 
+        if constexpr (tb::SocketTraits::has_async_connect<SocketT>) {
+            socket().async_connect(remote(), slot);
+        } else if constexpr(tb::SocketTraits::has_connect<SocketT>) {
+            socket().connect(remote());
+            slot({});
         } else {
-            on_connect({});
+            slot({});
         }
     }
     
-    static bool supports(std::string_view proto) { return true; }
+    static bool supports(std::string_view transport) { return transport == Transport::name; }
 
     /// last received packet
-    Packet& last_packet() { return last_packet_; } 
-    const Packet& last_packet() const { return last_packet_; } 
+    Packet& last_recv() { return last_recv_; } 
+    const Packet& last_recv() const { return last_recv_; } 
 
     /// configured remote endpoint
     const Endpoint& remote() const { return remote_; }
@@ -113,66 +139,76 @@ public:
     void local(const Endpoint& ep) { local_ = ep; }
     
     /// configure connection using text url
-    void url(const std::string& url) {
+    void remote(const std::string& url) {
         url_ = tb::ParsedUrl {url};
-        Endpoint ep =  tb::TypeTraits<Endpoint>::from_string(url_.url());
-        // TODO: what is really needed?
-        remote(ep);
-        local(ep);
-        last_packet().header().dst(ep);  // for filter
+        Endpoint rep =  tb::TypeTraits<Endpoint>::from_string(url_.url());
+        remote(rep);
+        auto iface = url_.param("interface");
+        if(!iface.empty()) {
+            auto lep = tb::parse_ip_endpoint<Endpoint>(std::string_view(iface));
+            local(lep);
+        }
+        last_recv().header().dst(rep);  // for filter
     }
+
 
     bool is_open() const { return state() == State::Open; }
 
     /// packet received
-    tb::Slot<const Packet&, tb::Slot<std::error_code>>& packet() { return packet_; }    
+    tb::Slot<const Packet&, tb::Slot<std::error_code>>& received() { return received_slot_; }    
 
     /// connection stats
     Stats& stats() { return stats_; }
 
+    bool can_write() const { return socket().can_write(); }
+    bool can_read() const { return socket().can_read(); }
+
     template<typename MessageT>
-    void async_write(const MessageT& m, tb::SizeSlot slot) {
-        socket().async_write(tb::ConstBuffer{&m, m.length()}, slot);
+    void async_write(const MessageT& m, tb::DoneSlot slot) {
+        write_ = slot;
+        socket().async_write(tb::ConstBuffer{&m, m.length()}, tb::bind<&This::on_write>(this));
+    }
+    void on_write(ssize_t size, std::error_code ec) {
+        write_(ec);
+        write_.reset();
     }
 
-    DerivedT* impl() { return static_cast<DerivedT*>(impl); }
 protected:
     constexpr static std::size_t RecvBufferSize = 4096;
     
     constexpr std::size_t buffer_size() { return RecvBufferSize; };
     tb::Buffer& rbuf() { return rbuf_; }   
 
-    void on_connect(std::error_code ec) {
+    void on_recv(std::error_code ec) {
         if(!ec)
-            impl()->do_read(ec);
+            self()->do_recv(ec);
     }
 
-    // start read
-    void do_read() {
-        socket().async_read(rbuf_.prepare(buffer_size()), tb::bind<&DerivedT::on_recv>(this));    
+    // could be overriden
+    void do_recv() {
+        socket().async_read(rbuf_.prepare(buffer_size()), tb::bind<&Self::on_recv>(self()));    
     }
 
-    // basic implementation via async_read
     void on_recv(ssize_t size, std::error_code ec) {
         if(!ec) {
-            last_packet_.header().recv_timestamp(tb::CyclTime::now().wall_time());
+            last_recv().header().recv_timestamp(tb::CyclTime::now().wall_time());
             recvsize_ = size;
             rbuf().commit(size);
-            last_packet_.buffer() = {rbuf().buffer().data(), (std::size_t)size};
-            impl()->do_process(last_packet_);
+            last_recv().buffer() = {rbuf().buffer().data(), (std::size_t)size};
+            self()->on_recv(last_recv(), tb::bind<&Self::on_recv_done>(self()));
         } else {
-            on_processed(ec);
+            self()->on_recv_done(ec);
         }
     }   
 
-    void do_process(Packet &pkt) {
-        packet_(pkt, tb::bind<&DerivedT::on_processed>());
+    void on_recv(Packet &pkt, tb::DoneSlot done) {
+        received_(pkt, tb::bind<&Self::on_recv_done>());
     }
 
-    void on_processed(std::error_code ec) {
+    void on_recv_done(std::error_code ec) {
         if(ec.value()!=tb::unbox(std::errc::operation_would_block))
             rbuf_.consume(recvsize_);
-        impl()->do_read();   // read next
+        self()->do_recv();
     }
 
 protected:
@@ -181,25 +217,35 @@ protected:
     Socket socket_ {};
     Endpoint remote_;
     Endpoint local_;
-    Packet last_packet_;
+    Packet last_recv_;
     tb::Buffer rbuf_;
-    tb::Slot<const Packet&, tb::Slot<std::error_code>> packet_;
+    tb::Slot<const Packet&, tb::DoneSlot> received_slot_;
     Stats stats_;
     tb::ParsedUrl url_;
+    tb::DoneSlot write_;
 };
 
-class DgramConn: public BasicConn<DgramConn, tb::DgramSock, tb::Reactor> {
-    using Base = BasicConn<DgramConn, tb::DgramSock, tb::Reactor>;
+/// crtp multi bases for features like Heartbeated
+template<typename SocketT, typename ReactorT>
+class Conn : public BasicConn<Conn<SocketT, ReactorT>, SocketT, ReactorT>
+{
+    using Base = BasicConn<Conn<SocketT, ReactorT>, SocketT, ReactorT>;
 public:
     using Base::Base;
-    DgramConn() = default;
 };
 
-class McastConn: public BasicConn<McastConn, tb::McastSock, tb::Reactor> {
-    using Base = BasicConn<McastConn, tb::McastSock, tb::Reactor>;
+
+
+class BasicProtocol {
 public:
-    using Base::Base;
-    McastConn() = default;
+    void open() {}
+    void close() {}
 };
 
-}
+template<typename ReactorT>
+using DgramConn = Conn<tb::DgramSocket, ReactorT>;
+
+template<typename ReactorT>
+using McastConn = Conn<tb::McastSocket, ReactorT>;
+
+} // ft::io

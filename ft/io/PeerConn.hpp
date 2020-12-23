@@ -6,26 +6,28 @@
 
 namespace ft::io {
 
-// Peer is logical remote counterparty connected using single connection. 
-template<typename ProtocolT,  typename SubT, typename SocketT, typename ReactorT>
-class PeerConn : public BasicConn<PeerConn<ProtocolT, SubT, SocketT, ReactorT>, SocketT, ReactorT> {
+// Peer is logical remote counterparty connected using single Connection via Protocol
+template<typename ProtocolT,  typename SubscriptionT, typename SocketT, typename ReactorT>
+class PeerConn : public BasicConn< 
+    PeerConn<ProtocolT, SubscriptionT, SocketT, ReactorT>
+    , SocketT, ReactorT>
+{
+    using This = PeerConn<ProtocolT, SubscriptionT, SocketT, ReactorT>;
+    using Base = BasicConn<PeerConn<ProtocolT, SubscriptionT, SocketT, ReactorT>, SocketT, ReactorT>;    
 public:
-    using Base = BasicConn<PeerConn<ProtocolT, SubT, SocketT, ReactorT>, SocketT, ReactorT>;
-    using This = PeerConn<ProtocolT, SubT, SocketT, ReactorT>;
     using Protocol = ProtocolT;
     using typename Base::Socket;
     using typename Base::Reactor;
     using typename Base::Packet;
     using Connection = Base;
-    using Subscription = SubT;
-    using Base::open, Base::socket, Base::rbuf, Base::buffer_size, Base::do_read;
+    using Subscription = SubscriptionT;
+    using Base::open, Base::socket, Base::rbuf, Base::buffer_size, Base::do_recv;
 public:
     using Base::Base;
-
-    /* overrides */
-    void do_process(Packet& pkt) {
+    
+    void on_recv(Packet &pkt, tb::DoneSlot done) {
         protocol_.on_packet(pkt);
-        Base::on_processed({});
+        done({});
     }
 
     Subscription& subscription() { return sub_; }

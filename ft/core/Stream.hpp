@@ -31,6 +31,39 @@ enum class StreamState : int8_t {
     Failed  = 5
 };
 
+
+enum class StreamTopic: ft_topic_t {
+    Empty = 0,
+    BestPrice = FT_BESTPRICE,
+    Instrument = FT_INSTRUMENT,
+    Candle = FT_CANDLE,
+};
+
+enum class Event : ft_event_t {
+    Empty = 0,
+    Snapshot = FT_SNAPSHOT,
+    Update = FT_UPDATE
+};
+
+inline std::ostream& operator<<(std::ostream& os, const Event self) {
+    switch(self) {
+        case Event::Empty: return os << "Empty";
+        case Event::Snapshot: return os << "Snapshot";
+        case Event::Update: return os << "Update";
+        default: return os << (int)tb::unbox(self);
+    }
+}
+
+inline std::ostream& operator<<(std::ostream& os, const StreamTopic self) {
+    switch(self) {
+        case StreamTopic::Empty: return os << "Empty";
+        case StreamTopic::BestPrice: return os << "BestPrice";
+        case StreamTopic::Candle: return os << "Candle";
+        case StreamTopic::Instrument: return os << "Instrument";
+        default: return os << (int)tb::unbox(self);
+    }
+}
+
 class StreamBase :  public BasicState<core::StreamState>, public Sequenced<std::uint64_t> 
 {
 public:
@@ -43,8 +76,12 @@ public:
     StreamBase& operator=(StreamBase&&) = delete;
 
     core::StreamStats& stats() { return stats_; }
+
+    StreamTopic topic() const { return topic_; }
+    void topic(StreamTopic topic) { topic_ = topic; }
 protected:
-  core::StreamStats stats_;
+    core::StreamStats stats_;
+    StreamTopic topic_{StreamTopic::Empty};
 };
 
 /// (Input)Stream = Sequenced Signal
@@ -62,48 +99,17 @@ public:
 
 /// (Output) Sink is Sequenced Slot
 template<typename MessageT>
-class Sink: public StreamBase, public tb::Slot<const MessageT&, tb::SizeSlot> {
-    using Base = tb::Slot<const MessageT&, tb::SizeSlot>;
+class Sink: public StreamBase, public tb::Slot<const MessageT&, tb::DoneSlot> {
+    using Base = tb::Slot<const MessageT&, tb::DoneSlot>;
     using Slot = Base;
     using Sequenced = Sequenced<std::uint64_t>;
 public:
     using Base::Base;
     Sink(Slot slot)
     : Base(slot) {}
-};
-
-enum class StreamType {
-    Invalid = 0,
-    Tick = FT_TICK,
-    OHLC = FT_OHLC,
-    Instrument = FT_INSTRUMENT
-};
-
-using StreamName = const char*;
-
-inline std::ostream& operator<<(std::ostream& os, const StreamType self) {
-    switch(self) {
-        case StreamType::Invalid: return os << "Unknown";
-        case StreamType::Tick: return os << "Tick";
-        case StreamType::OHLC: return os << "OHLC";
-        case StreamType::Instrument: return os << "Instrument";
-        default: return os << (int)tb::unbox(self);
+    void operator()(const MessageT& e, tb::DoneSlot slot = nullptr) {
+        Base::operator()(e, slot);
     }
-}
-
-class ProtocolBase {
-public:
-    ProtocolBase() = default;
-    // Copy
-    ProtocolBase(const ProtocolBase&) = delete;
-    ProtocolBase&operator=(const ProtocolBase&) = delete;
-
-    // Move
-    ProtocolBase(ProtocolBase&&) = default;
-    ProtocolBase& operator=(ProtocolBase&&) = default;
-
-    void open() {}
-    void close() {}
 };
 
 }} // ft::core

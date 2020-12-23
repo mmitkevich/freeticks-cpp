@@ -1,10 +1,7 @@
 #pragma once
 
-#include "ft/capi/ft-types.h"
-#include "ft/core/Identifiable.hpp"
-#include "ft/core/Parameters.hpp"
 #include "ft/core/Stream.hpp"
-#include "ft/capi/ft-types.h"
+#include "ft/core/Object.hpp"
 
 namespace ft { inline namespace core {
 
@@ -47,22 +44,23 @@ private:
 };
 
 enum class InstrumentType: std::int8_t {
-    Unknown = 0,
+    Empty = 0,
     Future  = 'f',
     Option  = 'o',
     Repo    = 'r',
-    Spot    = 't',    
+    Stock   = 't',    
     Swap    = 's',
     CalendarSpread = 'c',
 };
+
 inline std::ostream& operator<<(std::ostream&os, const InstrumentType& self) {
     switch(self) {
-        case InstrumentType::Unknown: return os << "Unk";
-        case InstrumentType::Future: return os << "Fut";
-        case InstrumentType::Option: return os << "Opt";
+        case InstrumentType::Empty: return os << "Empty";
+        case InstrumentType::Future: return os << "Future";
+        case InstrumentType::Option: return os << "Option";
         case InstrumentType::Repo: return os <<"Repo";
-        case InstrumentType::Spot: return os << "Spot";
-        case InstrumentType::CalendarSpread: return os <<"CalSpr";
+        case InstrumentType::Stock: return os << "Stock";
+        case InstrumentType::CalendarSpread: return os <<"Calendar";
         default: return os << tb::unbox(self);
     }
 }
@@ -81,7 +79,7 @@ public:
     BasicInstrumentUpdate() {
         std::memset(this, 0, sizeof(ft_instrument_t));
     }
-    StreamType topic() const { return (StreamType) ft_hdr.ft_type.ft_topic; }
+    StreamTopic topic() const { return (StreamTopic) ft_hdr.ft_type.ft_topic; }
 
     VenueInstrumentId venue_instrument_id() const { return ft_venue_instrument_id; }
     void venue_instrument_id(VenueInstrumentId val) { ft_venue_instrument_id = val; }
@@ -102,7 +100,7 @@ public:
         return ss.str();
     }
     InstrumentType instrument_type() const { return static_cast<InstrumentType>(ft_instrument_type); }
-    void instrument_type(InstrumentType val) { ft_instrument_type = val; }
+    void instrument_type(InstrumentType val) { ft_instrument_type = tb::unbox(val); }
 
     void symbol(std::string_view val) {
         assert(ft_venue_symbol_len==0); // should be called before venue_symbol and before exchange
@@ -137,7 +135,7 @@ public:
         return *reinterpret_cast<const BasicInstrumentUpdate<NewSizeI>*>(this);
     }
 private:
-    ft_char data_[DataLength];
+    ft_char_t data_[DataLength];
 };
 
 using InstrumentUpdate = BasicInstrumentUpdate<0>;
@@ -145,14 +143,9 @@ using InstrumentUpdate = BasicInstrumentUpdate<0>;
 using InstrumentStream = core::Stream<const core::InstrumentUpdate &>;
 using InstrumentSink = core::Sink<const core::InstrumentUpdate &>;
 
-template<typename DerivedT>
-class BasicIdentifiableObject : public Identifiable, public BasicParameterized<DerivedT>
-{
-    using Identifiable::Identifiable;
-};
 
-class Instrument : public BasicIdentifiableObject<Instrument> {
-    using Base = BasicIdentifiableObject<Instrument>;
+class Instrument : public BasicObject<Instrument> {
+    using Base = BasicObject<Instrument>;
 public:
     using Base::Base;
 
@@ -177,8 +170,8 @@ protected:
 };
 
 // Instrument + associated Exchange
-class ListedInstrument : public BasicIdentifiableObject<ListedInstrument> {
-    using Base = BasicIdentifiableObject<ListedInstrument>;
+class ListedInstrument : public BasicObject<ListedInstrument> {
+    using Base = BasicObject<ListedInstrument>;
 public:
     using Base::Base;
 
@@ -218,8 +211,8 @@ protected:
     std::string_view exchange_;
 };
 
-class VenueInstrument : public BasicIdentifiableObject<VenueInstrument> {
-    using Base = BasicIdentifiableObject<VenueInstrument>;
+class VenueInstrument : public BasicObject<VenueInstrument> {
+    using Base = BasicObject<VenueInstrument>;
 public:
     using Base::Base;
     
@@ -230,8 +223,8 @@ public:
     InstrumentId instrument_id() const { return instrument().id(); }
     void instrument_id(InstrumentId val) { instrument().id(val); }
 
-    InstrumentType type() const { return instrument().instrument_type(); }
-    void type(InstrumentType val) { instrument().instrument_type(val); }
+    InstrumentType instrument_type() const { return instrument().instrument_type(); }
+    void instrument_type(InstrumentType val) { instrument().instrument_type(val); }
 
     /// unlike internal id of this object, venue could also have specific numeric id
     VenueInstrumentId venue_instrument_id() const { return venue_instrument_id_; }
@@ -280,7 +273,7 @@ public:
     }
 
     friend std::ostream& operator<<(std::ostream& os, const VenueInstrument& self) {
-        os  << "sym:'"<<self.venue_symbol()<<"["<<self.type()<<"]"<<"'"
+        os  << "sym:'"<<self.venue_symbol()
             << ",iid:" << self.id();
         if(!self.venue_instrument_id().empty())
             os << ",viid:"<<self.venue_instrument_id_;

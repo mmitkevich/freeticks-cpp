@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include "ft/core/Identifiable.hpp"
 #include "ft/core/Instrument.hpp"
-#include "ft/core/MdSub.hpp"
+#include "ft/core/Subscriber.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/Component.hpp"
 #include "ft/core/EndpointStats.hpp"
@@ -15,6 +15,7 @@
 #include "ft/core/MdClient.hpp"
 #include "ft/io/Server.hpp"
 #include "ft/io/PeerConn.hpp"
+#include "toolbox/util/Slot.hpp"
 namespace ft::io {
 
 /// Server handles multiple clients, each client is separate Connection
@@ -34,18 +35,18 @@ public:
 
     using Base::state, Base::url, Base::reactor, Base::peers;
 
-    core::SubscriptionSignal& subscribe(core::StreamName id) { return subscribe_; }
+    core::SubscriptionSignal& subscribe(core::StreamTopic topic) { return subscribe_; }
 
-    core::TickSink& ticks(core::StreamName id) {
+    core::TickSink& ticks(core::StreamTopic topic) {
       return ticks_;
     }
 
-    core::InstrumentSink& instruments(core::StreamName id) {
+    core::InstrumentSink& instruments(core::StreamTopic topic) {
       return instruments_;
     }
 
     template<typename MessageT>
-    void publish(const MessageT& message, tb::SizeSlot slot) {
+    void publish(const MessageT& message, tb::DoneSlot slot) {
       // decide who wants this tick and broadcast
       for(auto& [ep, peer]: peers()) {
         auto topic = message.topic();

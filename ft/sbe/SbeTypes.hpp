@@ -46,9 +46,9 @@ public:
     }
     template<typename StringT>
     auto& operator=(const StringT& val) {
-        size_ = std::min(CapacityI-1, val.size());
+        size_ = val.size();
         std::memcpy(data(), val.data(), size_);
-        data()[size_] = 0;
+        //data()[size_] = 0;
         return *this;
     }
     constexpr std::size_t capacity() const { return size_; }
@@ -58,9 +58,9 @@ public:
     std::wstring wstr() const { return ft::to_wstring(str()); }
     constexpr const char* c_str() const { return data(); }
     char* data() { return &data_[OffsetI-sizeof(SizeT)]; }
-    const char* data() const { return &data_[OffsetI-sizeof(SizeT)]; }
-    template<typename StringT>
-    
+    const char* data() const { return &data_[OffsetI-sizeof(SizeT)]; }    
+    std::size_t length() const { return sizeof(SizeT) + capacity(); }
+
     friend auto& operator<<(std::ostream& os, const BasicVarString& self) {
         return os << self.str();
     }

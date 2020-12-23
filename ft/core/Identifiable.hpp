@@ -77,6 +77,7 @@ protected:
     Identifier id_ {};
 };
 
+
 }} // ft::core
 
 namespace std {

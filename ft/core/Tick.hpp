@@ -25,7 +25,7 @@ using Price = std::int64_t;
 using ClientId = Identifier;
 using ExchangeId = Identifier;
 
-struct DefaultPolicy {
+struct TickPolicy {
     //using ExchangeId = ft::core::ExchangeId;
     //using ClientId = ft::core::ClientId;
     //using Price = ft::core::Price;
@@ -35,31 +35,42 @@ struct DefaultPolicy {
     using PriceConv = ft::DoubleConversion<std::int64_t>;
     using QtyConv = ft::DoubleConversion<std::int64_t>;
     
-    static constexpr DefaultPolicy instance() { return DefaultPolicy(); }
     constexpr PriceConv price_conv() { return PriceConv(CorePriceMultiplier); }
     constexpr QtyConv qty_conv() { return QtyConv(CoreQtyMultiplier); }
 };
 
-enum class TickType : ft_byte {
-    Invalid = 0,
-    Add     = FT_ADD,         // L3: insert new order 
-    Remove  = FT_REMOVE,        // L3: cancel order
-    Fill    = FT_EXEC_FILL,                    // L3: order fill
-    PartFill= FT_EXEC_PARTIAL_FILL,    // L3: order fill
-    Update  = FT_UPDATE,                // L2: update aggregated volume on level
-    Clear   = FT_CLEAR,                  // L2: clear book (side)
-    Tick    = FT_TICK           // any of above
+enum class Mod : ft_event_t {
+    Empty = 0,
+    Add     = FT_ADD,           // L3: insert new order, L2: new level
+    Delete  = FT_DEL,        // L3: remove order, L2: remove level
+    Modify  = FT_MOD,        // L3: modify order, L2: modify aggr volume on level
+    Clear   = FT_CLEAR,         // L2: clear book (side)
 };
 
-inline std::ostream& operator<<(std::ostream& os, const TickType self) {
+enum class OrderStatusEvent : ft_event_t {
+    New   = FT_ORDER_STATUS_NEW,
+    Filled = FT_ORDER_STATUS_FILLED,
+    PartFilled = FT_ORDER_STATUS_PART_FILLED,
+    Canceled = FT_ORDER_STATUS_CANCELED
+};
+
+enum class TickEvent : ft_event_t {
+    Empty = 0,
+    Add = FT_TICK_ADD,
+    Delete = FT_TICK_DEL,
+    Modify = FT_TICK_MOD,
+    Clear = FT_TICK_CLEAR,
+    Fill = FT_TICK_FILL
+};
+
+inline std::ostream& operator<<(std::ostream& os, const TickEvent self) {
     switch(self) {
-        case TickType::Invalid: return os << "Unknown";
-        case TickType::Add: return os << "Place";
-        case TickType::Remove: return os << "Cancel";
-        case TickType::Fill: return os << "Fill";
-        case TickType::PartFill: return os << "PartFill";
-        case TickType::Update: return os <<"Update";
-        case TickType::Clear: return os <<"Clear";
+        case TickEvent::Empty: return os << "Empty";
+        case TickEvent::Add: return os << "Add";
+        case TickEvent::Modify: return os << "Modify";        
+        case TickEvent::Delete: return os << "Delete";
+        case TickEvent::Clear: return os << "Clear";
+        case TickEvent::Fill: return os << "Fill";
         default: return os << (int)tb::unbox(self);
     }
 }
@@ -86,20 +97,23 @@ using PriceConversion = ft::NumericConversion<ValueT, Multiplier, Price, CorePri
 template<typename ValueT, std::int64_t Multiplier>
 using QtyConversion = ft::NumericConversion<ValueT, Multiplier, Qty, CoreQtyMultiplier>;
 
-using Sequence = std::uint64_t;
+using TickSequence = std::uint64_t;
 
 
 
-template<typename PolicyT, std::size_t FixedLength=sizeof(ft_price_t)>
+template<typename PolicyT>
 struct BasicTickPrice : ft_price_t {
 public:
-    constexpr static std::size_t fixed_length() { return FixedLength; }
+    using Event = TickEvent;
+    using Side = TickSide;
+
+    constexpr static std::size_t length() { return sizeof(ft_price_t); }
     
-    TickType type() const { return (TickType)(ft_type); }
-    void type(TickType type) { ft_type = tb::unbox(type); }
+    Event event() const { return Event(ft_event); }
+    void event(Event val) { ft_event = tb::unbox(val); }
 
     // following could be group of 
-    TickSide side() const { return (TickSide)ft_side; }
+    TickSide side() const { return TickSide(ft_side); }
     void side(TickSide side) { ft_side = tb::unbox(side); }
     
     Price price() const { return ft_price; }
@@ -108,25 +122,30 @@ public:
     Qty qty() const { return ft_qty; }
     void qty(Qty val) { ft_qty = val; }
 
-    bool empty() { return type()==TickType::Invalid; }
+    bool empty() { return event()==TickEvent::Empty; }
 
     // order
     ExchangeId server_id() const { return ft_server_id; }   // to be made up to 64 byte len?
     void server_id(ExchangeId val) { ft_server_id = val; }
 };
 
+using TickPrice = BasicTickPrice<TickPolicy>;
 
 template<typename T, std::size_t SizeI=1>
 struct BasicTicks : ft_tick_t {
 public:
+    using Event = core::Event;
+    using Topic = core::StreamTopic;
+    using Sequence = ft_seq_t;
+    
     std::size_t length() const { return ft_hdr.ft_len + ft_items_count*ft_item_len; }
     static constexpr std::size_t capacity() { return SizeI; }
     
-    TickType type() const { return (TickType)ft_hdr.ft_type.ft_event; }
-    void type(TickType type) { ft_hdr.ft_type.ft_event = tb::unbox(type); }
+    Event event() const { return Event(ft_hdr.ft_type.ft_event); }
+    void event(Event val) { ft_hdr.ft_type.ft_event = tb::unbox(val); }
     
-    StreamType topic() const { return (StreamType)ft_hdr.ft_type.ft_topic; }
-    void topic(StreamType topic) { ft_hdr.ft_type.ft_topic = topic; }
+    Topic topic() const { return Topic(ft_hdr.ft_type.ft_topic); }
+    void topic(Topic val) { ft_hdr.ft_type.ft_topic = tb::unbox(val); }
 
     Sequence sequence() const { return ft_hdr.ft_seq; }
     void sequence(Sequence val) { ft_hdr.ft_seq = val; }
@@ -147,14 +166,14 @@ public:
     const T* end() const { return &operator[](size()-1); }
 
     bool empty() const { 
-        auto t = type();
-        return t == TickType::Invalid || size()==0;
+        auto ev = event();
+        return ev == Event::Empty || size()==0;
     }
     T& operator[](std::size_t i) { 
-        return *reinterpret_cast<T*>(&ft_items[0]+ T::fixed_length()*i);
+        return *reinterpret_cast<T*>(&ft_items[0]+ T::length()*i);
     }
     const T& operator[](std::size_t i) const { 
-        return *reinterpret_cast<const T*>(&ft_items[0]+ T::fixed_length()*i);
+        return *reinterpret_cast<const T*>(&ft_items[0]+ T::length()*i);
     }
     std::size_t size() const  {
         return ft_items_count;
@@ -177,17 +196,17 @@ private:
 
 
 template<std::size_t SizeI>
-using Ticks = BasicTicks<BasicTickPrice<DefaultPolicy>, SizeI>;
+using Ticks = BasicTicks<BasicTickPrice<TickPolicy>, SizeI>;
 using Tick = Ticks<1>;
 using TickStream = core::Stream<const Tick&>;
 using TickSink = core::Sink<const Tick&>;
 
-template<typename PolicyT, std::size_t FixedLength>
-inline std::ostream& operator<<(std::ostream& os, const BasicTickPrice<PolicyT, FixedLength>& e) {
-    os << "ty:'" << e.type() << "'";
+template<typename PolicyT>
+inline std::ostream& operator<<(std::ostream& os, const BasicTickPrice<PolicyT>& e) {
+    os << "t:'" << e.event() << "'";
     os << ",side:"<<e.side();
-    os << ",price:" << PolicyT::instance().price_conv().to_double(e.ft_price);
-    os << ",qty:" << PolicyT::instance().qty_conv().to_double(e.ft_qty);
+    os << ",price:" << PolicyT().price_conv().to_double(e.ft_price);
+    os << ",qty:" <<PolicyT().qty_conv().to_double(e.ft_qty);
     return os;
 }
 template<typename DataT, std::size_t SizeI>
@@ -196,7 +215,7 @@ inline std::ostream & operator<<(std::ostream& os, const BasicTicks<DataT, SizeI
     os << ",sts:'" << toolbox::sys::put_time<toolbox::Nanos>(e.send_time())<<"'";
     os << ",clt:" << (e.recv_time()-e.send_time()).count();
     os << ",vins:" << e.venue_instrument_id();
-    os << ",ty:'" << e.type() << "'";
+    os << ",ev:'" << e.event() << "'";
     os << ",d:[";
     for(std::size_t i=0;i<e.size(); i++) {
         if(i>0)

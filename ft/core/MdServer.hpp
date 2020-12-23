@@ -15,12 +15,12 @@ namespace ft { inline namespace core {
 
 class IMdServer : public IComponent {
 public:
-    virtual SubscriptionSignal& subscribe(StreamName id) = 0;
+    virtual SubscriptionSignal& subscribe(StreamTopic topic) = 0;
 
     // "instruments"
-    virtual core::InstrumentSink& instruments(StreamName id) = 0;
+    virtual core::InstrumentSink& instruments(StreamTopic topic) = 0;
     // "bestprice", "orderbook", etc
-    virtual core::TickSink& ticks(StreamName id) = 0;
+    virtual core::TickSink& ticks(StreamTopic topic) = 0;
 };
 
 
@@ -42,9 +42,9 @@ public:
     void parameters(const Parameters& parameters, bool replace=false) override { impl_->parameters(parameters, replace); }
     const Parameters& parameters() const override { return impl_->parameters(); }
     
-    SubscriptionSignal& subscribe(StreamName id) override { return impl_->subscribe(id); }
-    core::TickSink& ticks(StreamName stream) override { return impl_->ticks(stream); }
-    core::InstrumentSink& instruments(StreamName streamtype) override { return impl_->instruments(streamtype); }
+    SubscriptionSignal& subscribe(StreamTopic topic) override { return impl_->subscribe(topic); }
+    core::TickSink& ticks(StreamTopic topic) override { return impl_->ticks(topic); }
+    core::InstrumentSink& instruments(StreamTopic topic) override { return impl_->instruments(topic); }
 private:
     std::unique_ptr<ImplT> impl_;
 };

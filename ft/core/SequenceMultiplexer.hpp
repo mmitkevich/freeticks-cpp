@@ -10,15 +10,16 @@
 
 namespace ft { inline namespace core {
 
+
 /// list of source endpoints multiplexed using same sequence id
-template<typename ImplT, typename EndpointT = tb::IpEndpoint, typename SequenceT = std::uint64_t>
-class BasicSequencedMultiplexor : public core::Sequenced<SequenceT> {
+template<typename PacketHandlerT, typename EndpointT = tb::IpEndpoint, typename SequenceT = std::uint64_t>
+class BasicSequenceMultiplexer : public core::Sequenced<SequenceT> {
     using Base = core::Sequenced<SequenceT>;
     using Sequence = SequenceT;
     using Endpoint = EndpointT;
 public:
-    BasicSequencedMultiplexor(ImplT &impl, std::string_view name)
-    : impl_(impl)
+    BasicSequenceMultiplexer(PacketHandlerT &handler, std::string_view name)
+    : handler_(handler)
     , name_(name) {}
     
     using Base::sequence;
@@ -49,10 +50,10 @@ public:
     template<typename TypedPacketT>
     void on_packet(const TypedPacketT& packet) {
         if(is_stale(packet)) {
-            impl_.on_stale(packet, *this);
+            handler_.on_stale(packet, *this);
         } else {
             sequence(packet.sequence());
-            impl_.on_packet(packet);
+            handler_.on_packet(packet);
         }
     }
 
@@ -68,7 +69,7 @@ public:
 private:
     std::vector<Endpoint> endpoints_;
     std::string_view name_;
-    ImplT& impl_;
+    PacketHandlerT& handler_;
 };
 
 

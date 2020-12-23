@@ -89,11 +89,11 @@ public:
     void on_idle() {
         report(std::cerr);
     }
-    core::TickStream& ticks(core::StreamName stream) {
-        return protocol_.ticks(stream);
+    core::TickStream& ticks(core::StreamTopic topic) {
+        return protocol_.ticks(topic);
     }
-    core::InstrumentStream& instruments(core::StreamName stream) {
-        return protocol_.instruments(stream);
+    core::InstrumentStream& instruments(core::StreamTopic topic) {
+        return protocol_.instruments(topic);
     }
 
 private:
@@ -102,7 +102,7 @@ private:
             case IPPROTO_TCP: case IPPROTO_UDP: {
                 stats_.on_received(pkt);
                 if(filter_(pkt.header())) {
-                    protocol_.on_packet(pkt);
+                    protocol_.on_packet(device_, pkt, {});
                     on_idle();      
                 } else {
                     stats_.on_rejected(pkt);

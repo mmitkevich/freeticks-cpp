@@ -10,17 +10,17 @@ namespace ft { inline  namespace core {
 
 using StreamSet = std::bitset<128>;
 
-class MdSub {
+class Subscriber {
 public:
-    MdSub() = default;
-    MdSub(InstrumentId instrument, StreamSet sset)
+    Subscriber() = default;
+    Subscriber(InstrumentId instrument, StreamSet sset)
     : instrument_(instrument)
     , sset_(sset) {}
-    bool test(StreamType stream) {
-        return sset_.test(tb::unbox(stream));
+    bool test(StreamTopic topic) {
+        return sset_.test(tb::unbox(topic));
     }
-    void set(StreamType stream) {
-        sset_.set(tb::unbox(stream));
+    void set(StreamTopic topic) {
+        sset_.set(tb::unbox(topic));
     }
 private:
   InstrumentId instrument_;

@@ -12,5 +12,11 @@ inline std::string_view str_suffix(std::string_view s, char sep) {
         return {};
     return {s.data()+pos + 1, s.size() - pos - 1};
 }
+inline std::string_view str_prefix(std::string_view s, char sep) {
+    auto pos = s.find(sep);
+    if(pos==std::string::npos)
+        return {};
+    return {s.data(), pos};
+}
 
 }} //ft::util

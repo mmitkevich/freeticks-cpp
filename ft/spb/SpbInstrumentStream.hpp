@@ -74,17 +74,20 @@ public:
             std::string_view sym = e.attribute("symbol").value();
             std::string_view is_test = std::string_view(e.attribute("is_test").value());
             
+            auto exchange_symbol = std::string{sym};
+            exchange_symbol += "@";
+            exchange_symbol += protocol().exchange();
+            auto id = std::hash<std::string>{}(exchange_symbol);
+            std::int64_t viid = std::atoll(e.attribute("instrument_id").value());
+
             core::BasicInstrumentUpdate<4096> u;
             u.symbol(sym);
             u.exchange(protocol().exchange());
             u.venue_symbol(sym);
-            auto exchange_symbol = std::string{sym};
-            exchange_symbol += "@";
-            exchange_symbol += u.exchange();
-            auto id = std::hash<std::string>{}(exchange_symbol);
             u.instrument_id(id);    // hash function of symbol@exchange
-            std::int64_t vid = std::atoll(e.attribute("instrument_id").value());
-            u.venue_instrument_id(vid);
+            u.instrument_type(InstrumentType::Stock);
+            u.venue_instrument_id(viid);
+
             if(is_test!="true")
                 invoke(u.as_size<0>());
         }

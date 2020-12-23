@@ -16,7 +16,7 @@
 #include "ft/spb/SpbFrame.hpp"
 #include "toolbox/net/Protocol.hpp"
 #include "toolbox/util/Tuple.hpp"
-#include "ft/core/SequenceMultiplexor.hpp"
+#include "ft/core/SequenceMultiplexer.hpp"
 namespace ft::spb {
 
 class Frame;
@@ -54,11 +54,11 @@ public:
     using Protocol = ProtocolT;
     using Decoder = typename Protocol::Decoder;
     template<typename ImplT>
-    using SequenceMultiplexor = typename Decoder::template SequenceMultiplexor<ImplT>;
+    using SequenceMultiplexer = typename Decoder::template SequenceMultiplexer<ImplT>;
     using Schema = typename Decoder::Schema;
     template<typename MessageT>
     using SpbPacket = typename Decoder::template SpbPacket<MessageT>;
-    using Multiplexor = SequenceMultiplexor<DerivedT>;
+    using Multiplexer = SequenceMultiplexer<DerivedT>;
 public:
     explicit BasicSpbStream(Protocol& protocol)
     : protocol_(protocol) {
@@ -83,7 +83,7 @@ public:
             snapshot_.on_packet(packet);
     }
     template<typename PacketT>
-    void on_stale(const PacketT& packet, const Multiplexor& mux) {
+    void on_stale(const PacketT& packet, const Multiplexer& mux) {
         //TOOLBOX_DEBUG << DerivedT::name()<<"."<<mux.name()<<": ignored stale seq "<<packet.sequence()<<" current seq "<<mux.sequence();
     }
     //void on_gateway_state_changed(core::State state, core::State old_state, core::ExceptionPtr err) {}
@@ -100,8 +100,8 @@ protected:
     DerivedT& impl() { return *static_cast<DerivedT*>(this); }
 protected:
     Protocol& protocol_;
-    Multiplexor snapshot_{impl(), "snapshot.mcast"};
-    Multiplexor update_{impl(), "update.mcast"};
+    Multiplexer snapshot_{impl(), "snapshot.mcast"};
+    Multiplexer update_{impl(), "update.mcast"};
 };
 
 
@@ -115,7 +115,7 @@ public:
     using Schema = SchemaT;
     
     template<typename ImplT>
-    using SequenceMultiplexor = core::BasicSequencedMultiplexor<ImplT, typename BinaryPacket::Header::Endpoint, std::uint64_t>;
+    using SequenceMultiplexer = core::BasicSequenceMultiplexer<ImplT, typename BinaryPacket::Header::Endpoint, std::uint64_t>;
 
     template<typename MessageT> 
     class SpbPacket: public tb::PacketView<MessageT, BinaryPacket> {

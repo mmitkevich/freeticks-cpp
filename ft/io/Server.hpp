@@ -36,16 +36,20 @@ public:
         peers_.clear();
         serv_.close();
     }
+    
     Reactor& reactor() { assert(reactor_); return *reactor_; }
+    
     Peers& peers() { return peers_; }
 
     // need to decouple socket and connection to make multiple connections in single socket possible
     void on_accepted(ClientSocket&& socket, std::error_code ec) {
+        TOOLBOX_INFO<<"accepted connection from client: "<<remote_;
         // remote_ filled with remote endpoint
         peers_.emplace_back(std::move(socket));
         remote_ = {};
     }
-   void start() {
+
+    void start() {
         state(State::Starting);
         open();
         state(State::Started);
