@@ -64,7 +64,7 @@ inline std::ostream& operator<<(std::ostream& os, const StreamTopic self) {
     }
 }
 
-class StreamBase :  public BasicState<core::StreamState>, public Sequenced<std::uint64_t> 
+class StreamBase :  public BasicStateful<core::StreamState>, public Sequenced<std::uint64_t> 
 {
 public:
     StreamBase() = default;
@@ -99,17 +99,16 @@ public:
 
 /// (Output) Sink is Sequenced Slot
 template<typename MessageT>
-class Sink: public StreamBase, public tb::Slot<const MessageT&, tb::DoneSlot> {
-    using Base = tb::Slot<const MessageT&, tb::DoneSlot>;
+class Sink: public StreamBase, public tb::Slot<const MessageT&, tb::SizeSlot> {
+    using Base = tb::Slot<const MessageT&, tb::SizeSlot>;
     using Slot = Base;
     using Sequenced = Sequenced<std::uint64_t>;
 public:
     using Base::Base;
     Sink(Slot slot)
     : Base(slot) {}
-    void operator()(const MessageT& e, tb::DoneSlot slot = nullptr) {
-        Base::operator()(e, slot);
-    }
+    using Base::operator();
+    using Base::invoke;
 };
 
 }} // ft::core

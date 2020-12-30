@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
 
 #include "ft/core/Subscriber.hpp"
@@ -96,7 +97,7 @@ public:
     auto &ins = instruments_[e.venue_instrument_id()];
     for(auto& [venue, server]: mdservers_) {
       auto& sink = server->ticks(e.topic());
-      sink(e);
+      sink(e, nullptr);
     }
     if(out_.is_open())
       out_ << "m:tick,sym:'" << ins.venue_symbol() << "'," << e << std::endl;    
@@ -106,7 +107,7 @@ public:
     instruments_.update(e);
     for(auto& [venue, server]: mdservers_) {
       auto& sink = server->instruments(e.topic());
-      sink(e);
+      sink(e, nullptr);
     }
     if(out_.is_open()) {
       out_ << "m:ins,"<<e<<std::endl;
@@ -135,13 +136,14 @@ public:
 
   // type functions to get concrete MdClient from Protocol, connections types and reactor
   template<typename ProtocolT> 
-  using McastMdClient = io::MdClient<ProtocolT, io::McastConn<tb::Reactor>>;  
+  using McastMdClient = io::BasicMdClient<ProtocolT, io::McastConn>;  
   template<typename ProtocolT>
-  using UdpMdClient = io::MdClient<ProtocolT, io::DgramConn<tb::Reactor>>;
+  using UdpMdClient = io::BasicMdClient<ProtocolT, io::DgramConn>;
   template<typename ProtocolT>
   using PcapMdClient = io::PcapMdClient<ProtocolT>;
+
   template<typename ProtocolT> 
-  using UdpMdServer = io::BasicMdServer<io::PeerConn<ProtocolT, core::Subscriber, tb::DgramSocket, tb::Reactor>, tb::DgramSocket>;
+  using UdpMdServer = io::BasicMdServer<ProtocolT, /*Peer=*/io::PeerConn<tb::SocketRef<tb::DgramSocket>>, /*ServerSocket=*/tb::DgramSocket>;
 
   // concrete packet types decoded by Protocols. FIXME: UdpPacket==McastPacket?
 
@@ -175,14 +177,6 @@ public:
       .instruments(core::StreamTopic::Instrument)
       .connect(tb::bind<&This::on_instrument>(this));    
     return client;
-  }
-
-  void subscribe(core::IMdClient& c, const core::Parameters& params) {
-    core::SubscriptionRequest req;
-    req.reset();
-    req.request(core::Request::Subscribe);
-    req.symbol("MSFT");
-    c.async_request(req, nullptr, nullptr);
   }
 
   std::unique_ptr<core::IMdServer> make_mdserver(std::string_view venue, const core::Parameters &params) {
@@ -227,8 +221,15 @@ public:
     }
   }
 
+  void start(core::Parameters& opts) {
+            // if not pcap should run reactor
+    tb::BasicRunner runner(*reactor_, [this, &opts] {
+      run(opts);
+    });
+    tb::wait_termination_signal();          
+  }
   /// returns true if something has really started and reactor thread is required
-  bool start(core::Parameters& opts) {
+  void run(const core::Parameters& opts) {
       std::string output_path = opts.value_or("output", std::string{"/dev/stdout"});
       if(output_path!="/dev/null")
         out_.open(output_path);
@@ -238,27 +239,36 @@ public:
       for(auto [venue, venue_opts]: opts["servers"]) {
         bool enabled = venue_opts.value_or("enabled", true);
         if(enabled) {
-          auto server = make_mdserver(venue, venue_opts);
-          server->start(); 
-          if(server->state()!=core::State::Stopped)
-            nstarted++;
-          mdservers_.emplace(venue, std::move(server));            
+          auto s = make_mdserver(venue, venue_opts);
+          auto& server = *s;
+          mdservers_.emplace(venue, std::move(s));            
+          server.start();
         }
       }
       for(auto [venue, venue_opts]: opts["clients"]) {
         bool enabled = venue_opts.value_or("enabled", true);
         if(enabled) {
           std::string_view mode = venue_opts.value_or("mode", std::string_view{"mcast"});
-          auto client = make_mdclient(venue, mode, venue_opts);
-          client->start(); 
-          //client->async_connect(tb::bind<&This::on_connect>(this));
-          if(client->state()!=core::State::Stopped)
-            nstarted++;
-          mdclients_.emplace(venue, std::move(client));
+          auto c = make_mdclient(venue, mode, venue_opts);
+          auto& client = *c;
+          mdclients_.emplace(venue, std::move(c));
+          client.start();
+          client.async_connect(tb::bind([&client](std::error_code ec) {
+            TOOLBOX_INFO<<"client connected ";
+            core::SubscriptionRequest req;
+            req.reset();
+            req.request(core::Request::Subscribe);
+            req.symbol("MSFT");
+            client.async_request(req, nullptr, tb::bind([](ssize_t size, std::error_code ec) {
+              if(ec) {
+                throw std::system_error(ec, "connect");
+              }
+            }));
+          }));   
         }
       }
-      return nstarted>0; 
   }
+       
   
   int main(int argc, char *argv[]) {
     tb::set_log_level(tb::Log::Dump);
@@ -283,13 +293,7 @@ public:
       if(!config_file.empty()) {
         opts.parse_file(config_file);
       }
-    
-      if(start(opts)) {
-        // if not pcap should run reactor
-        tb::Reactor::Runner runner(*reactor_);
-        tb::wait_termination_signal();
-      }
-
+      start(opts);
       return EXIT_SUCCESS;
     } catch (std::system_error &e) {
       std::cerr << e.what() << std::endl;

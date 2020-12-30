@@ -83,7 +83,7 @@ find_package(AERON)
 
 add_subdirectory(ft)
 set(ft_core_LIBRARY ft-core-static)
-add_subdirectory(mdserv)
+add_subdirectory(apps)
 
 
 

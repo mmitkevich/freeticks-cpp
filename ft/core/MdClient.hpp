@@ -31,17 +31,19 @@ public:
     virtual core::StreamStats& stats() = 0;
 
     virtual void async_connect(tb::DoneSlot done) = 0;
-    virtual void async_request(const core::SubscriptionRequest& req, core::SubscriptionResponse::Slot slot, tb::DoneSlot done) = 0;
+    virtual void async_request(const core::SubscriptionRequest& req, core::SubscriptionResponse::Slot slot, tb::SizeSlot done) = 0;
 };
 
 
 
 struct MdClientTraits {
     template<typename T>
-    using async_subscribe_t = decltype(std::declval<T&>().async_request(std::declval<const core::SubscriptionRequest&>(), 
-        std::declval<tb::Slot<const core::SubscriptionResponse&, std::error_code>>(), std::declval<tb::DoneSlot>()));
+    using async_request_t = decltype(std::declval<T&>().async_request(
+        std::declval<const core::SubscriptionRequest&>(), 
+        std::declval<tb::Slot<const core::SubscriptionResponse&, std::error_code>>(), 
+        std::declval<tb::SizeSlot>()));
     template<typename T>
-    constexpr static  bool has_async_request = boost::is_detected_v<async_subscribe_t, T>;
+    constexpr static  bool has_async_request = boost::is_detected_v<async_request_t, T>;
 };
 
 // wrap MD client into dynamic interface
@@ -70,7 +72,7 @@ public:
     core::InstrumentStream& instruments(StreamTopic topic) override { return impl_.instruments(topic); }
 
     template<typename SockT>
-    using async_connect_t = decltype(std::declval<SockT&>().async_connect(std::declval<tb::DoneSlot>));
+    using async_connect_t = decltype(std::declval<SockT&>().async_connect(std::declval<tb::DoneSlot>()));
     template<typename SockT>
     constexpr static  bool has_async_connect = boost::is_detected_v<async_connect_t, SockT>;
 
@@ -82,11 +84,11 @@ public:
         }
     }
 
-    void async_request(const core::SubscriptionRequest& req, core::SubscriptionResponse::Slot slot, tb::DoneSlot done) override {
+    void async_request(const core::SubscriptionRequest& req, tb::Slot<const SubscriptionResponse&, std::error_code> slot, tb::SizeSlot done) override {
         if constexpr(MdClientTraits::has_async_request<ImplT>) {
             impl_.async_request(req, slot, done);
         } else {
-            done(make_error_code(std::errc::not_supported));
+            done(-1, make_error_code(std::errc::not_supported));
         }
     }
 private:

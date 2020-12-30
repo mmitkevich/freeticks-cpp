@@ -8,6 +8,7 @@
 #include "ft/core/Tick.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Component.hpp"
+#include "toolbox/util/Slot.hpp"
 
 
 namespace ft { inline namespace core {
@@ -17,6 +18,7 @@ class IMdServer : public IComponent {
 public:
     virtual SubscriptionSignal& subscribe(StreamTopic topic) = 0;
 
+    virtual void async_accept(tb::DoneSlot done) = 0;
     // "instruments"
     virtual core::InstrumentSink& instruments(StreamTopic topic) = 0;
     // "bestprice", "orderbook", etc
@@ -45,6 +47,8 @@ public:
     SubscriptionSignal& subscribe(StreamTopic topic) override { return impl_->subscribe(topic); }
     core::TickSink& ticks(StreamTopic topic) override { return impl_->ticks(topic); }
     core::InstrumentSink& instruments(StreamTopic topic) override { return impl_->instruments(topic); }
+
+    void async_accept(tb::DoneSlot done) override { impl_->async_accept(done); }
 private:
     std::unique_ptr<ImplT> impl_;
 };

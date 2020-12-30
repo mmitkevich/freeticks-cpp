@@ -73,6 +73,7 @@ private:
 };
 
 
+/// Component = Identifiable + Url
 class Component : public Identifiable {
 public:
     using Identifiable::Identifiable;
@@ -82,8 +83,9 @@ protected:
     std::string url_;
 };
 
+/// Stateful = State + StateSignal
 template<typename StateT>
-class BasicState {
+class BasicStateful {
 public:
     using State = StateT;
     using StateSignal = tb::Signal<State, State, ExceptionPtr>;
@@ -121,8 +123,9 @@ protected:
     BasicHooks<> started_hooks_;
 };
 
+/// Component = Identifier + State
 template<typename StateT> 
-class BasicComponent : public Component, public BasicState<StateT> {
+class BasicComponent : public Component, public BasicStateful<StateT> {
 public:
     using Component::Component;
 };

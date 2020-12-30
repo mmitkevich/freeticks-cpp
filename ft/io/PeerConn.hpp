@@ -3,39 +3,35 @@
 #include "ft/capi/ft-types.h"
 #include "ft/core/Requests.hpp"
 #include "ft/io/Conn.hpp"
+#include "ft/io/Service.hpp"
 
 namespace ft::io {
 
-// Peer is logical remote counterparty connected using single Connection via Protocol
-template<typename ProtocolT,  typename SubscriptionT, typename SocketT, typename ReactorT>
-class PeerConn : public BasicConn< 
-    PeerConn<ProtocolT, SubscriptionT, SocketT, ReactorT>
-    , SocketT, ReactorT>
+/// Peer = Conn + Subscription
+template<typename SubscriptionT, typename SocketT, typename ServiceT>
+class BasicPeerConn : public BasicConn< 
+    BasicPeerConn<SubscriptionT, SocketT, ServiceT>
+    , SocketT, ServiceT>
 {
-    using This = PeerConn<ProtocolT, SubscriptionT, SocketT, ReactorT>;
-    using Base = BasicConn<PeerConn<ProtocolT, SubscriptionT, SocketT, ReactorT>, SocketT, ReactorT>;    
+    using This = BasicPeerConn<SubscriptionT, SocketT, ServiceT>;
+    using Base = BasicConn<BasicPeerConn<SubscriptionT, SocketT, ServiceT>, SocketT, ServiceT>;    
 public:
-    using Protocol = ProtocolT;
     using typename Base::Socket;
     using typename Base::Reactor;
     using typename Base::Packet;
-    using Connection = Base;
     using Subscription = SubscriptionT;
-    using Base::open, Base::socket, Base::rbuf, Base::buffer_size, Base::do_recv;
+    using Base::open, Base::socket;
 public:
     using Base::Base;
-    
-    void on_recv(Packet &pkt, tb::DoneSlot done) {
-        protocol_.on_packet(pkt);
-        done({});
-    }
 
+    const Subscription& subscription() const  { return sub_; }
     Subscription& subscription() { return sub_; }
-    
 protected:
-    Protocol protocol_;
     Subscription sub_;
 };
 
+template<typename SocketT>
+using PeerConn = BasicPeerConn<core::Subscriber, SocketT, io::Service>;
 
+using DgramPeerConn = PeerConn<tb::DgramSocket>;
 }

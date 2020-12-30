@@ -24,9 +24,10 @@ public:
     using BinaryPacket = BinaryPacketT;
 
     using Base::Base;
-    
+    using Base::async_write;
+
     template<typename /*HeartBeated*/ ConnT>
-    void async_write(ConnT& conn, const SubscriptionRequest& request, tb::DoneSlot slot) {
+    void async_write(ConnT& conn, const SubscriptionRequest& request, tb::SizeSlot slot) {
         // can't send request while some other request isn't written to media
         assert(conn.can_write());
         // remember request id
@@ -35,13 +36,13 @@ public:
                 Message msg(MessageType::SubscriptionRequest);
                 msg.seq(++out_seq_);
                 msg.symbol(request.symbol());
-                conn.async_write(msg, slot);
+                conn.async_write(tb::ConstBuffer{&msg,msg.length()}, slot);
             } break;
             default: assert(false);
         }
     }
     template<typename ConnT>
-    void on_packet(ConnT& conn, const BinaryPacket& e, tb::DoneSlot done) { 
+    void async_process(ConnT& conn, const BinaryPacket& e, tb::DoneSlot done) { 
         auto& buf = e.buffer();
         const Message& msg = *reinterpret_cast<const Message*>(buf.data());
         switch(msg.msgtype) {

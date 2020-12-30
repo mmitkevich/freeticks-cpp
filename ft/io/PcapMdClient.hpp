@@ -102,7 +102,7 @@ private:
             case IPPROTO_TCP: case IPPROTO_UDP: {
                 stats_.on_received(pkt);
                 if(filter_(pkt.header())) {
-                    protocol_.on_packet(device_, pkt, {});
+                    protocol_.async_process(device_, pkt, {}); // FIXME: sync_process?
                     on_idle();      
                 } else {
                     stats_.on_rejected(pkt);

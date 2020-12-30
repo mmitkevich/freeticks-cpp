@@ -16,7 +16,7 @@ public:
     Subscriber(InstrumentId instrument, StreamSet sset)
     : instrument_(instrument)
     , sset_(sset) {}
-    bool test(StreamTopic topic) {
+    bool test(StreamTopic topic) const {
         return sset_.test(tb::unbox(topic));
     }
     void set(StreamTopic topic) {

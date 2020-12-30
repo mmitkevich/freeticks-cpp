@@ -21,6 +21,7 @@
 #include "toolbox/sys/Time.hpp"
 #include "toolbox/util/Slot.hpp"
 #include "ft/io/Heartbeats.hpp"
+#include "ft/io/Service.hpp"
 
 namespace ft::io {
 
@@ -51,29 +52,34 @@ constexpr std::string_view protocol_schema(tb::McastProtocol& protocol) { return
 ///  3) buffered async_read/async_write 
 /// Protocol is application-layer which could be shared between connections or individual per conn (use std::reference_wrapper)
 
-template<typename DerivedT, typename SocketT, typename ReactorT>
-class BasicConn : public core::BasicComponent<core::StreamState>
-, public io::BasicHeartbeats<DerivedT>
+template<typename DerivedT, typename SocketT, typename ServiceT>
+class BasicConn : public io::BasicHeartbeats<DerivedT>
 {
-    using This = BasicConn<DerivedT, SocketT, ReactorT>;    
+    using This = BasicConn<DerivedT, SocketT, ServiceT>;    
     using Base = core::BasicComponent<core::StreamState>;
     using Self = DerivedT;
-    auto& self() { return static_cast<DerivedT*>(this); }
-    const auto& self() const { return static_cast<const DerivedT*>(this); }
+    auto* self() { return static_cast<Self*>(this); }
+    const auto* self() const { return static_cast<const Self*>(this); }
 public:
     using Socket = SocketT;
+    using Reactor = typename ServiceT::Reactor;
     using Endpoint = typename Socket::Endpoint;
     using Transport = typename Socket::Protocol;
-    using Packet = tb::Packet<Endpoint>;
+    using Packet = tb::Packet<tb::ConstBuffer, Endpoint>;
     using Stats = core::EndpointStats<tb::BasicIpEndpoint<Transport>>;
-    using Reactor = ReactorT;
+    using Service = ServiceT;
 public:
     BasicConn() = default;
 
-    BasicConn(Reactor* reactor, SocketT&& socket)
-    : reactor_(reactor) 
-    , socket_(std::move(socket))
-    {}
+    explicit BasicConn(std::string_view url) { 
+        self()->url(url);
+    }
+
+    explicit BasicConn(Service* service, SocketT&& socket, Endpoint&& remote)
+    :  service_(service)
+    ,  socket_(std::move(socket))
+    ,  remote_(std::move(remote)) {}
+
     BasicConn(const BasicConn&) = delete;
     BasicConn& operator=(const BasicConn&) = delete;
 
@@ -83,13 +89,13 @@ public:
     ~BasicConn() {
         close();
     }
-    
-    using Base::state;
 
     /// attach to socket
-    void open(Reactor* reactor) {
-        reactor_ = reactor;
-        socket_.open(*reactor_, Transport::v4());
+    void open(Service* service, Transport transport) {
+        assert(service);
+        service_ = service;
+        Reactor* r = service->reactor();
+        socket_.open(*r, transport);
         if(local()!=Endpoint())
             socket_.bind(local());
     }
@@ -103,14 +109,14 @@ public:
     
     void close() {
         disconnect();
-        socket_.close();
+        socket_.close(); // tcp disconnect
     }
     
     /// attached socket
     Socket& socket() { return socket_; }
     const Socket& socket() const { return socket_; }
-    Reactor& reactor() { return *reactor_; }
-    const Reactor& reactor() const { return *reactor_; }
+    Service* service() { assert(service_); return service_; }
+    Reactor* reactor() { return service()->reactor(); }
 
     /// connect  attached socket via async_connect if supported
     void async_connect(tb::DoneSlot slot) { 
@@ -126,36 +132,26 @@ public:
     
     static bool supports(std::string_view transport) { return transport == Transport::name; }
 
-    /// last received packet
-    Packet& last_recv() { return last_recv_; } 
-    const Packet& last_recv() const { return last_recv_; } 
+    bool is_open() const { return socket().state() == Socket::State::Open; }
+    bool is_connecting() const { return socket().state() == Socket::State::Connecting; }
 
-    /// configured remote endpoint
+    /// local endpoint connections is bound to
+    Endpoint& local() { return local_; }
+    const Endpoint& local() const { return local_; }
+
+    ///remote endpoint connection is connected to
+    Endpoint& remote() { return remote_; }
     const Endpoint& remote() const { return remote_; }
-    void remote(const Endpoint& ep) { remote_ = ep; }
-
-    /// configured local endpoint
-    const Endpoint& local() const  { return local_; }
-    void local(const Endpoint& ep) { local_ = ep; }
     
     /// configure connection using text url
-    void remote(const std::string& url) {
+    void url(std::string_view url) {
         url_ = tb::ParsedUrl {url};
-        Endpoint rep =  tb::TypeTraits<Endpoint>::from_string(url_.url());
-        remote(rep);
+        remote_ =  tb::TypeTraits<Endpoint>::from_string(url_.url());
         auto iface = url_.param("interface");
         if(!iface.empty()) {
-            auto lep = tb::parse_ip_endpoint<Endpoint>(std::string_view(iface));
-            local(lep);
+            local_ = tb::parse_ip_endpoint<Endpoint>(std::string_view(iface));
         }
-        last_recv().header().dst(rep);  // for filter
     }
-
-
-    bool is_open() const { return state() == State::Open; }
-
-    /// packet received
-    tb::Slot<const Packet&, tb::Slot<std::error_code>>& received() { return received_slot_; }    
 
     /// connection stats
     Stats& stats() { return stats_; }
@@ -163,73 +159,51 @@ public:
     bool can_write() const { return socket().can_write(); }
     bool can_read() const { return socket().can_read(); }
 
-    template<typename MessageT>
-    void async_write(const MessageT& m, tb::DoneSlot slot) {
-        write_ = slot;
-        socket().async_write(tb::ConstBuffer{&m, m.length()}, tb::bind<&This::on_write>(this));
-    }
-    void on_write(ssize_t size, std::error_code ec) {
-        write_(ec);
-        write_.reset();
-    }
-
-protected:
-    constexpr static std::size_t RecvBufferSize = 4096;
-    
-    constexpr std::size_t buffer_size() { return RecvBufferSize; };
-    tb::Buffer& rbuf() { return rbuf_; }   
-
-    void on_recv(std::error_code ec) {
-        if(!ec)
-            self()->do_recv(ec);
-    }
-
-    // could be overriden
-    void do_recv() {
-        socket().async_read(rbuf_.prepare(buffer_size()), tb::bind<&Self::on_recv>(self()));    
-    }
-
-    void on_recv(ssize_t size, std::error_code ec) {
-        if(!ec) {
-            last_recv().header().recv_timestamp(tb::CyclTime::now().wall_time());
-            recvsize_ = size;
-            rbuf().commit(size);
-            last_recv().buffer() = {rbuf().buffer().data(), (std::size_t)size};
-            self()->on_recv(last_recv(), tb::bind<&Self::on_recv_done>(self()));
+    /// adapt to stream or dgram socket
+    void async_write(tb::ConstBuffer buf, tb::SizeSlot slot) {
+        if constexpr(tb::SocketTraits::has_sendto<Socket>) {
+            // udp
+            socket().async_sendto(buf, remote(), slot);
         } else {
-            self()->on_recv_done(ec);
+            // tcp
+            socket().async_write(buf, slot);
         }
-    }   
-
-    void on_recv(Packet &pkt, tb::DoneSlot done) {
-        received_(pkt, tb::bind<&Self::on_recv_done>());
     }
-
-    void on_recv_done(std::error_code ec) {
-        if(ec.value()!=tb::unbox(std::errc::operation_would_block))
-            rbuf_.consume(recvsize_);
-        self()->do_recv();
+    
+    void async_read(tb::MutableBuffer buf, tb::SizeSlot slot) {
+        packet_.buffer() = buf;
+        if constexpr(tb::SocketTraits::has_recvfrom<Socket>) {
+            // for mcast dst = mcast addr. FIXME: for unicast udp dst is local()
+            packet_.header().dst() = remote();
+            // will fill src
+            socket().async_recvfrom(buf, packet_.header().src(), slot);
+        } else {
+            // stream packet received from tcp
+            packet_.header().src() = remote();
+            packet_.header().dst() = local();
+            socket().async_read(buf, slot);
+        }
     }
-
+    Packet& packet() { return packet_; }
+    Packet& packet(ssize_t size) { 
+        packet_.buffer() = {packet_.buffer().data(), (std::size_t)size};
+        return packet_;
+    }
 protected:
-    Reactor* reactor_ {};
-    std::size_t recvsize_ {};
+    Service* service_ {};
+    Packet packet_;
     Socket socket_ {};
-    Endpoint remote_;
-    Endpoint local_;
-    Packet last_recv_;
-    tb::Buffer rbuf_;
-    tb::Slot<const Packet&, tb::DoneSlot> received_slot_;
     Stats stats_;
     tb::ParsedUrl url_;
     tb::DoneSlot write_;
+    Endpoint local_, remote_;
 };
 
 /// crtp multi bases for features like Heartbeated
-template<typename SocketT, typename ReactorT>
-class Conn : public BasicConn<Conn<SocketT, ReactorT>, SocketT, ReactorT>
+template<typename SocketT>
+class Conn : public BasicConn<Conn<SocketT>, SocketT, io::Service>
 {
-    using Base = BasicConn<Conn<SocketT, ReactorT>, SocketT, ReactorT>;
+    using Base = BasicConn<Conn<SocketT>, SocketT,  io::Service>;
 public:
     using Base::Base;
 };
@@ -238,14 +212,50 @@ public:
 
 class BasicProtocol {
 public:
+    BasicProtocol() = default;
+
+    BasicProtocol(const BasicProtocol&) = delete;
+    BasicProtocol& operator=(const BasicProtocol&) = delete;
+
+    BasicProtocol(BasicProtocol&&) = delete;
+    BasicProtocol& operator=(BasicProtocol&&) = delete;
+
     void open() {}
     void close() {}
+        
+    // do nothing
+    template<typename ConnT>
+    void async_handshake(ConnT& conn, tb::DoneSlot done) {
+        done({});
+    }
+    
+    /// do nothing
+    template<typename ConnT, typename PacketT>
+    void async_process(ConnT& conn, const PacketT& packet, tb::DoneSlot done) { 
+        done({});
+    }
+
+    /// as binary
+    template<typename ConnT, typename MessageT>
+    void async_write(ConnT& conn, const MessageT& m, tb::SizeSlot done) {
+        async_write(conn, tb::ConstBuffer{&m, m.length()}, done);
+    }
+    template<typename ConnT>
+    void async_write(ConnT& conn, tb::ConstBuffer buf, tb::SizeSlot done) {
+        conn.async_write(buf, done);
+    }
+    template<typename ConnT>
+    void async_read(ConnT& conn, tb::MutableBuffer buf, tb::SizeSlot done) {
+        conn.async_read(buf, done);
+    }
+    template<typename ConnT, typename MessageT>
+    void async_read(ConnT& conn, MessageT& m, tb::SizeSlot done) {
+        conn.async_read(tb::MutableBuffer{&m, m.length()}, done);
+    }
 };
 
-template<typename ReactorT>
-using DgramConn = Conn<tb::DgramSocket, ReactorT>;
+using DgramConn = Conn<tb::DgramSocket>;
 
-template<typename ReactorT>
-using McastConn = Conn<tb::McastSocket, ReactorT>;
+using McastConn = Conn<tb::McastSocket>;
 
 } // ft::io

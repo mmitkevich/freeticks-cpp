@@ -53,9 +53,9 @@ public:
         std::memset(this, 0, sizeof(*this));
     }
 
-    core::Header header() { return core::Header{Base::ft_hdr}; }
+    core::Header header() const { return core::Header{Base::ft_hdr}; }
     
-    std::size_t length() { return Base::ft_hdr.ft_len; };
+    std::size_t length() const { return Base::ft_hdr.ft_len; };
     void length(std::size_t len) { Base::ft_hdr.ft_len = len; }
         
     ft_topic_t topic() const { return Base::ft_hdr.ft_type.ft_topic; }

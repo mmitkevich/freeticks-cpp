@@ -135,7 +135,7 @@ public:
     
     static constexpr std::string_view name() { return "SPB_MDBIN"; }
 
-    void on_packet(const BinaryPacket& packet) {
+    void operator()(const BinaryPacket& packet) {
         auto& buf = packet.buffer();
         const char* begin = reinterpret_cast<const char*>(buf.data());
         const char* ptr = begin;

@@ -29,7 +29,7 @@ public:
 
     void restart_heartbeats_timer() {
         using namespace std::literals::chrono_literals;
-        heartbeats_timer_ = self()->reactor().timer(tb::MonoClock::now()+1ms, heartbeats_interval(),
+        heartbeats_timer_ = self()->reactor()->timer(tb::MonoClock::now()+1ms, heartbeats_interval(),
             tb::Priority::High, tb::bind<&Self::on_heartbeats_timer>(this));
     }
 

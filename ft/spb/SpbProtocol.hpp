@@ -65,14 +65,7 @@ public:
     , decoder_(StreamsTuple{&bestprice_, &instruments_}) {  
         TOOLBOX_DUMP_THIS; 
     }
-
-    SpbProtocol(const SpbProtocol&) = delete;
-    SpbProtocol& operator=(const SpbProtocol&) = delete;
-
-    SpbProtocol(SpbProtocol&&) = delete;
-    SpbProtocol& operator=(SpbProtocol&&) = delete;
-    
-    
+        
     constexpr std::string_view name() {  return Decoder::name(); }
     
     StreamsTuple streams() { return StreamsTuple(&bestprice_, &instruments_); }
@@ -80,10 +73,10 @@ public:
     Decoder& decoder() { return decoder_; }
     auto& stats() {return decoder().stats(); }
     
-    // slot
+    /// use decoder
     template<typename ConnT>
-    void on_packet(ConnT& conn, const BinaryPacket& e, tb::DoneSlot done) { 
-        decoder_.on_packet(e); 
+    void async_process(ConnT& conn, const BinaryPacket& packet, tb::DoneSlot done) { 
+        decoder_(packet); 
         done({});
     }
 
@@ -91,6 +84,7 @@ public:
         bestprice_.open();
         instruments_.open();
     }
+
     void on_parameters_updated(const core::Parameters& params) {
         for(auto e: params) {
             auto strm = e.value_or("stream", std::string{});
@@ -114,10 +108,6 @@ public:
     }
     core::InstrumentStream& instruments(core::StreamTopic topic) {
         return  instruments();
-    }
-    template<typename ConnT, typename RequestT>
-    void async_write(ConnT& conn, const RequestT& request, tb::DoneSlot done) {
-        done({});
     }
 private:
     Decoder decoder_;    

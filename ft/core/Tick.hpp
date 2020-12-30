@@ -4,6 +4,7 @@
 #include "ft/core/Stream.hpp"
 #include "toolbox/sys/Time.hpp"
 #include "toolbox/util/Slot.hpp"
+#include <boost/mp11/tuple.hpp>
 #include <cstdint>
 #include <ostream>
 #include "ft/core/Identifiable.hpp"
@@ -102,7 +103,7 @@ using TickSequence = std::uint64_t;
 
 
 template<typename PolicyT>
-struct BasicTickPrice : ft_price_t {
+struct BasicTickElement : ft_price_t {
 public:
     using Event = TickEvent;
     using Side = TickSide;
@@ -110,26 +111,26 @@ public:
     constexpr static std::size_t length() { return sizeof(ft_price_t); }
     
     Event event() const { return Event(ft_event); }
-    void event(Event val) { ft_event = tb::unbox(val); }
+    auto& event(Event val) { ft_event = tb::unbox(val); return *this; }
 
     // following could be group of 
     TickSide side() const { return TickSide(ft_side); }
-    void side(TickSide side) { ft_side = tb::unbox(side); }
+    auto& side(TickSide side) { ft_side = tb::unbox(side); return *this; }
     
     Price price() const { return ft_price; }
-    void price(Price val) { ft_price = val; }
+    auto& price(Price val) { ft_price = val; return *this; }
 
     Qty qty() const { return ft_qty; }
-    void qty(Qty val) { ft_qty = val; }
+    auto& qty(Qty val) { ft_qty = val; return *this; }
 
     bool empty() { return event()==TickEvent::Empty; }
 
     // order
     ExchangeId server_id() const { return ft_server_id; }   // to be made up to 64 byte len?
-    void server_id(ExchangeId val) { ft_server_id = val; }
+    auto& server_id(ExchangeId val) { ft_server_id = val; return *this; }
 };
 
-using TickPrice = BasicTickPrice<TickPolicy>;
+using TickElement = BasicTickElement<TickPolicy>;
 
 template<typename T, std::size_t SizeI=1>
 struct BasicTicks : ft_tick_t {
@@ -194,15 +195,26 @@ private:
     T data_[SizeI];
 };
 
-
 template<std::size_t SizeI>
-using Ticks = BasicTicks<BasicTickPrice<TickPolicy>, SizeI>;
+using Ticks = BasicTicks<TickElement, SizeI>;
 using Tick = Ticks<1>;
 using TickStream = core::Stream<const Tick&>;
 using TickSink = core::Sink<const Tick&>;
 
+
+template<typename...ArgsT>
+constexpr auto make_ticks(ArgsT...args) {
+    Ticks<sizeof...(ArgsT)> ti;
+    auto tup = std::make_tuple(std::forward<ArgsT>(args)...);
+    std::size_t i = 0;
+    mp::tuple_for_each(std::move(tup), [&](auto &e) {
+        ti[i++] = e;
+    });
+    return ti;
+}
+
 template<typename PolicyT>
-inline std::ostream& operator<<(std::ostream& os, const BasicTickPrice<PolicyT>& e) {
+inline std::ostream& operator<<(std::ostream& os, const BasicTickElement<PolicyT>& e) {
     os << "t:'" << e.event() << "'";
     os << ",side:"<<e.side();
     os << ",price:" << PolicyT().price_conv().to_double(e.ft_price);
