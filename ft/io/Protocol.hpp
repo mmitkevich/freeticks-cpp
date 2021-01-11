@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ft/core/Component.hpp"
+#include "toolbox/sys/Log.hpp"
 
 namespace ft::io {
 
@@ -19,9 +20,11 @@ class BasicProtocol: public core::BasicComponent<Self> {
     void async_handshake(ConnT& conn, DoneT done) {
         done({});
     }
+    
     /// handle incoming packet
     template<typename ConnT, typename PacketT, typename DoneT>
     void async_handle(ConnT& conn, const PacketT& packet, DoneT done) { 
+        TOOLBOX_ASSERT_NOT_IMPLEMENTED;
         done({});
     }
     /// write POD type

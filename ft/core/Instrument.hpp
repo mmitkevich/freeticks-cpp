@@ -80,9 +80,11 @@ public:
         std::memset(this, 0, sizeof(ft_instrument_t));
     }
     StreamTopic topic() const { return (StreamTopic) ft_hdr.ft_type.ft_topic; }
+    void topic(StreamTopic val) { ft_hdr.ft_type.ft_topic = tb::unbox(val); }
 
     VenueInstrumentId venue_instrument_id() const { return ft_venue_instrument_id; }
     void venue_instrument_id(VenueInstrumentId val) { ft_venue_instrument_id = val; }
+
     InstrumentId instrument_id() const { return ft_instrument_id;}
     void instrument_id(InstrumentId val) { ft_instrument_id = val; }
 
@@ -124,7 +126,11 @@ public:
         ft_hdr.ft_len = sizeof(Base)+ft_symbol_len+ft_exchange_len+ft_venue_symbol_len;
     }
     friend std::ostream& operator<<(std::ostream& os, const BasicInstrumentUpdate<DataLength>& self) {
-        return os << "sym:'"<<self.symbol()<<'@'<<self.exchange()<<"["<<self.instrument_type()<<"]',vsym:'"<<self.venue_symbol()<<"'";
+        os << "sym:'"<<self.symbol()<<"', t:'"<<self.topic()<<"', mic:'"<<self.exchange()<<"'";
+        // os <<"', it:'"<<self.instrument_type()<<"'";
+        os << ", viid:"<<self.venue_instrument_id();
+        os << ", vsym:'"<<self.venue_symbol()<<"'";
+        return os;
     }
     template<std::size_t NewSizeI>
     BasicInstrumentUpdate<NewSizeI>& as_size() {
@@ -160,7 +166,7 @@ public:
     bool empty() const noexcept { return symbol_.empty(); } // FIXME
 
     friend std::ostream& operator<<(std::ostream& os, const Instrument& self) {
-        os << "sym:'"<<self.symbol()<<"["<<self.instrument_type()<<"]',id:"<<self.id();
+        os << "sym:'"<<self.symbol()<<"', it:'"<<self.instrument_type()<<"', id:"<<self.id();
         return os;
     }
     // JsonDocument extra;
@@ -203,7 +209,7 @@ public:
     }
 
     friend std::ostream& operator<<(std::ostream& os, const ListedInstrument& self) {
-        os << "sym:'"<<self.exchange_symbol()<<"["<<self.instrument_type()<<"]',id:"<<self.id();
+        os << "sym:'"<<self.symbol()<<"', it:'"<<self.instrument_type()<<"', id:"<<self.id();
         return os;
     }
 protected:
@@ -273,8 +279,8 @@ public:
     }
 
     friend std::ostream& operator<<(std::ostream& os, const VenueInstrument& self) {
-        os  << "sym:'"<<self.venue_symbol()
-            << ",iid:" << self.id();
+        os  << "sym:'"<<self.venue_symbol()<<"'"
+            << ", iid:" << self.id();
         if(!self.venue_instrument_id().empty())
             os << ",viid:"<<self.venue_instrument_id_;
         if(!self.venue_symbol().empty())

@@ -39,6 +39,16 @@ enum class StreamTopic: ft_topic_t {
     Candle = FT_CANDLE,
 };
 
+inline std::ostream& operator<<(std::ostream& os, const StreamTopic self) {
+    switch(self) {
+        case StreamTopic::Empty: return os << "Empty";
+        case StreamTopic::BestPrice: return os << "BestPrice";
+        case StreamTopic::Instrument: return os << "Instrument";
+        case StreamTopic::Candle: return os << "Candle";
+        default: return os << (int)tb::unbox(self);
+    }
+}
+
 enum class Event : ft_event_t {
     Empty = 0,
     Snapshot = FT_SNAPSHOT,
@@ -54,15 +64,6 @@ inline std::ostream& operator<<(std::ostream& os, const Event self) {
     }
 }
 
-inline std::ostream& operator<<(std::ostream& os, const StreamTopic self) {
-    switch(self) {
-        case StreamTopic::Empty: return os << "Empty";
-        case StreamTopic::BestPrice: return os << "BestPrice";
-        case StreamTopic::Candle: return os << "Candle";
-        case StreamTopic::Instrument: return os << "Instrument";
-        default: return os << (int)tb::unbox(self);
-    }
-}
 
 class StreamBase :  public BasicStates<core::StreamState>, public Sequenced<std::uint64_t> 
 {

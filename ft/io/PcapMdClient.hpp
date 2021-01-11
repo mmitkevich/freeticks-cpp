@@ -70,17 +70,19 @@ public:
         params["src"].copy(filter_.sources);
     }
 
-    void start() {
+    void open() {
         protocol_.open();
+        run(); // FIXME: reactor.defer(&This::run);
+    }
+    void run() {
         for(auto& input: inputs_) {
-            TOOLBOX_INFO<<"pcap replay started: "<<input;
+            TOOLBOX_INFO<<"pcap replay start: "<<input;
             device_.input(input);
             device_.run();
-            TOOLBOX_INFO<<"pcap replay finished: "<<input;
-        }
-        stop();
+            TOOLBOX_INFO<<"pcap replay done: "<<input;
+        };
     }
-    void stop() {
+    void close() {
         protocol_.close();
     }
     void report(std::ostream& os) {

@@ -144,8 +144,13 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT, ParentT>
     
     void open() {
         Base::open();
-
+        protocol_.open();
         async_connect(tb::bind<&Self::on_connected>(self()));
+    }
+    
+    void close() {
+        protocol_.close();
+        Base::close();
     }
 
     void on_connected(std::error_code ec) {

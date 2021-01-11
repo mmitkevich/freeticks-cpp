@@ -111,7 +111,7 @@ protected:
         for(std::size_t i=0; i<ticks.size(); i++) {
             auto &best = e.sub_best[i];
             auto &tick = ticks[i];
-            
+            ticks.topic(core::StreamTopic::BestPrice);
             ticks.event(core::Event::Update);
             ticks.venue_instrument_id(e.instrument.instrument_id);
             ticks.recv_time(cts);

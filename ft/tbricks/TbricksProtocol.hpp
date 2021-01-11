@@ -64,7 +64,7 @@ public:
             ft::to_hex_dump(std::string_view{(const char*)e.buffer().data(), e.buffer().size()});
         switch(msg.msgtype()) {
             case MessageType::SubscriptionRequest: {
-                TOOLBOX_INFO << "proto:'"<<name()<<"',type:"<<(int)tb::unbox(msg.msgtype())<<",sym:'"<<msg.symbol().str()<<"',seq:"<<msg.seq();
+                TOOLBOX_INFO << "proto:'"<<name()<<"', t:"<<(int)tb::unbox(msg.msgtype())<<", sym:'"<<msg.symbol().str()<<"', seq:"<<msg.seq();
                 core::SubscriptionRequest req {};
                 req.symbol(msg.symbol().str());
                 req.request(Request::Subscribe);

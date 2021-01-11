@@ -167,6 +167,7 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
             acpt.open();
         }
         Base::open();
+        protocol_.open();
         run();
     }
     
@@ -184,12 +185,12 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
     }
 
     void close() {
-        Base::close(); // peers
-
-        for(auto& [ep, acpt]: services_) {
-            acpt.close();
+        protocol_.close();
+        for(auto& [ep, svc]: services_) {
+            svc.close();
         }
         services_.clear();
+        Base::close();
     }    
 
     void shutdown(const tb::IpEndpoint& peer) {

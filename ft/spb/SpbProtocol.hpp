@@ -54,7 +54,7 @@ public:
     using PriceConv = core::PriceConversion<std::int64_t, PriceMultiplier>;
     using QtyConv = core::QtyConversion<std::int64_t, 1>;
 
-    static constexpr std::string_view Exchange = "SPB";
+    static constexpr std::string_view Exchange = "XPET";
     static constexpr std::string_view Venue = Decoder::name();
 public:
     SpbProtocol()
@@ -73,7 +73,7 @@ public:
     
     /// use decoder
     template<typename ConnT>
-    void async_process(ConnT& conn, const BinaryPacket& packet, tb::DoneSlot done) { 
+    void async_handle(ConnT& conn, const BinaryPacket& packet, tb::DoneSlot done) { 
         decoder_(packet); 
         done({});
     }

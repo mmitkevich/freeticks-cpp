@@ -107,6 +107,7 @@ struct BasicTickElement : ft_price_t {
 public:
     using Event = TickEvent;
     using Side = TickSide;
+    using Policy = PolicyT;
 
     constexpr static std::size_t length() { return sizeof(ft_price_t); }
     
@@ -138,6 +139,7 @@ public:
     using Event = core::Event;
     using Topic = core::StreamTopic;
     using Sequence = ft_seq_t;
+    using Element = T;
     
     std::size_t bytesize() const { return ft_hdr.ft_len + ft_items_count*ft_item_len; }
     static constexpr std::size_t capacity() { return SizeI; }
@@ -215,20 +217,22 @@ constexpr auto make_ticks(ArgsT...args) {
 
 template<typename PolicyT>
 inline std::ostream& operator<<(std::ostream& os, const BasicTickElement<PolicyT>& e) {
-    os << "t:'" << e.event() << "'";
-    os << ",side:"<<e.side();
-    os << ",price:" << PolicyT().price_conv().to_double(e.ft_price);
-    os << ",qty:" <<PolicyT().qty_conv().to_double(e.ft_qty);
+    os << "e:'" << e.event() << "'";
+    os << ", side:'"<<e.side()<<"'";
+    os << ", price:" << PolicyT().price_conv().to_double(e.ft_price);
+    os << ", qty:" <<PolicyT().qty_conv().to_double(e.ft_qty);
     return os;
 }
 template<typename DataT, std::size_t SizeI>
 inline std::ostream & operator<<(std::ostream& os, const BasicTicks<DataT, SizeI> &e) {
-    os << "seq:"<<e.sequence();
-    os << ",sts:'" << toolbox::sys::put_time<toolbox::Nanos>(e.send_time())<<"'";
-    os << ",clt:" << (e.recv_time()-e.send_time()).count();
-    os << ",vins:" << e.venue_instrument_id();
-    os << ",ev:'" << e.event() << "'";
-    os << ",d:[";
+    os << "t: '"<<e.topic()<<"'";
+    os << ", e:'" << e.event() << "'";    
+    //os << ", s:"<<e.sequence();
+    os << ", ts:'" << toolbox::sys::put_time<toolbox::Nanos>(e.send_time())<<"'";
+    //os << ", clt:" << (e.recv_time()-e.send_time()).count();
+    os << ", viid:" << e.venue_instrument_id();
+
+    os << ", d:[";
     for(std::size_t i=0;i<e.size(); i++) {
         if(i>0)
             os << ",";

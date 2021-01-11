@@ -9,11 +9,14 @@
 #include <system_error>
 #include <unordered_map>
 
+#include "ft/core/Stream.hpp"
 #include "ft/core/Subscription.hpp"
+#include "ft/core/Tick.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/capi/ft-types.h"
 #include "ft/core/Instrument.hpp"
 #include "ft/core/InstrumentsCache.hpp"
+#include "ft/core/BestPriceCache.hpp"
 #include "ft/core/MdClient.hpp"
 #include "ft/core/MdServer.hpp"
 #include "ft/core/Parameters.hpp"
@@ -94,12 +97,26 @@ public:
 
   void on_tick(const core::Tick& e) {
     auto &ins = instruments_[e.venue_instrument_id()];
+    switch(e.topic()) {
+      case StreamTopic::BestPrice: {
+        auto& bp = bestprice_.update(e);
+        if(out_.is_open()) {
+          out_ << "sym:'" << ins.symbol()
+           //<<", mic:'"<<ins.exchange()
+           <<"', "<<bp<<std::endl;
+        }
+        break;
+      }
+      default: {
+        if(out_.is_open()) {
+          out_ << "sym:'" << ins.symbol() << "', " << e << std::endl;  
+        }
+      }
+    }
     for(auto& [venue, server]: mdservers_) {
       auto& sink = server->ticks(e.topic());
       sink(e, nullptr);
     }
-    if(out_.is_open())
-      out_ << "m:tick,sym:'" << ins.venue_symbol() << "'," << e << std::endl;    
   }
 
   void on_instrument(const core::InstrumentUpdate& e) {
@@ -109,7 +126,7 @@ public:
       sink(e, nullptr);
     }
     if(out_.is_open()) {
-      out_ << "m:ins,"<<e<<std::endl;
+      out_ << e << std::endl;
     }
   }
   
@@ -227,12 +244,13 @@ public:
   void start(core::Parameters& opts) {
             // if not pcap should run reactor
     tb::BasicRunner runner(*reactor_, [this, &opts] {
-      run(opts);
+      return run(opts);
     });
     tb::wait_termination_signal();          
   }
   /// returns true if something has really started and reactor thread is required
-  void run(const core::Parameters& opts) {
+  bool run(const core::Parameters& opts) {
+      std::string_view mode_force = opts.value_or("mode", std::string_view{});
       std::string output_path = opts.value_or("output", std::string{"/dev/stdout"});
       if(output_path!="/dev/null")
         out_.open(output_path);
@@ -251,7 +269,9 @@ public:
       for(auto [venue, venue_opts]: opts["clients"]) {
         bool enabled = venue_opts.value_or("enabled", true);
         if(enabled) {
-          std::string_view mode = venue_opts.value_or("mode", std::string_view{"mcast"});
+          std::string_view mode = venue_opts.value_or("mode", std::string_view{});
+          if(!mode_force.empty())
+            mode = mode_force;
           auto c = make_mdclient(venue, mode, venue_opts);
           auto& client = *c;
           mdclients_.emplace(venue, std::move(c));
@@ -272,6 +292,7 @@ public:
           */  
         }
       }
+      return mode_force!="pcap";
   }
        
   
@@ -288,6 +309,7 @@ public:
       parser('h', "help", tb::Switch{help}, "print help")
         ('v', "verbose", tb::Value{opts, "verbose", std::uint32_t{}}, "log level")
         ('o', "output", tb::Value{opts, "output", std::string{}}, "output file")
+        ('m', "mode", tb::Value{opts, "mode", std::string{}}, "pcap")
         (tb::Value{config_file}.required(), "config.json file")
       .parse(argc, argv);
 
@@ -313,6 +335,7 @@ public:
 private:
   tb::MonoTime start_timestamp_;
   core::InstrumentsCache instruments_;
+  core::BestPriceCache bestprice_;
   io::Reactor* reactor_{nullptr};
   std::ofstream out_;
   tb::RobinFlatMap<std::string, std::unique_ptr<core::IMdClient>> mdclients_;

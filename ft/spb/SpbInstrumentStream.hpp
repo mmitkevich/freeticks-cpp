@@ -29,7 +29,7 @@ public:
     SpbInstrumentStream(Protocol& protocol)
     : Base(protocol) 
     {
-        TOOLBOX_DUMP_THIS
+        TOOLBOX_DUMP_THIS;
     }
     using Base::decoder;
     using Base::invoke;
@@ -81,6 +81,7 @@ public:
             std::int64_t viid = std::atoll(e.attribute("instrument_id").value());
 
             core::BasicInstrumentUpdate<4096> u;
+            u.topic(core::StreamTopic::Instrument);
             u.symbol(sym);
             u.exchange(protocol().exchange());
             u.venue_symbol(sym);

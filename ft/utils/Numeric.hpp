@@ -17,7 +17,7 @@ struct DoubleConversion<std::int64_t> {
     constexpr DoubleConversion(std::int64_t multiplier)
     : multiplier(multiplier) {}
     
-    constexpr double to_double(std::int64_t val) { return (double)val/multiplier; }
+    constexpr double to_double(std::int64_t val) const { return (double)val/multiplier; }
     constexpr std::int64_t from_double(double val) { return std::round(val*multiplier); }
 };
 

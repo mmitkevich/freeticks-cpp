@@ -183,16 +183,21 @@ class BasicConn
     /// loop
     template<typename HandlerT>
     void run() {
+        //TOOLBOX_DUMP_THIS<<"rbuf.prepare "<< self()->buffer_size();
         self()->async_read(rbuf().prepare(self()->buffer_size()), 
             tb::bind([this](ssize_t size, std::error_code ec) {
                 if(!ec) {
                     assert(size>=0);
+                    //TOOLBOX_DUMP_THIS<<"rbuf.commit "<< size;
+                    rbuf().commit(size);
                     // replace total buffer size with real received data size
                     packet_.buffer() = typename Packet::Buffer {packet_.buffer().data(), (size_t) size}; 
+                    packet_.header().recv_timestamp(tb::WallClock::now());
                     // handle
                     HandlerT* handler = static_cast<HandlerT*>(parent());
                     handler->async_handle(*self(), packet_, tb::bind([this](std::error_code ec) {
                         auto size = packet().buffer().size(); 
+                        //TOOLBOX_DUMP_THIS<<"rbuf.consume "<< size;
                         rbuf().consume(size);
                         if(!ec) {
                             // loop
