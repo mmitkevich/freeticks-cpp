@@ -10,10 +10,10 @@ namespace ft { inline  namespace core {
 
 using StreamSet = std::bitset<128>;
 
-class Subscriber {
+class Subscription {
 public:
-    Subscriber() = default;
-    Subscriber(InstrumentId instrument, StreamSet sset)
+    Subscription() = default;
+    Subscription(InstrumentId instrument, StreamSet sset)
     : instrument_(instrument)
     , sset_(sset) {}
     bool test(StreamTopic topic) const {

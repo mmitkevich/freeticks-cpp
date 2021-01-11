@@ -5,16 +5,27 @@
 #include "ft/core/Stream.hpp"
 #include "toolbox/sys/Time.hpp"
 #include "ft/sbe/SbeTypes.hpp"
-#include "ft/core/Subscriber.hpp"
+#include "ft/core/Subscription.hpp"
 #include "toolbox/util/Slot.hpp"
 
 namespace ft { inline namespace core {
+
+#pragma pack(push, 1)
 
 enum class Request : ft_event_t {
     Subscribe       = FT_REQ_SUBSCRIBE,
     Unsubscribe     = FT_REQ_UNSUBSCRIBE,
     UnsubscribeAll  = FT_REQ_UNSUBSCRIBE_ALL
 };
+
+inline std::ostream& operator<<(std::ostream& os, Request req) {
+    switch(req) {
+        case Request::Subscribe: return os << "Subscribe";
+        case Request::Unsubscribe: return os << "Unsubscribe";
+        case Request::UnsubscribeAll: return os <<"UnsubscribeAll";
+        default: return os << tb::unbox(req);
+    }
+}
 
 enum class Response : ft_event_t {
     Subscribe       = FT_RES_SUBSCRIBE,
@@ -55,8 +66,8 @@ public:
 
     core::Header header() const { return core::Header{Base::ft_hdr}; }
     
-    std::size_t length() const { return Base::ft_hdr.ft_len; };
-    void length(std::size_t len) { Base::ft_hdr.ft_len = len; }
+    std::size_t bytesize() const { return Base::ft_hdr.ft_len; };
+    void bytesize(std::size_t len) { Base::ft_hdr.ft_len = len; }
         
     ft_topic_t topic() const { return Base::ft_hdr.ft_type.ft_topic; }
     void topic(ft_topic_t val) { Base::ft_hdr.ft_type.ft_topic = val; }
@@ -87,6 +98,10 @@ public:
     }
     core::Request request() const { return static_cast<core::Request>(Base::ft_hdr.ft_type.ft_event); } 
     void request(core::Request val) { Base::ft_hdr.ft_type.ft_event = tb::unbox(val); }
+    
+    friend std::ostream& operator<<(std::ostream& os, const BasicRequest<BaseT>& self) {
+        return os<<"event:'"<<self.request()<<"',topic:"<<(int)self.topic()<<",req:"<<self.request_id()<<",iid:"<<self.instrument_id();
+    }
 };
 
 enum class Status : ft_status_t {
@@ -125,6 +140,7 @@ using StatusResponse = BasicResponse<ft_response_t>;
 
 constexpr static std::size_t MaxSymbolSize = 64;
 
+
 template<std::size_t SizeI>
 class BasicSubscriptionRequest : public core::BasicRequest<ft_subscribe_t> {
     using Base = core::BasicRequest<ft_subscribe_t>;
@@ -142,6 +158,9 @@ public:
     void symbol(std::string_view val) {
         symbol_data() = val;
     }
+    friend std::ostream& operator<<(std::ostream& os, const BasicSubscriptionRequest<SizeI>& self) {
+        return os << static_cast<const Base&>(self)<<",sym:'"<<self.symbol()<<"'";
+    }
 private:
     char data_[SizeI];
 };
@@ -150,7 +169,5 @@ using SubscriptionRequest = BasicSubscriptionRequest<MaxSymbolSize>;
 using SubscriptionSignal = tb::Signal<const core::SubscriptionRequest&>;
 using SubscriptionResponse = StatusResponse;
 
-
-
-
+#pragma pack(pop)
 }} // ft::core

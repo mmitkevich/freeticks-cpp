@@ -1,5 +1,6 @@
 #include <toolbox/io/Reactor.hpp>
 #include <ft/utils/Common.hpp>
+#include <ft/core/Component.hpp>
 
 namespace ft::io {
  
@@ -10,11 +11,11 @@ struct HeartbeatsTraits {
     constexpr static  bool has_heartbeats = boost::is_detected_v<heartbeats_t, T>;
 };
 
-template<typename DerivedT> 
+template<class Self>
 class BasicHeartbeats {
-    using Self = DerivedT;
-    auto* self() { return static_cast<DerivedT*>(this); }
-public:
+    FT_MIXIN(Self);
+  public:
+    
     tb::Duration heartbeats_interval() { 
         return heartbeats_interval_;
     }
@@ -40,9 +41,9 @@ public:
     void on_heartbeats_expired() {
         self()->close();
     }
-protected:
+  protected:
     tb::Timer heartbeats_timer_;
     tb::Duration heartbeats_interval_{};
 };
-   
+
 }

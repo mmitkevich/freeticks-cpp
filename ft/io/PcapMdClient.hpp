@@ -13,24 +13,25 @@
 #include "toolbox/sys/Log.hpp"
 #include "toolbox/sys/Time.hpp"
 //#include <netinet/in.h>
-
+#include "ft/io/Service.hpp"
 #include "ft/core/EndpointStats.hpp"
 
 namespace ft::io {
 
 
-template<typename ProtocolT>
-class PcapMdClient : public core::BasicComponent<core::State>,
-    public core::BasicParameterized<PcapMdClient<ProtocolT>> {
+template<class ProtocolT, class ReactorT=tb::Scheduler, typename StateT=core::State, class ParentT=core::Component>
+class PcapMdClient  : public BasicService<PcapMdClient<ProtocolT, ReactorT>, ReactorT, StateT, ParentT>
+{
 public:
-    using This = PcapMdClient<ProtocolT>;
-    using Base = core::BasicComponent<core::State>;
+    using This = PcapMdClient<ProtocolT, ReactorT>;
+    using Base = BasicService<PcapMdClient<ProtocolT, ReactorT>, ReactorT, StateT, ParentT>;
     using Protocol = ProtocolT;
     using Stats = core::EndpointStats<tb::IpEndpoint>;
     using BinaryPacket = tb::PcapPacket;
+    using typename Base::Reactor;
 public:
-    template<typename ReactorT, typename...ArgsT>
-    explicit PcapMdClient(ReactorT* r, ArgsT...args)
+    template<typename...ArgsT>
+    explicit PcapMdClient(Reactor* r, ArgsT...args)
     : protocol_(std::forward<ArgsT>(args)...)
     {
         device_.packets().connect(tb::bind<&PcapMdClient::on_packet_>(this));
@@ -102,7 +103,8 @@ private:
             case IPPROTO_TCP: case IPPROTO_UDP: {
                 stats_.on_received(pkt);
                 if(filter_(pkt.header())) {
-                    protocol_.async_process(device_, pkt, {}); // FIXME: sync_process?
+                    protocol_.async_handle(device_, pkt, tb::bind([this](std::error_code ec) { 
+                    })); // FIXME: sync_process?
                     on_idle();      
                 } else {
                     stats_.on_rejected(pkt);

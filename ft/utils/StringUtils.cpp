@@ -1,14 +1,8 @@
 #include "StringUtils.hpp"
 #include <locale>
-#include <boost/algorithm/hex.hpp> 
 
 namespace ft { inline namespace util {
 
-std::string to_hex(std::string_view sv) {
-    std::string result(sv.size()*2,'\0');
-    boost::algorithm::hex(sv.begin(), sv.end(), result.begin());
-    return result;
-}
 
 template<class Facet>
 struct deletable_facet : Facet
@@ -24,6 +18,24 @@ std::wstring to_wstring(std::string_view sv) {
         , wchar_t> conv;
     std::wstring wstr = conv.from_bytes(sv.data());
     return wstr;
+}
+
+std::string to_hex_dump(std::string_view buf) {
+    std::stringstream ss;
+    static char hex[]="0123456789ABCDEF";
+    const char* b = (const char*)buf.data();
+    for(std::size_t i=0; i<buf.size(); i++) {
+        char c = buf[i];
+        ss << hex[(c>>4)&0xF] << hex[c&0x0F] << ' ';
+    }
+    ss << std::endl;
+    for(std::size_t i=0; i<buf.size(); i++) {
+        char c = buf[i];
+        if(c<' ')
+            c=' ';
+        ss << ' ' << c << ' ';
+    }
+    return ss.str();
 }
 
 }} //ft::util

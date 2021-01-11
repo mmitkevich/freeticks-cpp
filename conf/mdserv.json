@@ -1,9 +1,9 @@
 {
 "clients": {
     "SPB_MDBIN":{
-        "enabled": false
-        ,"mode": "pcap"
-        //,"mode": "mcast"
+        "enabled": true
+        //,"mode": "pcap"
+        ,"mode": "mcast"
         ,"connections":[                                                   // channel A,            channel B
             { "stream":"bestprice",  "type": "snapshot.mcast", "interface":"10.1.110.55", 
                 "urls": ["233.26.38.16:6016", "233.26.38.144:6144"] }
@@ -27,7 +27,7 @@
 }, 
 "servers": {
     "TB1": {
-        "enabled": true
+        "enabled": false
         , "connections" : [
             { "stream": "bestprice", "type":"snapshot.udp", "interface": "127.0.0.1:10050" }
         ]

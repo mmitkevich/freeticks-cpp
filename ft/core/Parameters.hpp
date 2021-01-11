@@ -19,14 +19,14 @@ public:
 
 
 
-template<typename DerivedT>
+template<class Self>
 class BasicParameterized {
 public:
     /// update parameters. when replace==true, old parameters are cleared
     void parameters(const Parameters& parameters, bool replace=false) { 
         // copy on write
         MutableParameters::copy(parameters, parameters_);
-        static_cast<DerivedT*>(this)->on_parameters_updated(parameters_);
+        static_cast<Self*>(this)->on_parameters_updated(parameters_);
     }
     void clear() {
         parameters_.clear();

@@ -33,7 +33,7 @@ public:
 
     const uint8_t* data() const noexcept { return reinterpret_cast<const uint8_t*>(this); }
     constexpr std::size_t size() const noexcept { return 16; }
-    constexpr std::size_t length() const noexcept { return 16; }
+    constexpr std::size_t bytesize() const noexcept { return 16; }
 
     std::size_t hash_value() const noexcept {
         return low ^ high;

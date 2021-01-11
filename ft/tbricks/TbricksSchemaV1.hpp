@@ -1,10 +1,13 @@
 #pragma once
+#include <boost/type_traits/is_detected.hpp>
 #include <cstdint>
 #include <stdexcept>
 #include "ft/core/Requests.hpp"
 #include "ft/sbe/SbeTypes.hpp"
 
 namespace ft::tbricks::v1 {
+
+#pragma pack(push, 1)
 
 enum class MessageType: uint8_t {
     NotAMessage, 
@@ -33,65 +36,79 @@ struct Timestamp {
 };
 
 struct SubscriptionPayload {
-    String symbol;
-    Sequence seq;
-    std::size_t length() const { return symbol.length()+sizeof(seq); }
-};
-struct SequencePayload {
-    Sequence seq;
-    std::size_t length() const { return sizeof(seq); }
-};
-struct MarketDataPayload {
-    String symbol;
-    Price bid;
-    Price ask;
-    Phase phase;
-    MDStatus status;
-    Timestamp time;
-    Sequence seq;
-    
-    std::size_t length() const {
-        return symbol.length()
-            + sizeof(bid)
-            + sizeof(ask)
-            + sizeof(phase)
-            + sizeof(status)
-            + sizeof(time)
-            + sizeof(seq);
-    }
+#define TB_PADVAL 0
+    TB_FIELD(String, symbol, symbol_);
+#undef  TB_PADVAL
+#define TB_PADVAL TB_PADSIZE(symbol_)
+    TB_FIELD(Sequence, seq, seq_);
+    TB_BYTESIZE(*this)
+#undef TB_PADVAL
 };
 
+struct SequencePayload {
+#define TB_PADVAL 0
+    TB_FIELD(Sequence, seq, seq_);
+    TB_BYTESIZE(*this)
+#undef TB_PADVAL
+};
+
+struct MarketDataPayload {
+#define TB_PADVAL 0
+    TB_FIELD(String, symbol, symbol_);
+#undef TB_PADVAL
+#define TB_PADVAL TB_PADSIZE(symbol_)
+    TB_FIELD(Price, bid, bid_);
+    TB_FIELD(Price, ask, ask_);
+    TB_FIELD(Phase, phase, phase_);
+    TB_FIELD(MDStatus, status, status_);
+    TB_FIELD(Timestamp, time, time_);
+    TB_FIELD(Sequence, seq, seq_);
+    TB_BYTESIZE(*this)
+#undef TB_PADVAL
+};
+
+template<std::size_t PadSizeI=0>
 struct Message {
-    MessageType msgtype;
+    MessageType msgtype_;
     union {
         SubscriptionPayload subscription;
         MarketDataPayload marketdata;
         SequencePayload sequence;
     };
-    
+    char data_[PadSizeI];
+
+    auto& msgtype() { return msgtype_; }
+    const auto& msgtype() const { return msgtype_; }
+
+
     Message(MessageType msgtype = MessageType::NotAMessage)
-    : msgtype(msgtype)
+    : msgtype_(msgtype)
     {}
 
-    std::size_t length() const { 
-        switch(msgtype) {
+    template<std::size_t NewSizeI>
+    Message<NewSizeI>& as_size() {
+        return *reinterpret_cast<Message<NewSizeI>*>(this);
+    }
+
+    std::size_t bytesize() const { 
+        switch(msgtype()) {
             case MessageType::SubscriptionRequest: 
             case MessageType::SubscriptionRequestBBO:
             case MessageType::SubscriptionCancelRequest:
-                return sizeof(msgtype) + subscription.length();
+                return sizeof(msgtype()) + subscription.bytesize();
             case MessageType::MarketData:
             case MessageType::MarketDataBBO:
-                return sizeof(msgtype) + marketdata.length();
+                return sizeof(msgtype()) + marketdata.bytesize();
             case MessageType::HeartBeat:
             case MessageType::ClosingEvent:            
-                return sizeof(msgtype) + sequence.length();
+                return sizeof(msgtype()) + sequence.bytesize();
             default: 
                 assert(false);
-                return sizeof(msgtype);
+                return sizeof(msgtype_);
         }
     }
     bool is_valid() {
-        switch(msgtype) {
+        switch(msgtype_) {
             case MessageType::SubscriptionRequest:
             case MessageType::SubscriptionCancelRequest: 
             case MessageType::MarketData: 
@@ -101,58 +118,33 @@ struct Message {
             default: return false;
         }
     }
-    Sequence seq() const {
-        switch(msgtype) {
+
+    TB_FIELD_FN(Sequence, seq, {
+        switch(msgtype_) {
             case MessageType::SubscriptionRequest: 
             case MessageType::SubscriptionCancelRequest: 
-                return subscription.seq;
+                return subscription.seq();
             case MessageType::MarketData:
-                return marketdata.seq;
+                return marketdata.seq();
             case MessageType::ClosingEvent: 
             case MessageType::HeartBeat:
-                return sequence.seq;
+                return sequence.seq();
             default: throw std::runtime_error("bad_msgtype");
         }
-    }
-    void seq(Sequence seq) {
-        switch(msgtype) {
-            case MessageType::SubscriptionRequest: 
-            case MessageType::SubscriptionRequestBBO:
-            case MessageType::SubscriptionCancelRequest: 
-                subscription.seq = seq;
-                break;
-            case MessageType::MarketData: 
-                marketdata.seq = seq;
-                break;
-            case MessageType::ClosingEvent:
-            case MessageType::HeartBeat:
-                sequence.seq = seq;
-                break;
-            default: throw std::runtime_error("bad_msgtype");
-        }
-    }
-    void symbol(std::string_view val) {
-        switch(msgtype) {
+    });
+
+    TB_FIELD_FN(String, symbol, {
+        switch(msgtype_) {
             case MessageType::SubscriptionRequest: 
             case MessageType::SubscriptionRequestBBO:
             case MessageType::SubscriptionCancelRequest:
-                subscription.symbol = val;
+                return subscription.symbol();
                 break;
             default:
-                assert(false);
+                throw std::runtime_error("bad_msgtype");
         }
-    }
-    std::string_view symbol() const {
-        switch(msgtype) {
-            case MessageType::SubscriptionRequest: 
-            case MessageType::SubscriptionRequestBBO:
-            case MessageType::SubscriptionCancelRequest:
-                return subscription.symbol.str();
-            default:
-                assert(false);
-                return {};
-        }
-    }
+    });
 };
 
-};
+#pragma pack(pop)
+} // tbricks::schema::v1

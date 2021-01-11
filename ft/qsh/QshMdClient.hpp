@@ -4,7 +4,7 @@
 #include "ft/core/StreamStats.hpp"
 #include "ft/utils/Common.hpp"
 #include "QshDecoder.hpp"
-
+#include "ft/io/Service.hpp"
 #include "ft/core/MdClient.hpp"
 #include <ostream>
 #include <string_view>
@@ -12,15 +12,15 @@
 namespace ft::qsh {
 
 // file-based gateway for Qsh files
-class QshMdClient: public core::BasicComponent<core::State>,
-    public core::BasicParameterized<QshMdClient> {
-public:
-    using This = QshMdClient;
-    using Base = core::BasicComponent<core::State>;
+class QshMdClient:  public io::BasicService<QshMdClient, tb::Scheduler, core::State, core::Component>
+{
+    using Base = io::BasicService<QshMdClient, tb::Scheduler, core::State, core::Component>;
+  public:
+    using typename Base::Reactor;
+  public:
+    using Base::Base;
+    using Base::state;
     
-    template<typename ReactorT>
-    QshMdClient(ReactorT* r) {}
-
     void start() { state(core::State::Starting); state(core::State::Started); run(); }
     void stop() {state(core::State::Stopping); state(core::State::Stopped); }
 

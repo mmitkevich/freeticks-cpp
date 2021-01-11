@@ -5,11 +5,43 @@
 #include "ft/core/Parameters.hpp"
 #include "toolbox/io/State.hpp"
 #include "toolbox/io/Reactor.hpp"
+#include <boost/type_traits/is_detected.hpp>
 #include <deque>
 #include <atomic>
 #include <exception>
 
 namespace ft { inline namespace core {
+
+/// CRTP boilerplate
+#define FT_MIXIN(Self) \
+    constexpr Self* self() { return static_cast<Self*>(this); } \
+    constexpr const Self* self() const { return static_cast<const Self*>(this); } 
+
+/// convert some template into single-argument mixin template
+template<template<typename, auto...> class TemplateT, auto...ArgsT>
+struct Bind {
+    template<class Self>
+    using Type = TemplateT<Self, ArgsT...>;
+};
+
+
+class Movable {
+public:
+    Movable(const Movable&) = delete;
+    Movable&operator=(const Movable&) = delete;
+    Movable(Movable&&) = default;
+    Movable&operator=(Movable&&) = default;
+    Movable() = default;
+};
+
+class NonMovable {
+public:
+    NonMovable(const NonMovable&) = delete;
+    NonMovable&operator=(const NonMovable&) = delete;
+    NonMovable(NonMovable&&) = default;
+    NonMovable&operator=(NonMovable&&) = default;
+    NonMovable() = default;
+};
 
 using State = toolbox::io::State;
 using ExceptionPtr = const std::exception*;
@@ -25,31 +57,27 @@ public:
     /// 
     virtual void start() = 0;
     virtual void stop() = 0;
-    
-    // set url
-    virtual void url(std::string_view url) = 0;
-    virtual std::string_view url() const = 0;
 
     virtual State state() const = 0;    
     virtual StateSignal& state_changed() = 0;
 };
 
-template<typename ImplT>
+template<class Self>
 class ComponentImpl : public IComponent {
+    Self* self() { return self_; }
 public:
-    ComponentImpl(std::unique_ptr<ImplT> &&impl)
-    : impl_(std::move(impl)) {}
+    ComponentImpl(std::unique_ptr<Self> &&self)
+    : self_(std::move(self)) {}
 
-    void start() override { impl_->start(); }
-    void stop() override { impl_->stop(); }
-    
-    void url(std::string_view url) { impl_->url(url);}
-    std::string_view url() const { return impl_->url(); }
+    void start() override { self()->start(); }
+    void stop() override { self()->stop(); }
 
-    void parameters(const Parameters& parameters, bool replace=false) override { impl_->parameters(parameters, replace); }
-    const Parameters& parameters() const override { return impl_->parameters(); }
+    void parameters(const Parameters& parameters, bool replace=false) override { 
+        self()->parameters(parameters, replace);
+    }
+    const Parameters& parameters() const override { return self()->parameters(); }
 protected:
-    std::unique_ptr<ImplT> impl_;
+    std::unique_ptr<Self> self_;
 };
 
 /// list of deferred hooks
@@ -72,24 +100,36 @@ private:
     std::deque<std::function<void(ArgsT...)>> fns_;
 };
 
-
-/// Component = Identifiable + Url
-class Component : public Identifiable {
+/// Component = HasParent<Component> + Identifiable + Moveable 
+class Component :  public Identifiable, public Movable {
+    using Base = Identifiable;
 public:
-    using Identifiable::Identifiable;
-    void url(std::string_view url) { url_ = url; }
-    std::string_view url() const { return url_; }
+    Component(const Component&) = delete;
+    Component&operator=(const Component&) = delete;
+    Component(Component&&) = default;
+    Component& operator=(Component&&) = default;
+    Component() = default;
+    
+    explicit Component(Component* parent)
+    : parent_(parent)
+    {}
+
+    Component* parent() { return parent_;}
+    const Component* parent() const { return parent_; }
+    void parent(Component* val) { parent_ = val;}
 protected:
-    std::string url_;
+protected:
+    Component* parent_{};
 };
 
-/// Stateful = State + StateSignal
+
+/// State with hooks
 template<typename StateT>
-class BasicStateful {
-public:
+class BasicStates {
+  public:
     using State = StateT;
     using StateSignal = tb::Signal<State, State, ExceptionPtr>;
-public:
+  public:
     void state(State state, ExceptionPtr err=nullptr) {
         if(state != state_) {
             auto old_state = state_;
@@ -102,7 +142,6 @@ public:
         }
     }
     State state() const { return state_; }
-
     template<typename FnT>
     bool state_hook(State state, FnT&& fn) {
         if(state_==state) {
@@ -123,12 +162,22 @@ protected:
     BasicHooks<> started_hooks_;
 };
 
-/// Component = Identifier + State
-template<typename StateT> 
-class BasicComponent : public Component, public BasicStateful<StateT> {
-public:
-    using Component::Component;
+/// Component<Parent> = Component[Identifiable+Movable+Child<Component>] + Child<Parent> + Url
+template<class Self, class ParentT=core::Component, class BaseT=core::Component>
+class BasicComponent : public BaseT {
+  FT_MIXIN(Self);
+  private:
+    template<typename T>
+    using parent_t = decltype(std::declval<T&>().parent());
+    static_assert(boost::is_detected_v<parent_t, ParentT>, "ParentT should declare parent()");
+    static_assert(boost::is_detected_v<parent_t, BaseT>, "BaseT should declare parent()");
+  public:
+    using BaseT::BaseT;
+    using Parent = ParentT; 
+    
+    Parent* parent() { return static_cast<Parent*>(BaseT::parent()); }
+    const Parent* parent() const { return static_cast<const Parent*>(BaseT::parent());  }
+    void parent(Parent* val) { BaseT::parent(val); }
 };
-
 
 }} // ns ft::core

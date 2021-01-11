@@ -139,7 +139,7 @@ public:
     using Topic = core::StreamTopic;
     using Sequence = ft_seq_t;
     
-    std::size_t length() const { return ft_hdr.ft_len + ft_items_count*ft_item_len; }
+    std::size_t bytesize() const { return ft_hdr.ft_len + ft_items_count*ft_item_len; }
     static constexpr std::size_t capacity() { return SizeI; }
     
     Event event() const { return Event(ft_hdr.ft_type.ft_event); }

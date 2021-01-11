@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#pragma pack(push, 1)
+
 typedef uint16_t ft_len_t;
 typedef int64_t  ft_flags_t;
 typedef struct fd_it_s {
@@ -214,6 +216,8 @@ typedef struct  {
     ft_slen_t ft_message_len;                   // string status
     ft_char_t ft_message[0]; 
 } ft_instrument_status_t;
+
+#pragma pack(pop)
 
 #ifdef __cplusplus
 }

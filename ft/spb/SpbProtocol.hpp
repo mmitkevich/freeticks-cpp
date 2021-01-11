@@ -38,10 +38,8 @@ Tup construct_tuple(Args&&... args) {
     return tuple_construct_t<Tup>::make_tuple(std::forward<Args>(args)...);
 }
 
-template<
-typename SchemaT,
-typename BinaryPacketT
-> class SpbProtocol : public io::BasicProtocol
+template<typename SchemaT, typename BinaryPacketT>
+class SpbProtocol : public io::BasicProtocol<SpbProtocol<SchemaT, BinaryPacketT>>
 {
 public:
     using Schema = SchemaT;

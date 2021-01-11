@@ -5,7 +5,10 @@
 #include <string>
 #include "ft/utils/StringUtils.hpp"
 
+#include "toolbox/util/ByteTraits.hpp"
+
 namespace ft::sbe {
+#pragma pack(push, 1)
 
 template<std::size_t Length>
 class FixedString {
@@ -55,11 +58,12 @@ public:
     constexpr std::size_t size() const { return size_;} // FIXME: std::strlen(data_) ?
     void resize(std::size_t val) { size_ = val; }
     constexpr std::string_view str() const { return std::string_view(data(), size()); }
+    operator std::string_view() const { return str(); }
     std::wstring wstr() const { return ft::to_wstring(str()); }
     constexpr const char* c_str() const { return data(); }
     char* data() { return &data_[OffsetI-sizeof(SizeT)]; }
     const char* data() const { return &data_[OffsetI-sizeof(SizeT)]; }    
-    std::size_t length() const { return sizeof(SizeT) + capacity(); }
+    constexpr std::size_t bytesize() const { return sizeof(SizeT) + capacity(); }
 
     friend auto& operator<<(std::ostream& os, const BasicVarString& self) {
         return os << self.str();
@@ -67,4 +71,5 @@ public:
 };
 
 using VarString = BasicVarString<std::uint16_t>;
+#pragma pack(pop)
 }

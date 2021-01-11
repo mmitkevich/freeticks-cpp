@@ -22,12 +22,21 @@
 
 namespace ft::io {
 
-template<typename ProtocolT, typename PeerT, typename ResponseTL=mp::mp_list<core::SubscriptionResponse> >
-class BasicMdClient : public io::BasicClient< BasicMdClient<ProtocolT, PeerT, ResponseTL>, ProtocolT, PeerT, ResponseTL>
+template< class Self
+, class ProtocolT
+, class PeerT
+, typename StateT
+, class RouterT = RoundRobinRoutingStrategy<PeerT>
+, class RequestorT = BasicRequestor<Self, RouterT, mp::mp_list<core::SubscriptionResponse>>
+, class IdleTimerT = BasicIdleTimer<Self>
+> class BasicMdClient : public io::BasicClient<Self, ProtocolT, PeerT, StateT>, RequestorT, IdleTimerT
 {
-    using This = BasicMdClient<ProtocolT, PeerT, ResponseTL>;
-    using Base = io::BasicClient<This, ProtocolT, PeerT, ResponseTL>;
+    using Base = BasicClient<Self, ProtocolT, PeerT, StateT>;
+    using Requestor = RequestorT;
+    using IdleTimer = IdleTimerT;
     friend Base;
+    friend Requestor;
+    friend IdleTimer;
 public:
     using typename Base::Protocol;
     using typename Base::Peer;
@@ -38,33 +47,50 @@ public:
     using typename Base::State;
 public:
     using Base::Base;
-    using Base::state, Base::url, Base::reactor, Base::protocol;
+    using Base::state, Base::reactor, Base::protocol;
     using Base::peers;
-    using Base::async_read, Base::async_write;
-    using Base::async_connect, Base::async_request;
+    using Base::async_connect;
+    using Requestor::async_request;
 
     auto& stats() { return protocol().stats(); }
+
+    void open() {
+        Base::open();
+        Requestor::open();
+        IdleTimer::open();
+    }
+
+    void close() {
+        IdleTimer::close();
+        Requestor::close();
+        Base::close();
+    }
+
+    /// forward to protocol
+    void async_handle(Peer& peer, const Packet& packet, tb::DoneSlot done) {
+        protocol().async_handle(peer, packet, done);     // will do all the stuff, then call done()
+    }
+
 
     /// connectable streams
     core::TickStream& ticks(core::StreamTopic topic) { return protocol().ticks(topic); }
 
     core::InstrumentStream& instruments(core::StreamTopic topic) { return protocol().instruments(topic); }
-public:
-    void on_parameters_updated(const core::Parameters& params) {
-        Base::on_parameters_updated(params);
-        protocol().on_parameters_updated(params["connections"]);
-    }
+
 protected:
-    /// forward to protocol
-    void on_packet(const Packet& packet, tb::DoneSlot done) {
-        protocol().on_packet(packet, done);     // will do all the stuff, then call done()
-    }
 
     void on_idle() {
         std::stringstream ss;
         protocol().stats().report(ss);
         TOOLBOX_INFO << ss.str();
     }
+}; // BasicMdClient
+
+template<class ProtocolT, class PeerT, typename StateT=core::State>
+class MdClient : public BasicMdClient<MdClient<ProtocolT, PeerT, StateT>, ProtocolT, PeerT, StateT> {
+    using Base = BasicMdClient<MdClient<ProtocolT, PeerT, StateT>, ProtocolT, PeerT, StateT>;
+  public:
+    using Base::Base;
 };
 
-} // ft::mcasst
+} // ft::io

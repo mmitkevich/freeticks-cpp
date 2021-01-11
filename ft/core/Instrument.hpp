@@ -86,7 +86,7 @@ public:
     InstrumentId instrument_id() const { return ft_instrument_id;}
     void instrument_id(InstrumentId val) { ft_instrument_id = val; }
 
-    std::size_t length() const { return ft_hdr.ft_len + ft_symbol_len + ft_exchange_len + ft_venue_symbol_len; }
+    std::size_t bytesize() const noexcept { return ft_hdr.ft_len + ft_symbol_len + ft_exchange_len + ft_venue_symbol_len; }
 
     std::string_view symbol() const { return std::string_view(data_, ft_symbol_len); }
     std::string_view exchange() const { return std::string_view(data_+ft_symbol_len, ft_exchange_len); }

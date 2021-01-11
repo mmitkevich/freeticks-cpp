@@ -64,7 +64,7 @@ inline std::ostream& operator<<(std::ostream& os, const StreamTopic self) {
     }
 }
 
-class StreamBase :  public BasicStateful<core::StreamState>, public Sequenced<std::uint64_t> 
+class StreamBase :  public BasicStates<core::StreamState>, public Sequenced<std::uint64_t> 
 {
 public:
     StreamBase() = default;
