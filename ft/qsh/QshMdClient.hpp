@@ -12,17 +12,17 @@
 namespace ft::qsh {
 
 // file-based gateway for Qsh files
-class QshMdClient:  public io::BasicService<QshMdClient, tb::Scheduler, core::State, core::Component>
+class QshMdClient:  public io::BasicService<QshMdClient, tb::Scheduler, core::State>
 {
-    using Base = io::BasicService<QshMdClient, tb::Scheduler, core::State, core::Component>;
+    using Base = io::BasicService<QshMdClient, tb::Scheduler, core::State>;
   public:
     using typename Base::Reactor;
   public:
     using Base::Base;
     using Base::state;
-    
-    void start() { state(core::State::Starting); state(core::State::Started); run(); }
-    void stop() {state(core::State::Stopping); state(core::State::Stopped); }
+    using Base::open, Base::close;
+
+    void do_open() { run(); }
 
     /// read input file
     void run() {

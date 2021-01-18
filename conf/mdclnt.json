@@ -9,6 +9,9 @@
                 ] 
             }
         ]
+        , "subscriptions":[
+            { "stream":"bestprice", "symbols": ["BABA", "JD"] }
+        ]
     }
 }
 }

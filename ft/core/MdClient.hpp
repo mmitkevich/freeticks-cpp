@@ -9,6 +9,7 @@
 #include "ft/utils/Common.hpp"
 #include "ft/core/Component.hpp"
 #include "toolbox/util/Slot.hpp"
+#include "ft/core/Service.hpp"
 #include <system_error>
 
 
@@ -21,8 +22,8 @@ namespace streams {
 };
 
 
-class IMdClient : public IComponent {
-public:
+class IMdClient : public core::IService {
+public:    
     virtual TickStream& ticks(StreamTopic topic) = 0;
 
     virtual InstrumentStream& instruments(StreamTopic topic) = 0;
@@ -52,46 +53,44 @@ struct MdClientTraits {
 };
 
 // wrap MD client into dynamic interface
-template<typename ImplT>
-class MdClientImpl : public IMdClient {
+template<class Impl>
+class MdClientImpl: public core::ServiceImpl<MdClientImpl<Impl>, IMdClient>
+{
+    using Base = core::ServiceImpl<MdClientImpl<Impl>, IMdClient>;
 public:
     template<typename...ArgsT>
     MdClientImpl(ArgsT...args)
-    : impl_(std::forward<ArgsT>(args)...) {}
+    : impl_(std::forward<ArgsT>(args)...)
+    {}
 
-    void start() override { impl_.start(); }
-    void stop() override { impl_.stop(); }
-    
-    State state() const override { return impl_.state(); }
-    StateSignal& state_changed() override { return impl_.state_changed(); };
+    auto* impl() { return &impl_; }
+    const auto* impl() const { return &impl_; }
 
-    core::StreamStats& stats() override { return impl_.stats(); }
+    core::StreamStats& stats() override { return impl()->stats(); }
 
-    void parameters(const Parameters& parameters, bool replace=false) override { impl_.parameters(parameters, replace); }
-    const Parameters& parameters() const override { return impl_.parameters(); }
-    
-    core::TickStream& ticks(StreamTopic topic) override { return impl_.ticks(topic); }
-    core::InstrumentStream& instruments(StreamTopic topic) override { return impl_.instruments(topic); }
-
-    
+    core::TickStream& ticks(StreamTopic topic) override { return impl()->ticks(topic); }
+    core::InstrumentStream& instruments(StreamTopic topic) override { return impl()->instruments(topic); }
 
     void async_connect(tb::DoneSlot done) override {
-        if constexpr (MdClientTraits::has_async_connect<ImplT>) {
-            impl_.async_connect(done);
+        if constexpr (MdClientTraits::has_async_connect<Impl>) {
+            impl()->async_connect(done);
         } else {
             done({});
         }
     }
 
-    void async_request(const core::SubscriptionRequest& req, tb::Slot<const SubscriptionResponse&, std::error_code> slot, tb::SizeSlot done) override {
-        if constexpr(MdClientTraits::has_async_subscribe<ImplT>) {
-            impl_.async_request(req, slot, done);
+    void async_request(const core::SubscriptionRequest& req
+    , tb::Slot<const SubscriptionResponse&, std::error_code> slot
+    , tb::SizeSlot done) override
+    {
+        if constexpr(MdClientTraits::has_async_subscribe<Impl>) {
+            impl()->async_request(req, slot, done);
         } else {
             done(-1, make_error_code(std::errc::not_supported));
         }
     }
-private:
-    ImplT impl_;
+protected:
+    Impl impl_;
 };
 
 

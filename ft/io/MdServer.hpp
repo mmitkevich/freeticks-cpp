@@ -23,12 +23,13 @@ template<
   class Self
 , class ProtocolT
 , class PeerT
+, class ServerSocketT
 , class RoutingStrategyT
 , typename StateT
-> class BasicMdServer : public io::BasicServer<Self, ProtocolT, PeerT,  RoutingStrategyT, StateT>
+> class BasicMdServer : public io::BasicServer<Self, ProtocolT, PeerT, ServerSocketT, RoutingStrategyT, StateT>
 {
     FT_MIXIN(Self);
-    using Base =  io::BasicServer<Self, ProtocolT, PeerT, RoutingStrategyT, StateT>;
+    using Base =  io::BasicServer<Self, ProtocolT, PeerT, ServerSocketT, RoutingStrategyT, StateT>;
 public:
     using typename Base::Peer;
     using typename Base::Endpoint;
@@ -55,15 +56,16 @@ private:
 template<
   class ProtocolT
 , class PeerT
+, class ServerSocketT
 , class RoutingStrategyT = io::RoundRobinRoutingStrategy<PeerT>
 , typename StateT = core::State
 > class MdServer : public io::BasicMdServer<
-  MdServer<ProtocolT, PeerT,  RoutingStrategyT, StateT>,
-  ProtocolT, PeerT, RoutingStrategyT, StateT>
+  MdServer<ProtocolT, PeerT,  ServerSocketT, RoutingStrategyT, StateT>,
+  ProtocolT, PeerT, ServerSocketT, RoutingStrategyT, StateT>
 {
     using Base = io::BasicMdServer<
-      MdServer<ProtocolT, PeerT, RoutingStrategyT, StateT>,
-      ProtocolT, PeerT, RoutingStrategyT, StateT>;
+      MdServer<ProtocolT, PeerT, ServerSocketT, RoutingStrategyT, StateT>,
+      ProtocolT, PeerT, ServerSocketT, RoutingStrategyT, StateT>;
   public:
     using Base::Base;
 };

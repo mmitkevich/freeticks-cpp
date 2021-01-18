@@ -4,106 +4,121 @@
 #include "ft/io/Routing.hpp"
 #include "toolbox/io/Socket.hpp"
 #include "toolbox/net/Endpoint.hpp"
+#include "toolbox/net/Sock.hpp"
 #include "toolbox/util/Slot.hpp"
 #include <ft/io/Service.hpp>
+#include <type_traits>
+#include "ft/utils/Compat.hpp"
 
 namespace ft::io {
 
-template<class Self, class PeerT, class SocketT, typename StateT, class ParentT>
-class BasicSocketService : public BasicPeerService<Self, PeerT, StateT, ParentT>
+template<class Self, class PeerT, class ServerSocketT, typename StateT, class ParentT, typename...ArgsT>
+class BasicSocketService : public TypedParent<ParentT, BasicPeerService<Self, PeerT, StateT, ArgsT...>>
 {
     FT_MIXIN(Self);
-    using Base = BasicPeerService<Self, PeerT, StateT, ParentT>;
+    using Base = TypedParent<ParentT, BasicPeerService<Self, PeerT, StateT, ArgsT...>>;
   public:
     using typename Base::Parent;
-    using Socket = SocketT;
-    using ClientSocket = typename Socket::ClientSocket;
+    using ServerSocket = ServerSocketT;
+    
+    static constexpr bool has_socket_accept() { return tb::SocketTraits::has_accept<ServerSocket>; }    
+
+    using ClientSocket = typename ServerSocket::ClientSocket;
     using typename Base::Endpoint;
     using typename Base::Peer;
     using typename Base::PeersMap;
     using typename Base::Packet;
 
   public:
-    using Base::parent, Base::peers, Base::reactor;
+    using Base::parent, Base::peers, Base::reactor, Base::make_peer, Base::emplace_peer;
     using Base::Base;
 
-    explicit BasicSocketService(Parent* parent, const Endpoint& remote)
-    :  Base(parent->reactor())
-    ,  remote_(remote) {}
+    explicit BasicSocketService(const Endpoint& local, Parent* parent)
+    :  Base(parent->reactor(), parent)
+    ,  local_(local) {}
 
     void open() {
-        socket_.open(*reactor(), remote_.protocol());
-        socket_.bind(remote_);
+        socket_.open(*reactor(), local_.protocol());
+        socket_.bind(local_);
     }
 
     /// @see SocketRef
     void close() { socket_.close(); } 
 
-    Socket& socket() { return socket_; }
+    ServerSocket& socket() { return socket_; }
 
-    /// emplace peer 
-    Peer* emplace(Peer&& peer) {
-        auto it = peers().find(remote_);
-        if(it==peers().end()) {
-            return Base::emplace(std::move(peer));
+    Peer& next_peer() { assert(next_peer_); return *next_peer_; }
+    
+    Peer* emplace_next_peer() {
+        Peer* peer = next_peer_.get();
+        assert(peer->parent()==self());
+        emplace_peer(std::move(next_peer_));
+        next_peer_ = make_next_peer();
+        return peer;
+    }
+    
+    auto make_next_peer() {
+        if constexpr(has_socket_accept()) {
+            return make_peer(ClientSocket(), self());
+        } else {
+            return make_peer(std::ref(socket()), self());
         }
-        return nullptr;
     }
 
     void run() {
-        if constexpr(tb::SocketTraits::has_accept<Socket>) { // tcp or something like that
-            socket().async_accept(remote_, tb::bind([this](ClientSocket&& socket, std::error_code ec) {
+        // next possible peer
+        if constexpr(has_socket_accept()) { // tcp
+            socket().async_accept(next_peer().remote(), tb::bind(
+            [this](ClientSocket&& socket, std::error_code ec) {
                 //parent()->newpeer_(tb::ip_endpoint(remote_), ec);
                 if(!ec) {
-                    auto* peer = emplace(Peer(std::move(socket), remote_, self()));
-                    if(peer) {
-                        parent()->async_accept(peer, tb::bind([peer](std::error_code ec) {
-                            auto* s = static_cast<Self*>(peer->parent());
-                            s->on_accept(peer, ec);
-                        }));
-                    }
+                    next_peer().socket(std::move(socket));
+                    parent()->async_accept(next_peer(), tb::bind(
+                    [this](std::error_code ec) {
+                        if(!ec) {
+                            next_peer().run([](Peer& peer, Packet& packet, tb::DoneSlot done) {
+                                auto* self = static_cast<Self*>(peer.parent());
+                                self->parent()->async_handle(peer, packet, done);
+                            });    // peer's loop
+                            run();    // accept again
+                        } else {
+                            on_error(ec);
+                        }
+                    }));
                 } else {
                     on_error(ec);
                 }
             }));
         } else { // udp
-            auto buf = rbuf_.prepare(self()->buffer_size());
-            socket().async_recvfrom(buf, 0, remote_, tb::bind([this](ssize_t size, std::error_code ec) {
-                rbuf_.commit(size);
-                if(!ec) {
-                    auto socket_ref = boost::ref(socket());
-                    auto *peer = emplace(Peer(std::move(socket_ref), remote_, self()));
-                    if(peer) {
-                        // patch packet buffer
-                        peer->packet().buffer() = socket().rbuf();
-                        peer->packet().header().src() = remote_;
-                        parent()->async_accept(*peer, tb::bind([peer](std::error_code ec) {
-                            auto* s = static_cast<Self*>(peer->parent());
-                            std::size_t size = peer->packet().buffer().size();
-                            s->rbuf_.consume(size); // FIXME: move rbuf to peer?
-                            s->on_accept(*peer, ec);
-                        }));
-                    };
+            next_peer().socket(std::move(std::ref(socket()))); // just ref to our socket
+            struct Handler {
+                void operator()(Peer& peer, Packet& packet, tb::DoneSlot done) {
+                    auto* self = static_cast<Self*>(peer.parent());
+                    self->async_accept_and_handle(peer, done);
                 }
+            };
+            next_peer().template run<Handler>(); // peer's loop
+        }
+    }
+    void async_accept_and_handle(Peer& peer, tb::DoneSlot done) {
+        auto it = peers().find(peer.remote());
+        if(it==peers().end()) {
+            resume_ = done; // save continuation
+            parent()->async_accept(peer, tb::bind(
+            [p=&peer](std::error_code ec) {
+                auto* self = static_cast<Self*>(p->parent());
+                self->parent()->async_handle(*p, p->packet(), self->resume_.release());
             }));
         }
     }
-   protected:
-    constexpr std::size_t buffer_size() const { return 4096; }
-    void on_accept(Peer& peer, std::error_code ec) {
-        if(!ec) {
-            self()->run();
-        } else {
-            on_error(ec);
-        }
-    }
     void on_error(std::error_code ec) {
-        TOOLBOX_ERROR << "error "<<ec<<" acceptor remote="<<remote_;
+        TOOLBOX_ERROR << "error "<<ec<<" acceptor remote="<<next_peer().remote();
     }
   protected:
-    Socket socket_;
-    Endpoint remote_;
-    tb::Buffer rbuf_;
+    ServerSocket socket_;
+    tb::DoneSlot resume_;
+    Endpoint local_; /// interface to bind to
+    std::unique_ptr<Peer> next_peer_ = make_next_peer();
 };
 
 template<class PeerT, class ServerSocketT, typename StateT, class ParentT>
@@ -122,6 +137,7 @@ class SocketService: public BasicSocketService<
 template<class Self
 , class ProtocolT
 , class PeerT
+, class ServerSocketT
 , class RoutingStrategyT
 , typename StateT
 >
@@ -130,8 +146,10 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
     FT_MIXIN(Self);
     using Base = io::BasicService<Self, typename PeerT::Reactor, StateT, core::Component>;
   public:
-    using Service = io::SocketService<PeerT, typename PeerT::Socket, StateT, Self>;
+    using Service = io::SocketService<PeerT, ServerSocketT, StateT, Self>;
+    using Packet = typename Service::Packet;
     using Peer = PeerT;
+    using ServerSocket = ServerSocketT;
     using Reactor = typename Peer::Reactor;
     using Endpoint = typename Peer::Endpoint;
     using Protocol = ProtocolT;
@@ -142,7 +160,8 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
     using Base::parameters;
     using Base::reactor;
     using Base::is_open;
-    
+    using Base::open, Base::close;
+
     //using tt = tb::SocketTraits::sock_async_accept_t<ServerSocket>;
     const ServicesMap& services() { return services_; }
 
@@ -156,18 +175,18 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
         for(auto conn_p: parameters()["connections"]) {
             auto iface = conn_p.value_or("interface", std::string{});
             auto ep = tb::TypeTraits<Endpoint>::from_string(iface);
-            auto [it, is_new] = services_.emplace(ep, Service(self(), ep));
+            auto [it, is_new] = services_.emplace(ep, Service(ep, self()));
         }
         if(was_open)
             open();
     }
 
-    void open() {
+    void do_open() {
         for(auto& [ep, acpt]: services_) {
             acpt.open();
         }
-        Base::open();
-        protocol_.open();
+        Base::do_open();
+        protocol_.open();    // change state
         run();
     }
     
@@ -184,14 +203,13 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
         done({});
     }
 
-    void close() {
+    void do_close() {
         protocol_.close();
         for(auto& [ep, svc]: services_) {
             svc.close();
         }
         services_.clear();
-        Base::close();
-    }    
+    }
 
     void shutdown(const tb::IpEndpoint& peer) {
         Endpoint ep = Endpoint(peer.address(), peer.port());
@@ -218,6 +236,10 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
             self()->async_write(peer, message, done);
         }
       });
+    }
+
+    void async_handle(Peer& peer, const Packet& packet, tb::DoneSlot done) {
+        done({});
     }
 
     template<typename MessageT>

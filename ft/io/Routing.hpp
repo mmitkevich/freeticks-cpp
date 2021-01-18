@@ -9,7 +9,7 @@ namespace ft::io {
 
 
 template<class PeerT, class KeyT=typename PeerT::Endpoint>
-using PeersMap = tb::unordered_map<KeyT, PeerT>;
+using PeersMap = tb::unordered_map<KeyT, std::unique_ptr<PeerT>>;
 
 /// @brief: round-robin peer selected and function applied
 /// @returns: number of peers applied
@@ -27,7 +27,7 @@ public:
             ++it_;
         else 
             it_ = peers.begin();
-        fn(it_->second);
+        fn(*it_->second);
         return 1;
     }
     void reset() { it_ = iterator(); }

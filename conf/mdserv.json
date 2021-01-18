@@ -27,7 +27,7 @@
 }, 
 "servers": {
     "TB1": {
-        "enabled": false
+        "enabled": true
         , "connections" : [
             { "stream": "bestprice", "type":"snapshot.udp", "interface": "127.0.0.1:10050" }
         ]

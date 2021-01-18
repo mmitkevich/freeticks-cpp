@@ -1,7 +1,8 @@
 #pragma once
-
+#include "ft/core/Fields.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/Object.hpp"
+#include "ft/core/Fields.hpp"
 
 namespace ft { inline namespace core {
 
@@ -67,8 +68,9 @@ inline std::ostream& operator<<(std::ostream&os, const InstrumentType& self) {
 
 // Pad
 template<std::size_t DataLength=0>
-class BasicInstrumentUpdate : public ft_instrument_t {
+class BasicInstrumentUpdate : public ft_instrument_t, public BasicFieldsWriter<BasicInstrumentUpdate<DataLength>, core::Fields> {
     using Base = ft_instrument_t;
+    using FieldsWriter = BasicFieldsWriter<BasicInstrumentUpdate<DataLength>, core::Fields>;
 public:
     template<typename InstrumentT>
     explicit BasicInstrumentUpdate(const InstrumentT& ins) {
@@ -139,6 +141,10 @@ public:
     template<std::size_t NewSizeI>
     const BasicInstrumentUpdate<NewSizeI>& as_size() const {
         return *reinterpret_cast<const BasicInstrumentUpdate<NewSizeI>*>(this);
+    }
+    using typename FieldsWriter::Fields;
+    static std::vector<Fields> fields() {
+        return {Fields::Symbol, Fields::InstrumentId, Fields::VenueInstrumentId, Fields::VenueSymbol, Fields::Exchange};
     }
 private:
     ft_char_t data_[DataLength];

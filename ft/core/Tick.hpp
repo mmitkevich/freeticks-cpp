@@ -9,36 +9,12 @@
 #include <ostream>
 #include "ft/core/Identifiable.hpp"
 #include "ft/utils/Numeric.hpp"
-
 #include "ft/capi/ft-types.h"
+#include "ft/core/Fields.hpp"
 #include "ft/core/Requests.hpp"
 
 namespace ft { inline namespace core {
 
-using Timestamp = toolbox::WallTime;
-using WallClock = toolbox::WallClock;
-
-static constexpr std::int64_t CorePriceMultiplier = 100'000'000;
-static constexpr std::int64_t CoreQtyMultiplier = 1;
-
-using Qty = std::int64_t;
-using Price = std::int64_t;
-using ClientId = Identifier;
-using ExchangeId = Identifier;
-
-struct TickPolicy {
-    //using ExchangeId = ft::core::ExchangeId;
-    //using ClientId = ft::core::ClientId;
-    //using Price = ft::core::Price;
-    //using Qty = ft::core::Qty;
-    //using Timestamp = ft::core::Timestamp;
-    //using VenueInstrumentId = ft::core::VenueInstrumentId;
-    using PriceConv = ft::DoubleConversion<std::int64_t>;
-    using QtyConv = ft::DoubleConversion<std::int64_t>;
-    
-    constexpr PriceConv price_conv() { return PriceConv(CorePriceMultiplier); }
-    constexpr QtyConv qty_conv() { return QtyConv(CoreQtyMultiplier); }
-};
 
 enum class Mod : ft_event_t {
     Empty = 0,
@@ -228,7 +204,7 @@ inline std::ostream & operator<<(std::ostream& os, const BasicTicks<DataT, SizeI
     os << "t: '"<<e.topic()<<"'";
     os << ", e:'" << e.event() << "'";    
     //os << ", s:"<<e.sequence();
-    os << ", ts:'" << toolbox::sys::put_time<toolbox::Nanos>(e.send_time())<<"'";
+    os << ", time:'" << toolbox::sys::put_time<toolbox::Nanos>(e.send_time())<<"'";
     //os << ", clt:" << (e.recv_time()-e.send_time()).count();
     os << ", viid:" << e.venue_instrument_id();
 

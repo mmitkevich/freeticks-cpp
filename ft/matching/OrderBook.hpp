@@ -1,5 +1,7 @@
 #pragma once
 #include "ft/utils/Common.hpp"
+#include "ft/core/Tick.hpp"
+#include "toolbox/sys/Time.hpp"
 #include "toolbox/util/Pool.hpp"
 #include <boost/intrusive/circular_list_algorithms.hpp>
 #include <boost/intrusive/list.hpp>
@@ -14,18 +16,11 @@
 
 namespace ft { inline namespace matching {
 
-enum class Side : int {
-    Buy     =   1,
-    Sell    =   -1
-};
+using Side = ft::core::TickSide;
 
 inline Side operator-(Side rhs) {
     return (Side)(-(int)(rhs));
 }
-
-using Price = std::int64_t;
-
-using Qty = std::int64_t;
 
 template<typename OrderT,
 typename PriceT=Price,
@@ -78,11 +73,7 @@ private:
     PriceT mpi_{1};
 };
 
-    
-struct PriceQty {
-    Price price {0};
-    Qty qty {0};
-};
+
 
 template<typename OrderT>
 struct DoNothingOnFill {

@@ -17,7 +17,17 @@ public:
     virtual const Parameters& parameters() const = 0;
 };
 
+template<class Self, class Base=IParameterized>
+class ParameterizedImpl : virtual public Base  {
+    auto* impl() { return static_cast<Self*>(this)->impl(); }
+    const auto* impl() const { return static_cast<const Self*>(this)->impl(); }
+public:
 
+    void parameters(const Parameters& parameters, bool replace=false) override { 
+        impl()->parameters(parameters, replace);
+    }
+    const Parameters& parameters() const override { return impl()->parameters(); }
+};
 
 template<class Self>
 class BasicParameterized {
@@ -35,6 +45,7 @@ public:
     /// retrieve current parameters
     const Parameters& parameters() const { return parameters_; }
 protected:
+    Parameters& parameters() { return parameters_; }
     MutableParameters parameters_;  // size is two sizeof(vector)
 };
 

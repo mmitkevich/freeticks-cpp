@@ -84,12 +84,12 @@ protected:
     tb::Timer idle_timer_;
 }; // IdleTimer
 
-template<class Self, class ProtocolT, class PeerT, typename StateT, class ParentT=core::Component>
-class BasicClient: public BasicPeerService<Self, PeerT, StateT, ParentT>
+template<class Self, class ProtocolT, class PeerT, typename StateT>
+class BasicClient: public BasicPeerService<Self, PeerT, StateT>
 {
     FT_MIXIN(Self);
-    using This = BasicClient<Self, ProtocolT, PeerT, StateT, ParentT>;
-    using Base = BasicPeerService<Self, PeerT, StateT, ParentT>;
+    using This = BasicClient<Self, ProtocolT, PeerT, StateT>;
+    using Base = BasicPeerService<Self, PeerT, StateT>;
   public:
     using Protocol = ProtocolT;
     using typename Base::Peer;
@@ -105,7 +105,7 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT, ParentT>
 
     using   Base::state, Base::parameters, 
             Base::reactor,
-            Base::peers,Base::emplace,
+            Base::peers, Base::make_peer, Base::emplace_peer,
             Base::close, Base::open, Base::is_open;
 
     /// application level
@@ -135,42 +135,44 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT, ParentT>
                     std::string url {e.get_string()};
                     if(!iface.empty())
                         url = url+"|interface="+iface;
-                    auto *s = self();
-                    emplace(Peer(url, s));
+                    emplace_peer(make_peer(url, self()));
                 }
             }
         }
     }
-    
+
+    // overrides states transition
     void open() {
-        Base::open();
+        state(State::PendingOpen);
+        Base::do_open();
         protocol_.open();
         async_connect(tb::bind<&Self::on_connected>(self()));
     }
     
-    void close() {
+    void do_close() {
         protocol_.close();
-        Base::close();
+        Base::do_close();
     }
 
     void on_connected(std::error_code ec) {
         TOOLBOX_INFO << "connected to "<<peers().size()<<" peers, ec "<<ec;
+        state(State::Open); // notifies on state changed
     }
 
     // connect all peers. Notifies when all done
     void async_connect(tb::DoneSlot done) {
         assert(connect_.empty());
         int pending = 0;
-        for(auto& [ep, c]: Base::peers_) {
-            Peer& peer = c;
+        Base::for_each_peer([this](auto& peer) {
             if(!peer.is_open() && !peer.is_connecting()) {
-                c.async_connect(tb::bind([&peer](std::error_code ec) {
+                peer.async_connect(tb::bind(
+                [&peer](std::error_code ec) {
                     Self* self = static_cast<Self*>(peer.parent());
                     self->on_peer_connected(peer, ec); // after connect
                     self->connect_(ec); // calls done when all done
                 }));
             }
-        }
+        });
         if(pending) {
             connect_.set_slot(done);
             connect_.pending(pending);
@@ -183,7 +185,11 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT, ParentT>
     void on_peer_connected(Peer& peer, std::error_code ec) {
         if(!ec) {
             protocol().async_handshake(peer, [&peer](std::error_code ec) {
-                peer.template run<Self>();
+                struct fn { void operator()(Peer& peer, Packet& packet, tb::DoneSlot done) {
+                    Self* self = static_cast<Self*>(peer.parent());
+                    self->async_handle(peer, packet, done);
+                }};
+                peer.template run<fn>();
             });
         } else {
             on_error(peer, ec, "connect");
@@ -203,6 +209,7 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT, ParentT>
   protected:
     Protocol protocol_;
     tb::PendingSlot<std::error_code>  connect_;
+    tb::Signal<> connected_;
 }; // BasicClient
 
 } // namespace ft::io

@@ -26,6 +26,15 @@
 #define FT_LIKELY(x) (x)
 #define FT_UNLIKELY(x) (x)
 
+/// CRTP boilerplate
+#define FT_MIXIN(Self) \
+    constexpr Self* self() { return static_cast<Self*>(this); } \
+    constexpr const Self* self() const { return static_cast<const Self*>(this); } 
+
+#define FT_CRTP(T, B) \
+  using Self = T; \
+  using Base = B; \
+  FT_MIXIN(Self)
 
 namespace toolbox {
 }

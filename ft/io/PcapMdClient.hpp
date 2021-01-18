@@ -19,19 +19,19 @@
 namespace ft::io {
 
 
-template<class ProtocolT, class ReactorT=tb::Scheduler, typename StateT=core::State, class ParentT=core::Component>
-class PcapMdClient  : public BasicService<PcapMdClient<ProtocolT, ReactorT>, ReactorT, StateT, ParentT>
+template<class ProtocolT>
+class PcapMdClient  : public BasicService<PcapMdClient<ProtocolT>>
 {
 public:
-    using This = PcapMdClient<ProtocolT, ReactorT>;
-    using Base = BasicService<PcapMdClient<ProtocolT, ReactorT>, ReactorT, StateT, ParentT>;
+    using This = PcapMdClient<ProtocolT>;
+    using Base = BasicService<PcapMdClient<ProtocolT>>;
     using Protocol = ProtocolT;
     using Stats = core::EndpointStats<tb::IpEndpoint>;
     using BinaryPacket = tb::PcapPacket;
     using typename Base::Reactor;
 public:
     template<typename...ArgsT>
-    explicit PcapMdClient(Reactor* r, ArgsT...args)
+    explicit PcapMdClient(Reactor* r, Component* p, ArgsT...args)
     : protocol_(std::forward<ArgsT>(args)...)
     {
         device_.packets().connect(tb::bind<&PcapMdClient::on_packet_>(this));
