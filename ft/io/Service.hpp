@@ -41,8 +41,8 @@ public:
     using Parent = Self;
     using Reactive::reactor;
 
-    BasicReactiveComponent(Reactor* reactor=nullptr, core::Component* parent=nullptr)
-    : Base(parent)
+    BasicReactiveComponent(Reactor* reactor=nullptr, core::Component* parent=nullptr, Identifier id={})
+    : Base(parent, id)
     , Reactive(reactor) {}
     
     Self* parent() { assert(parent_); return static_cast<Self*>(parent_);}
@@ -64,8 +64,10 @@ class BasicService: public io::BasicReactiveComponent<ReactorT>
     using Stateful::state, Base::parent;
     using Base::reactor;
     
-    explicit BasicService(Reactor* reactor=nullptr, Component* parent=nullptr)
-    : Base(reactor, parent) {}
+    explicit BasicService(Reactor* reactor=nullptr, Component* parent=nullptr, Identifier id={})
+    : Base(reactor, parent, id) {
+        TOOLBOX_DUMPV(5)<<"Service::ctor, self:"<<self()<<", reactor:"<<reactor<<", parent(Component): "<<parent<<", id:"<<id;
+    }
 
     // start component, throws only std::runtime_error
     void start() {
@@ -135,23 +137,32 @@ class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, Stat
     using Base = BasicService<Self, typename PeerT::Reactor, StateT, Ts...>;
   public:
     using Peer = PeerT;
+    using PeerPtr = std::unique_ptr<Peer>;
     using Endpoint = typename PeerT::Endpoint;
     using Packet = typename Peer::Packet;
-    using PeersMap = io::PeersMap<Peer>;
+    using PeersMap = io::PeersMap<Peer, PeerPtr>;
     using typename Base::Reactor;
     using Socket = typename Peer::Socket;
     using Transport = typename Peer::Transport;
   public:
-    using Base::Base;
     using Base::State;
     using Base::open, Base::close;
     
+    using Base::Base;
+    BasicPeerService(const Endpoint&ep, Reactor* reactor=nullptr, Component* parent=nullptr, Identifier id={})
+    : local_(ep)
+    , Base(reactor, parent, id) {}
+
     void do_open() {
         TOOLBOX_INFO << "opening "<< peers().size() << " peers";
         for_each_peer([this](auto& peer) { 
             self()->do_open(peer);
         });
     }
+    
+    Endpoint& local() { return local_; }
+    const Endpoint& local() const { return local_; }
+    void local(const Endpoint& ep) { local_ = ep; }
 
     void do_open(Peer& peer) {
         peer.open();
@@ -175,10 +186,13 @@ class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, Stat
     }
 
     template<typename ...ArgsT>
-    auto make_peer(ArgsT... args) { return std::unique_ptr<Peer>(new Peer(std::forward<ArgsT>(args)...)); };
+    auto make_peer(ArgsT... args) { 
+        auto peer = PeerPtr(new Peer(std::forward<ArgsT>(args)..., self())); 
+        return peer;
+    };
 
-    Peer* get_peer(const Endpoint& ep) {
-        auto it = peers_.find(ep);
+    Peer* get_peer(PeerId id) {
+        auto it = peers_.find(id);
         if(it!=peers_.end()) {
             return it->second;
         }
@@ -186,8 +200,8 @@ class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, Stat
     }
     /// close and remove peer identified by endpoint
     /// @returns true if peer was found, false overwise
-    bool shutdown(const Endpoint& ep) {
-        auto it = peers_.find(ep);
+    bool shutdown(PeerId id) {
+        auto it = peers_.find(id);
         if(it!=peers_.end()) {
             it->second->close();
             peers_.erase(it);
@@ -199,22 +213,26 @@ class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, Stat
     /// @returns peers by endpoint
     const PeersMap& peers() const { return peers_; }
 
-
     template<typename Fn>
     int for_each_peer(const Fn& fn) {
-      for(auto& [ep, peer]: peers_) {
+      for(auto& [id, peer]: peers_) {
         fn(*peer);
       }
       return peers_.size();
     }
-    Peer& emplace_peer(std::unique_ptr<Peer> peer) {
+    Peer& emplace_peer(PeerPtr peer) {
         auto* ptr = peer.get();
-        peers_.emplace(peer->remote(), std::move(peer));
+        //auto ep = peer->remote();
+        assert(peer->id());
+        assert(peer);
+        peers_[peer->id()] = std::move(peer);
+        assert(peers_[peer->id()]!=nullptr);
         return *ptr;
     }
   protected:
     PeersMap& peers() { return peers_; }  
     PeersMap peers_;
+    Endpoint local_; /// interface to bind to
 };
 
 } // ft::io

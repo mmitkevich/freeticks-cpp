@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -145,15 +146,9 @@ public:
 
   // type functions to get concrete MdClient from Protocol, connections types and reactor
   template<typename ProtocolT> 
-  using McastMdClient = io::MdClient<
-    ProtocolT
-  , io::Conn<tb::McastSocket<>>
-  , core::State>;  
+  using McastMdClient = io::MdClient<ProtocolT, io::Conn<tb::McastSocket<>>>;  
   template<typename ProtocolT>
-  using UdpMdClient = io::MdClient<
-    ProtocolT
-  , io::Conn<tb::DgramSocket<>>
-  , core::State >;
+  using UdpMdClient = io::MdClient<ProtocolT, io::Conn<tb::DgramSocket<>>>;
   template<typename ProtocolT>
   using PcapMdClient = io::PcapMdClient<ProtocolT>;
 
@@ -206,12 +201,17 @@ public:
     return server;
   }
 
-  void on_subscribe( const core::SubscriptionRequest& req) {
+  void on_subscribe(PeerId peer, const core::SubscriptionRequest& req) {
+    TOOLBOX_INFO << "subscribe:"<<req;
     switch(req.request()) {
       case Request::Subscribe: {
-        // Instrument->Dest
+        for(auto& [venue, server]: mdservers_) {
+          
+        }
       } break;
-      default: throw std::logic_error("Unknown request");
+      default: {
+        TOOLBOX_ERROR<<"request not supported: "<<req.request();
+      }
     }
   }
   
@@ -306,23 +306,27 @@ public:
     }));
   }
 
+  /// will call done when all subscribed
   void async_subscribe(core::IMdClient& client, const core::Parameters& params, tb::SizeSlot done) {
-    requests_sent_.set_slot(done);
+    subscribe_done_.pending(0);
+    subscribe_done_.set_slot(done);
     for(auto strm_pa: params) {
       for(auto sym_pa: strm_pa["symbols"]) {
-        requests_sent_.inc_pending();
-        async_subscribe(client, sym_pa.get_string(), requests_sent_.get_slot());
+        subscribe_done_.inc_pending();
+        auto req = make_subscription_request(sym_pa.get_string());
+        // will serialize
+        client.async_write(req, subscribe_done_.get_slot());
       }
     }
   }
 
-  void async_subscribe(core::IMdClient& client, std::string_view symbol, tb::SizeSlot done) {
-    TOOLBOX_INFO << "subscribe symbol:'"<<symbol<<"'";
+  core::SubscriptionRequest make_subscription_request(std::string_view symbol) {
+    //TOOLBOX_INFO << "subscribe symbol:'"<<symbol<<"'";
     core::SubscriptionRequest req;
     req.reset();
     req.request(core::Request::Subscribe);
     req.symbol(symbol);
-    client.async_request(req, nullptr, done);  
+    return req;
   }
 
   void wait() {
@@ -372,7 +376,7 @@ public:
   }
 
 private:
-  tb::PendingSlot<ssize_t, std::error_code> requests_sent_;
+  tb::PendingSlot<ssize_t, std::error_code> subscribe_done_;
 
   core::MutableParameters opts_;
   tb::MonoTime start_timestamp_;

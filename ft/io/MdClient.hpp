@@ -1,5 +1,6 @@
 #pragma once
 #include "ft/core/Requests.hpp"
+#include "ft/io/Routing.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/Component.hpp"
@@ -16,6 +17,7 @@
 #include "ft/core/Tick.hpp"
 #include "ft/core/Instrument.hpp"
 
+#include <boost/mp11/detail/mp_list.hpp>
 #include <string_view>
 #include <system_error>
 #include <vector>
@@ -25,17 +27,19 @@ namespace ft::io {
 template< class Self
 , class ProtocolT
 , class PeerT
+, class RoutingT
 , typename StateT
-, class RouterT = RoundRobinRoutingStrategy<PeerT>
-, class RequestorT = BasicRequestor<Self, RouterT, mp::mp_list<core::SubscriptionResponse>>
+, class RouterT = BasicRouter<Self, PeerT, RoutingT>
 , class IdleTimerT = BasicIdleTimer<Self>
-> class BasicMdClient : public io::BasicClient<Self, ProtocolT, PeerT, StateT>, RequestorT, IdleTimerT
+> class BasicMdClient : public io::BasicClient<Self, ProtocolT, PeerT, StateT>
+, public RouterT
+, public IdleTimerT
 {
     using Base = BasicClient<Self, ProtocolT, PeerT, StateT>;
-    using Requestor = RequestorT;
+    using Router = RouterT;
     using IdleTimer = IdleTimerT;
     friend Base;
-    friend Requestor;
+    friend Router;
     friend IdleTimer;
 public:
     using typename Base::Protocol;
@@ -50,19 +54,20 @@ public:
     using Base::state, Base::reactor, Base::protocol;
     using Base::peers;
     using Base::async_connect;
-    using Requestor::async_request;
-
+    using Base::async_write;
+    using Router::async_write;
+    
     auto& stats() { return protocol().stats(); }
 
     void open() {
         Base::open();
-        Requestor::open();
+        Router::open();
         IdleTimer::open();
     }
 
     void close() {
         IdleTimer::close();
-        Requestor::close();
+        Router::close();
         Base::close();
     }
 
@@ -70,7 +75,6 @@ public:
     void async_handle(Peer& peer, const Packet& packet, tb::DoneSlot done) {
         protocol().async_handle(peer, packet, done);     // will do all the stuff, then call done()
     }
-
 
     /// connectable streams
     core::TickStream& ticks(core::StreamTopic topic) { return protocol().ticks(topic); }
@@ -86,9 +90,10 @@ protected:
     }
 }; // BasicMdClient
 
-template<class ProtocolT, class PeerT, typename StateT=core::State>
-class MdClient : public BasicMdClient<MdClient<ProtocolT, PeerT, StateT>, ProtocolT, PeerT, StateT> {
-    using Base = BasicMdClient<MdClient<ProtocolT, PeerT, StateT>, ProtocolT, PeerT, StateT>;
+template<class ProtocolT, class PeerT, class RoutingT=RoundRobinRouting<PeerT>, typename StateT=core::State>
+class MdClient : public BasicMdClient<MdClient<ProtocolT, PeerT, RoutingT, StateT>, ProtocolT, PeerT, RoutingT, StateT>
+{
+    using Base = BasicMdClient<MdClient<ProtocolT, PeerT, RoutingT, StateT>, ProtocolT, PeerT, RoutingT, StateT>;
   public:
     using Base::Base;
 };

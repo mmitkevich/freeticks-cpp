@@ -63,10 +63,13 @@ protected:
 class Component :  public Identifiable, public Movable {
 public:
     using Parent = Component;
+    using Base = Identifiable;
     
-    explicit Component(Component* parent=nullptr)
-    : parent_(parent)
+    explicit Component(Component* parent=nullptr, Identifier id={})
+    : Identifiable(parent, id)
+    , parent_(parent)
     {}
+
     Component* parent() { return parent_;}
     const Component* parent() const { return parent_; }
     void parent(Component* val) { parent_ = val;}

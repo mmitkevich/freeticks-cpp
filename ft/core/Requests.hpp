@@ -3,6 +3,7 @@
 #include "ft/capi/ft-types.h"
 #include "ft/core/Identifiable.hpp"
 #include "ft/core/Stream.hpp"
+#include "toolbox/net/Endpoint.hpp"
 #include "toolbox/sys/Time.hpp"
 #include "ft/sbe/SbeTypes.hpp"
 #include "ft/core/Subscription.hpp"
@@ -85,7 +86,8 @@ public:
     tb::WallTime send_time() const { return tb::WallTime(tb::Nanos(Base::ft_hdr.ft_send_time)); }
 };
 
-
+template<class ResponseT>
+using ResponseSlot = tb::Slot<const ResponseT&, std::error_code>;
 
 
 template<class BaseT>
@@ -145,6 +147,8 @@ template<std::size_t SizeI>
 class BasicSubscriptionRequest : public core::BasicRequest<ft_subscribe_t> {
     using Base = core::BasicRequest<ft_subscribe_t>;
 public:
+    using Response = core::StatusResponse;
+
     using Symbol = sbe::BasicVarString<ft_slen_t, rel_offsetof(ft_subscribe_t,ft_symbol,ft_symbol_len)>;
     const Symbol& symbol_data() const  {
         return *reinterpret_cast<const Symbol*>(&ft_symbol_len);
@@ -166,8 +170,7 @@ private:
 };
 
 using SubscriptionRequest = BasicSubscriptionRequest<MaxSymbolSize>;
-using SubscriptionSignal = tb::Signal<const core::SubscriptionRequest&>;
-using SubscriptionResponse = StatusResponse;
+using SubscriptionSignal = tb::Signal<PeerId, const core::SubscriptionRequest&>;
 
 #pragma pack(pop)
 }} // ft::core

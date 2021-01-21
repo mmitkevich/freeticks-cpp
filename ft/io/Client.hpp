@@ -8,6 +8,7 @@
 #include "toolbox/util/Slot.hpp"
 #include <boost/mp11/algorithm.hpp>
 #include <sstream>
+#include <system_error>
 #include <toolbox/io/Socket.hpp>
 #include <ft/utils/StringUtils.hpp>
 #include "ft/io/Routing.hpp"
@@ -17,48 +18,34 @@
 
 namespace ft::io {
 
-/// routes requests using RouterT. Derived class should implement async_write for request type
-template<class Self, class RouterT, class ResponseTL>
-class BasicRequestor  {
+template<class RequestT>
+using Response_T = typename RequestT::Response;
+
+/// route to Peer according to RoutingT strategy
+/// use Self::async_write to do actual write
+template<class Self, class PeerT, class RoutingT>
+class BasicRouter  {
     FT_MIXIN(Self)
   public:
-    template<typename T> 
-    using SlotTT = tb::Slot<const T&, std::error_code>;
-    using SlotTL = mp::mp_transform<SlotTT, ResponseTL>;
-    using SlotTuple = mp::mp_rename<SlotTL,std::tuple>;
+    using Peer = PeerT;    
 
-    template<typename RequestT, typename ResponseT>
-    void async_request(const RequestT& req, tb::Slot<const ResponseT&, std::error_code> slot, tb::SizeSlot done) 
+    /// write arbitrary request
+    template<typename RequestT>
+    void async_write(RequestT request, tb::SizeSlot done) 
     {
-        int pending = router_(self()->peers(), [&](auto& peer) { 
-            self()->async_request(peer, req, slot, done ); 
+        int pending = routing_(self()->peers(),
+        [&](auto& peer) { 
+            self()->async_write(peer, request, done); 
         });
-        if(pending==0)
-            done(0, {});
-        else {
-            route_.pending(pending);
-            route_.set_slot(done);
-        }
+        if(!pending)
+            done(-1, std::make_error_code(std::errc::address_not_available));    // // FIXME: error: route not found
     }
 
-    template<typename PeerT, typename RequestT, typename ResponseT>
-    void async_request(PeerT& conn, const RequestT& req, 
-         SlotTT<ResponseT>  slot, tb::SizeSlot done) 
-    {
-        // save callback to launch after we got response
-        constexpr auto indx = mp::mp_find<ResponseTL, ResponseT>::value;
-        std::get< indx >(response_slots_) = slot;
-        self()->async_write(conn, req, done);
-    }
-    void open() { router_.reset(); }
+    void open() { routing_.reset(); }
     void close() {  }
   protected:
-    SlotTuple response_slots_;
-    RouterT router_;
-    tb::PendingSlot<ssize_t, std::error_code> route_;
+    RoutingT routing_;
 }; // BasicRequestor
-
-
 
 /// Idle timer mixin
 template<typename Self>
@@ -135,7 +122,7 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
                     std::string url {e.get_string()};
                     if(!iface.empty())
                         url = url+"|interface="+iface;
-                    emplace_peer(make_peer(url, self()));
+                    emplace_peer(make_peer(url));
                 }
             }
         }
@@ -196,10 +183,10 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
         }
     }
     
-    /// specifies method to write requests (accessible from Mixins)
+    /// forwards to protocol
     template<typename RequestT>
-    void async_write(Peer& peer, const RequestT& req, tb::SizeSlot done) {
-        protocol().async_write(peer, req, done);
+    void async_write(Peer& peer, RequestT req, tb::SizeSlot done) {
+        protocol().async_write(peer, std::forward<RequestT>(req), done);
     }
 
     void on_error(Peer& peer, std::error_code ec, const char* what="") {

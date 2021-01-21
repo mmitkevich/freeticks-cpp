@@ -183,10 +183,10 @@ void QshDecoder::read_order_log() {
     ti.send_time(ts);
     if(flags & OL_ID) {
         if(plaza_flags & PLAZA_ADD) {
-            state_.exchange_id = read_growing(state_.exchange_id.low);
+            state_.exchange_id = Identifier(read_growing(state_.exchange_id.low()));
             order.server_id(state_.exchange_id);
         } else {
-            order.server_id(read_relative(state_.exchange_id.low));
+            order.server_id(Identifier(read_relative(state_.exchange_id.low())));
         }
         FT_TRACE("exchange_id "<<e.exchange_id)
     } else {
@@ -207,7 +207,7 @@ void QshDecoder::read_order_log() {
             FT_TRACE("qty_left "<<e.qty_left)
         }
         if(flags&OL_FILL_ID) {
-            state_.fill_id = read_growing(state_.fill_id.low);
+            state_.fill_id = Identifier(read_growing(state_.fill_id.low()));
             FT_TRACE("trade_id "<<d.fill_id)
         }
         fill.server_id(state_.fill_id);        

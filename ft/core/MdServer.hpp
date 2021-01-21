@@ -14,17 +14,15 @@
 
 namespace ft { inline namespace core {
 
-using PeerSignal = tb::Signal<const tb::IpEndpoint&>;
-
 class IMdServer : public IService {
 public:
     virtual SubscriptionSignal& subscribe(StreamTopic topic) = 0;
 
     /// Connection of new peer
-    virtual PeerSignal& newpeer() = 0;
+    virtual NewPeerSignal& newpeer() = 0;
 
     /// force close peer
-    virtual void shutdown(const tb::IpEndpoint& ep) = 0;
+    virtual void shutdown(PeerId ep) = 0;
 
     /// topic="instruments"
     virtual core::InstrumentSink& instruments(StreamTopic topic) = 0;
@@ -46,8 +44,8 @@ public:
     : impl_(std::forward<ArgsT>(args)...)
     {}
 
-    PeerSignal& newpeer() override { return impl()->newpeer(); }
-    void shutdown(const tb::IpEndpoint& peer) override { impl()->shutdown(peer); }
+    NewPeerSignal& newpeer() override { return impl()->newpeer(); }
+    void shutdown(PeerId peer) override { impl()->shutdown(peer); }
 
     void url(std::string_view url) { impl()->url(url);}
     std::string_view url() const { return impl()->url(); }

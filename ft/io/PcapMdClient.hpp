@@ -1,5 +1,6 @@
 #pragma once
 #include "ft/core/Component.hpp"
+#include "ft/core/Identifiable.hpp"
 #include "ft/core/Instrument.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/StreamStats.hpp"
@@ -18,6 +19,10 @@
 
 namespace ft::io {
 
+class PcapConn : public Component, public tb::PcapDevice {
+public:
+    using Component::Component;
+};
 
 template<class ProtocolT>
 class PcapMdClient  : public BasicService<PcapMdClient<ProtocolT>>
@@ -29,15 +34,16 @@ public:
     using Stats = core::EndpointStats<tb::IpEndpoint>;
     using BinaryPacket = tb::PcapPacket;
     using typename Base::Reactor;
+    using Peer = PcapConn;
 public:
     template<typename...ArgsT>
     explicit PcapMdClient(Reactor* r, Component* p, ArgsT...args)
     : protocol_(std::forward<ArgsT>(args)...)
     {
-        device_.packets().connect(tb::bind<&PcapMdClient::on_packet_>(this));
+        peer_.packets().connect(tb::bind<&PcapMdClient::on_packet_>(this));
     }
     Protocol& protocol() {   return protocol_; }
-    toolbox::PcapDevice& device() { return device_; }
+    Peer& peer() { return peer_; }
     
     auto& stats() { return protocol_.stats(); }
     auto& gw_stats() { return stats_; } 
@@ -77,8 +83,8 @@ public:
     void run() {
         for(auto& input: inputs_) {
             TOOLBOX_INFO<<"pcap replay start: "<<input;
-            device_.input(input);
-            device_.run();
+            peer_.input(input);
+            peer_.run();
             TOOLBOX_INFO<<"pcap replay done: "<<input;
         };
     }
@@ -105,7 +111,7 @@ private:
             case IPPROTO_TCP: case IPPROTO_UDP: {
                 stats_.on_received(pkt);
                 if(filter_(pkt.header())) {
-                    protocol_.async_handle(device_, pkt, tb::bind([this](std::error_code ec) { 
+                    protocol_.async_handle(peer_, pkt, tb::bind([this](std::error_code ec) { 
                     })); // FIXME: sync_process?
                     on_idle();      
                 } else {
@@ -117,7 +123,7 @@ private:
     }
 private:
     Protocol protocol_;
-    toolbox::PcapDevice device_;
+    Peer peer_;
     Stats stats_;
     toolbox::EndpointsFilter filter_;
     std::vector<std::string> inputs_;

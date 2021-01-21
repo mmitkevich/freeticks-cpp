@@ -7,6 +7,7 @@
 #include "ft/spb/SpbDecoder.hpp"
 #include "ft/core/Instrument.hpp"
 #include "toolbox/util/Xml.hpp"
+#include <iterator>
 
 namespace ft::spb {
 
@@ -29,7 +30,7 @@ public:
     SpbInstrumentStream(Protocol& protocol)
     : Base(protocol) 
     {
-        TOOLBOX_DUMP_THIS;
+        //TOOLBOX_DUMP_THIS;
     }
     using Base::decoder;
     using Base::invoke;
@@ -44,8 +45,8 @@ public:
         u.symbol(d.symbol.str());
         u.exchange(protocol().exchange());
         auto id = std::hash<std::string>{}(u.exchange_symbol());
-        u.instrument_id(id);
-        u.venue_instrument_id(d.instrument_id);
+        u.instrument_id(Identifier(id));
+        u.venue_instrument_id(Identifier(d.instrument_id));
         invoke(u.as_size<0>());
     }
     
@@ -55,14 +56,14 @@ public:
         if(type == "snapshot.xml") {
             for(auto e:params["urls"]) {
                 std::string url = std::string{e.get_string()};
-                TOOLBOX_DUMP_THIS;
+                //TOOLBOX_DUMP_THIS;
                 snapshot_xml_url_ = url;
                 //parent().state_hook(core::State::Started, [url, this] { snapshot_xml(url); });
             }
         }
     }
     void open() {
-        TOOLBOX_DUMP_THIS;
+        //TOOLBOX_DUMP_THIS;
         if(!snapshot_xml_url_.empty())
             snapshot_xml(snapshot_xml_url_);
     }
@@ -77,7 +78,7 @@ public:
             auto exchange_symbol = std::string{sym};
             exchange_symbol += "@";
             exchange_symbol += protocol().exchange();
-            auto id = std::hash<std::string>{}(exchange_symbol);
+            std::size_t id = std::hash<std::string>{}(exchange_symbol);
             std::int64_t viid = std::atoll(e.attribute("instrument_id").value());
 
             core::BasicInstrumentUpdate<4096> u;
@@ -85,9 +86,9 @@ public:
             u.symbol(sym);
             u.exchange(protocol().exchange());
             u.venue_symbol(sym);
-            u.instrument_id(id);    // hash function of symbol@exchange
+            u.instrument_id(Identifier(id));    // hash function of symbol@exchange
             u.instrument_type(InstrumentType::Stock);
-            u.venue_instrument_id(viid);
+            u.venue_instrument_id(Identifier(viid));
 
             if(is_test!="true")
                 invoke(u.as_size<0>());

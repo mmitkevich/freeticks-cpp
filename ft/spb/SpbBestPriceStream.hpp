@@ -49,7 +49,7 @@ public:
     SpbBestPriceStream(Protocol& protocol)
     : Base(protocol) 
     {
-        TOOLBOX_DUMP_THIS;
+        //TOOLBOX_DUMP_THIS;
     }
     using Base::stats;
     using Base::protocol;
@@ -113,7 +113,7 @@ protected:
             auto &tick = ticks[i];
             ticks.topic(core::StreamTopic::BestPrice);
             ticks.event(core::Event::Update);
-            ticks.venue_instrument_id(e.instrument.instrument_id);
+            ticks.venue_instrument_id(Identifier(e.instrument.instrument_id));
             ticks.recv_time(cts);
             ticks.send_time(sts);
 

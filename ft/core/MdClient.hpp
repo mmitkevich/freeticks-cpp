@@ -32,20 +32,22 @@ public:
     virtual core::StreamStats& stats() = 0;
 
     virtual void async_connect(tb::DoneSlot done) = 0;
-    virtual void async_request(const core::SubscriptionRequest& req, core::SubscriptionResponse::Slot slot, tb::SizeSlot done) = 0;
+    virtual void async_write(const core::SubscriptionRequest& req, tb::SizeSlot done) = 0;
 };
 
 
 
-struct MdClientTraits {
+template<class RequestT>
+struct RequestTraits {
     template<typename T>
-    using async_subscribe_t = decltype(std::declval<T&>().async_request(
+    using async_write_t = decltype(std::declval<T&>().async_write(
         std::declval<const core::SubscriptionRequest&>(), 
-        std::declval<tb::Slot<const core::SubscriptionResponse&, std::error_code>>(), 
         std::declval<tb::SizeSlot>()));
     template<typename T>
-    constexpr static  bool has_async_subscribe = boost::is_detected_v<async_subscribe_t, T>;
+    constexpr static  bool has_async_write = boost::is_detected_v<async_write_t, T>;
+};
 
+struct ClientTraits {
     template<typename T>
     using async_connect_t = decltype(std::declval<T&>().async_connect(std::declval<tb::DoneSlot>()));
     template<typename T>
@@ -72,19 +74,17 @@ public:
     core::InstrumentStream& instruments(StreamTopic topic) override { return impl()->instruments(topic); }
 
     void async_connect(tb::DoneSlot done) override {
-        if constexpr (MdClientTraits::has_async_connect<Impl>) {
+        if constexpr (ClientTraits::has_async_connect<Impl>) {
             impl()->async_connect(done);
         } else {
             done({});
         }
     }
 
-    void async_request(const core::SubscriptionRequest& req
-    , tb::Slot<const SubscriptionResponse&, std::error_code> slot
-    , tb::SizeSlot done) override
+    void async_write(const core::SubscriptionRequest& req, tb::SizeSlot done) override
     {
-        if constexpr(MdClientTraits::has_async_subscribe<Impl>) {
-            impl()->async_request(req, slot, done);
+        if constexpr(RequestTraits<core::SubscriptionRequest>::has_async_write<Impl>) {
+            impl()->async_write(req, done);
         } else {
             done(-1, make_error_code(std::errc::not_supported));
         }

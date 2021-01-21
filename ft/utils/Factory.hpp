@@ -34,7 +34,7 @@ namespace detail {
             mp::tuple_for_each(values_, [&](auto &factory) {
                 if(!result && factory.id==id) {
                     auto valptr = factory(std::forward<ArgsT>(args)...);
-                    TOOLBOX_DUMP<<"make_unique "<<id;
+                    //TOOLBOX_DUMP<<"make_unique "<<id;
                     result =  std::unique_ptr<InterfaceT>(new AdapterT(std::move(valptr)));
                 }
             });

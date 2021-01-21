@@ -8,27 +8,61 @@
 namespace ft::io {
 
 
-template<class PeerT, class KeyT=typename PeerT::Endpoint>
-using PeersMap = tb::unordered_map<KeyT, std::unique_ptr<PeerT>>;
+template<class PeerT, class PeerPtrT=std::unique_ptr<PeerT>>
+using PeersMap = tb::unordered_map<PeerId, PeerPtrT>;
 
 /// @brief: round-robin peer selected and function applied
 /// @returns: number of peers applied
 template<typename PeerT>
-class RoundRobinRoutingStrategy {
+class RoundRobinRouting {
 public:
     using Peer = PeerT;
     using iterator = typename PeersMap<Peer>::iterator;
 
     template<typename FnT>
     int operator()(PeersMap<Peer>& peers, FnT&& fn)  {
-        if(peers.empty())
-            return 0;
-        if(it_!=iterator() && it_!=peers.end())
-            ++it_;
-        else 
+        std::size_t npeers = peers.size();
+        if(it_ == iterator() || it_ == peers.end())
             it_ = peers.begin();
-        fn(*it_->second);
-        return 1;
+        else {
+            if(++it_ == peers.end())
+                it_ = peers.begin();
+        }
+        if(it_!=peers.end()) {
+            Peer* peer = it_->second.get();
+            assert(peer);
+            fn(*peer);
+            return 1;
+        }
+        return 0;
+    }
+    void reset() { it_ = iterator(); }
+protected:
+    iterator it_{};
+};
+
+template<typename PeerT>
+class BroadcastRouting {
+public:
+    using Peer = PeerT;
+    using iterator = typename PeersMap<Peer>::iterator;
+
+    template<typename FnT>
+    int operator()(PeersMap<Peer>& peers, FnT&& fn)  {
+        std::size_t npeers = peers.size();
+        if(it_ == iterator() || it_ == peers.end())
+            it_ = peers.begin();
+        else {
+            if(++it_ == peers.end())
+                it_ = peers.begin();
+        }
+        if(it_!=peers.end()) {
+            Peer* peer = it_->second.get();
+            assert(peer);
+            fn(*peer);
+            return 1;
+        }
+        return 0;
     }
     void reset() { it_ = iterator(); }
 protected:

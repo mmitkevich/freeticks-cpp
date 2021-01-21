@@ -37,10 +37,10 @@ public:
   public:
     using Base::Base;
 
-    using Base::state, Base::reactor;
+    using Base::state, Base::reactor, Base::protocol;
     using Base::async_publish;
 
-    core::SubscriptionSignal& subscribe(core::StreamTopic topic) { return subscribe_; }
+    core::SubscriptionSignal& subscribe(core::StreamTopic topic) { return protocol().subscribe(); }
 
     /// @example: server.ticks(StreamTopic::BestPrice)(Tick(200.1));
     core::TickSink& ticks(core::StreamTopic topic) { return ticks_; }
@@ -48,7 +48,7 @@ public:
     core::InstrumentSink& instruments(core::StreamTopic topic) { return instruments_; }
 
 private:
-    core::SubscriptionSignal subscribe_;
+    //core::SubscriptionSignal subscribe_;
     core::TickSink ticks_ = tb::bind< &Base::template async_publish<core::Tick> >(this);
     core::InstrumentSink instruments_ = tb::bind< &Base::template async_publish<core::InstrumentUpdate> >(this);
 }; // BasicMdServer
@@ -57,15 +57,15 @@ template<
   class ProtocolT
 , class PeerT
 , class ServerSocketT
-, class RoutingStrategyT = io::RoundRobinRoutingStrategy<PeerT>
+, class RoutingT = io::RoundRobinRouting<PeerT>
 , typename StateT = core::State
 > class MdServer : public io::BasicMdServer<
-  MdServer<ProtocolT, PeerT,  ServerSocketT, RoutingStrategyT, StateT>,
-  ProtocolT, PeerT, ServerSocketT, RoutingStrategyT, StateT>
+  MdServer<ProtocolT, PeerT,  ServerSocketT, RoutingT, StateT>,
+  ProtocolT, PeerT, ServerSocketT, RoutingT, StateT>
 {
     using Base = io::BasicMdServer<
-      MdServer<ProtocolT, PeerT, ServerSocketT, RoutingStrategyT, StateT>,
-      ProtocolT, PeerT, ServerSocketT, RoutingStrategyT, StateT>;
+      MdServer<ProtocolT, PeerT, ServerSocketT, RoutingT, StateT>,
+      ProtocolT, PeerT, ServerSocketT, RoutingT, StateT>;
   public:
     using Base::Base;
 };

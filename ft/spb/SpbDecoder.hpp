@@ -62,7 +62,7 @@ public:
 public:
     explicit BasicSpbStream(Protocol& protocol)
     : protocol_(protocol) {
-        TOOLBOX_DUMP_THIS;
+        //TOOLBOX_DUMP_THIS;
         //auto& ex = protocol.parent();
         //ex.state_changed().connect(tb::bind<&DerivedT::on_gateway_state_changed>(&impl()));
     }

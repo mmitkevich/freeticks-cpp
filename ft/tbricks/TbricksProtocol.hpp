@@ -33,8 +33,6 @@ public:
 
     template<typename ConnT, typename DoneT>
     void async_write(ConnT& conn, const SubscriptionRequest& request, DoneT done) {
-        // can't send request while some other request isn't written to media
-        assert(conn.can_write());
         // remember request id
         switch(request.request()) {
             case core::Request::Subscribe: {
@@ -43,7 +41,7 @@ public:
                 msg.symbol() = request.symbol();
                 msg.seq() = ++out_seq_;
                 auto buf = tb::to_const_buffer(msg);
-                TOOLBOX_DEBUG << "out["<<msg.bytesize()<<"]: seq="<<msg.seq()<<"; sym="<<msg.symbol().str()<<"\n" << ft::to_hex_dump(std::string_view{(const char*)buf.data(), buf.size()});
+                TOOLBOX_INFO << name()<<": out["<<msg.bytesize()<<"]: seq="<<msg.seq()<<"; sym="<<msg.symbol().str()<<"\n" << ft::to_hex_dump(std::string_view{(const char*)buf.data(), buf.size()});
                 conn.async_write(buf, done);
             } break;
             default: {
@@ -60,28 +58,28 @@ public:
 
         auto& buf = e.buffer();
         const Message& msg = *reinterpret_cast<const Message*>(buf.data());        
-        TOOLBOX_INFO << "in: t="<<tb::unbox(msg.msgtype())<<"\n"<<
+        TOOLBOX_INFO << name()<<": in["<<e.buffer().size()<<"]: t="<<tb::unbox(msg.msgtype())<<"\n"<<
             ft::to_hex_dump(std::string_view{(const char*)e.buffer().data(), e.buffer().size()});
         switch(msg.msgtype()) {
             case MessageType::SubscriptionRequest: {
-                TOOLBOX_INFO << "proto:'"<<name()<<"', t:"<<(int)tb::unbox(msg.msgtype())<<", sym:'"<<msg.symbol().str()<<"', seq:"<<msg.seq();
+                TOOLBOX_INFO << name()<<": in: t:"<<(int)tb::unbox(msg.msgtype())<<", sym:'"<<msg.symbol().str()<<"', seq:"<<msg.seq();
                 core::SubscriptionRequest req {};
                 req.symbol(msg.symbol().str());
                 req.request(Request::Subscribe);
                 TOOLBOX_INFO << req;
-                subscribe_req().invoke(std::move(req));
+                subscribe().invoke(conn.id(), std::move(req));
             } break;
             case MessageType::SubscriptionCancelRequest: {
                 core::SubscriptionRequest req;
                 req.symbol(msg.symbol().str());
                 req.request(core::Request::Unsubscribe);
-                subscribe_req().invoke(std::move(req));
+                subscribe().invoke(conn.id(), std::move(req));
             } break;
             case MessageType::ClosingEvent: {
                 core::SubscriptionRequest req;
                 req.symbol(msg.symbol().str());
                 req.request(core::Request::UnsubscribeAll);
-                subscribe_req().invoke(std::move(req));
+                subscribe().invoke(conn.id(), std::move(req));
             } break;
             case MessageType::HeartBeat: {
                 if constexpr(io::HeartbeatsTraits::has_heartbeats<ConnT>) {
@@ -103,7 +101,7 @@ public:
     auto& stats() { return stats_; }
 
     /// requests
-    core::SubscriptionSignal& subscribe_req() { return subscribe_req_; }
+    core::SubscriptionSignal& subscribe() { return subscribe_; }
 
     /// streams
     core::TickStream& ticks(core::StreamTopic topic) { return ticks_; }
@@ -114,7 +112,7 @@ public:
 protected:
     core::StreamStats stats_;
     // from client to server
-    core::SubscriptionSignal subscribe_req_;
+    core::SubscriptionSignal subscribe_;
     // from server to client
     core::TickStream ticks_;
     core::InstrumentStream instruments_;

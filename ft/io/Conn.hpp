@@ -54,20 +54,22 @@ class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typenam
     BasicConn(BasicConn&&)=default;
     BasicConn&operator=(BasicConn&&)=default;
 
-    BasicConn(std::string_view url, Parent* parent=nullptr)
-    : Base(parent->reactor(), parent) { 
+    BasicConn(std::string_view url, Parent* parent=nullptr, Identifier id={})
+    : Base(parent->reactor(), parent, id) {
+        TOOLBOX_DUMPV(5)<<"self:"<<self()<<" parent:"<<parent;
         self()->url(url);
     }
 
-    BasicConn(SocketRef&& socket, Parent* parent=nullptr)
+    BasicConn(SocketRef&& socket, Parent* parent=nullptr, Identifier id={})
     :  Base(parent->reactor(), parent)
     ,  socket_(std::move(socket))
     {
+        TOOLBOX_DUMPV(5)<<"self:"<<self()<<" parent:"<<parent;
     }
 
-    BasicConn(Parent* parent)
-    : Base(parent->reactor(), parent) {
-
+    BasicConn(Parent* parent, Identifier id={})
+    : Base(parent->reactor(), parent, id) {
+        TOOLBOX_DUMPV(5)<<"self:"<<self()<<" parent:"<<parent;
     }
 
     ~BasicConn() {
@@ -127,18 +129,18 @@ class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typenam
     const Endpoint& local() const { return local_; }
 
     ///remote endpoint connection is connected to
-    Endpoint& remote() { return remote_; }
-    const Endpoint& remote() const { return remote_; }
+    Endpoint& remote() { return packet_.header().src(); }
+    const Endpoint& remote() const { return packet_.header().src(); }
     
     /// configure connection using text url
     void url(std::string_view url) {
-        remote_ =  tb::TypeTraits<Endpoint>::from_string(url);
         url_ = tb::ParsedUrl {url};        
+        remote() =  tb::TypeTraits<Endpoint>::from_string(url);
         auto iface = url_.param("interface");
         if(!iface.empty()) {
-            local_ = tb::parse_ip_endpoint<Endpoint>(iface);
+            local() = tb::parse_ip_endpoint<Endpoint>(iface);
         }
-        TOOLBOX_INFO<<"Peer remote:"<<remote_<<", local:"<<local_<<", url="<<url;
+        TOOLBOX_INFO<<"Peer remote:"<<remote()<<", local:"<<local()<<", url="<<url;
     }
 
     // subscription handled by connection
@@ -152,8 +154,32 @@ class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typenam
     bool can_write()  { return socket().can_write(); }
     bool can_read()  { return socket().can_read(); }
 
-    /// use appropriate socket write operation according to SocketTraits
+    /// could enqueue (could allocate)
     void async_write(tb::ConstBuffer buf, tb::SizeSlot slot) {
+        if(can_write()) {
+            if(!wqueue_.empty())
+                slot = tb::bind<&Self::on_write>(self()); // got some queue
+            self()->async_write_nq(buf, slot);
+        } else {
+            // serialize data
+            auto wb = wbuf_.prepare(buf.size());
+            std::memcpy(wb.data(), buf.data(), buf.size());
+            wqueue_.emplace_back(buf.size(), tb::bind<&Self::on_write>(self())); // part size + slot
+        }
+    }
+
+    void on_write(ssize_t size, std::error_code ec) {
+        // check queue
+        assert(!wqueue_.empty());
+        auto [wsize, done]  = wqueue_.front();
+        wqueue_.pop_front();
+        async_write_nq({wbuf_.buffer().data(), wsize}, done);
+    }
+
+    /// async_write no queueing
+    void async_write_nq(tb::ConstBuffer buf, tb::SizeSlot slot) {
+        assert(can_write());
+        // immediate write
         if constexpr(tb::SocketTraits::is_dgram<Socket>) { // FIXME: tb::SocketTraits<Socket>::is_dgram
             // udp
             socket().async_sendto(buf, remote(), slot);
@@ -162,7 +188,6 @@ class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typenam
             socket().async_write(buf, slot);
         }
     }
-    
     /// use appropriate socket read operation according to SocketTraits
     void async_read(tb::MutableBuffer buf, tb::SizeSlot slot) {
         packet_.buffer() = buf;
@@ -189,18 +214,20 @@ class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typenam
 
     template<typename HandlerT>
     void run() {
-        //TOOLBOX_DUMP_THIS<<"rbuf.prepare "<< self()->buffer_size();
+        TOOLBOX_DUMPV(5)<<"self="<<self()<<", rbuf(size="<< self()->buffer_size()<<"), local:"<<local()<<", remote:"<<remote();
         self()->async_read(rbuf().prepare(self()->buffer_size()), tb::bind(
         [this](ssize_t size, std::error_code ec) {
             if(!ec) {
                 assert(size>=0);
+                TOOLBOX_DUMPV(5)<<"self:"<<self()<<", size:"<<size<<" local:"<<local()<<", remote:"<<remote()<<", ec:"<<ec;
                 rbuf().commit(size);
                 // replace total buffer size with real received data size
                 packet_.buffer() = typename Packet::Buffer {packet_.buffer().data(), (size_t) size}; 
                 packet_.header().recv_timestamp(tb::WallClock::now());
+                TOOLBOX_DUMPV(5)<<"self:"<<self()<<", local:"<<local()<<",remote:"<<remote();
                 HandlerT{}(*self(), packet_, tb::bind([this](std::error_code ec) {
                     auto size = packet().buffer().size(); 
-                    //TOOLBOX_DUMP_THIS<<"rbuf.consume "<< size;
+                    TOOLBOX_DUMPV(5)<<"self:"<<self()<<", size:"<< size;
                     rbuf().consume(size);
                     if(!ec) {
                         self()->template run<HandlerT>();
@@ -214,7 +241,7 @@ class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typenam
         }));
     }
     void on_error(std::error_code ec) {
-        TOOLBOX_ERROR << "error "<<ec<<" conn remote="<<remote_<<" local="<<local_;
+        TOOLBOX_ERROR << "error "<<ec<<" conn remote="<<remote()<<" local="<<local();
     }
 protected:
     tb::CompletionSlot<std::error_code> handle_;
@@ -223,8 +250,10 @@ protected:
     Stats stats_;
     tb::ParsedUrl url_;
     tb::DoneSlot write_;
-    Endpoint local_, remote_;
+    Endpoint local_;
     tb::Buffer rbuf_;
+    tb::Buffer wbuf_;
+    std::deque<std::tuple<std::size_t,tb::SizeSlot>> wqueue_;
     Subscription sub_;
     Transport transport_ = Transport::v4();
 };

@@ -61,7 +61,7 @@ public:
     : bestprice_(*this)
     , instruments_(*this)
     , decoder_(StreamsTuple{&bestprice_, &instruments_}) {  
-        TOOLBOX_DUMP_THIS; 
+        //TOOLBOX_DUMP_THIS; 
     }
         
     constexpr std::string_view name() {  return Decoder::name(); }
