@@ -6,7 +6,7 @@
 #include "ft/core/StreamStats.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/utils/StringUtils.hpp"
-#include "ft/core/MdClient.hpp"
+#include "ft/core/Client.hpp"
 
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/EndpointFilter.hpp"
@@ -38,7 +38,8 @@ public:
 public:
     template<typename...ArgsT>
     explicit PcapMdClient(Reactor* r, Component* p, ArgsT...args)
-    : protocol_(std::forward<ArgsT>(args)...)
+    : Base(r,p)
+    , protocol_(std::forward<ArgsT>(args)...)
     {
         peer_.packets().connect(tb::bind<&PcapMdClient::on_packet_>(this));
     }
@@ -50,12 +51,14 @@ public:
 
     // dispatch parameters
     void on_parameters_updated(const core::Parameters& params) {
-        params["pcaps"].copy(inputs_);
+        auto pcap_pa = params["pcap"];
+
+        pcap_pa["urls"].copy(inputs_);
 
         auto streams_p = params["connections"];
         protocol_.on_parameters_updated(streams_p);
         
-        filter(params["filter"]); // FIXME: get filter from streams automatically
+        filter(pcap_pa["filter"]); // FIXME: get filter from streams automatically?
     }
     
     void filter(const core::Parameters& params) {
@@ -98,13 +101,9 @@ public:
     void on_idle() {
         report(std::cerr);
     }
-    core::TickStream& ticks(core::StreamTopic topic) {
-        return protocol_.ticks(topic);
+    core::Stream& stream(core::StreamTopic topic) {
+       return protocol().stream(topic);
     }
-    core::InstrumentStream& instruments(core::StreamTopic topic) {
-        return protocol_.instruments(topic);
-    }
-
 private:
     void on_packet_(const tb::PcapPacket& pkt) {
         switch(pkt.header().protocol().protocol()) {

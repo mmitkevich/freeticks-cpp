@@ -21,37 +21,11 @@ namespace ft::io {
 template<class RequestT>
 using Response_T = typename RequestT::Response;
 
-/// route to Peer according to RoutingT strategy
-/// use Self::async_write to do actual write
-template<class Self, class PeerT, class RoutingT>
-class BasicRouter  {
-    FT_MIXIN(Self)
-  public:
-    using Peer = PeerT;    
-
-    /// write arbitrary request
-    template<typename RequestT>
-    void async_write(RequestT request, tb::SizeSlot done) 
-    {
-        int pending = routing_(self()->peers(),
-        [&](auto& peer) { 
-            self()->async_write(peer, request, done); 
-        });
-        if(!pending)
-            done(-1, std::make_error_code(std::errc::address_not_available));    // // FIXME: error: route not found
-    }
-
-    void open() { routing_.reset(); }
-    void close() {  }
-  protected:
-    RoutingT routing_;
-}; // BasicRequestor
-
 /// Idle timer mixin
 template<typename Self>
 class BasicIdleTimer
 {
-    FT_MIXIN(Self)
+    FT_SELF(Self)
 public:
 
     void open() {
@@ -74,7 +48,7 @@ protected:
 template<class Self, class ProtocolT, class PeerT, typename StateT>
 class BasicClient: public BasicPeerService<Self, PeerT, StateT>
 {
-    FT_MIXIN(Self);
+    FT_SELF(Self);
     using This = BasicClient<Self, ProtocolT, PeerT, StateT>;
     using Base = BasicPeerService<Self, PeerT, StateT>;
   public:
@@ -103,20 +77,21 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
         if(was_open)
             close();
 
-        auto connspar = parameters()["connections"];
-        populate(connspar);
-        protocol().on_parameters_updated(connspar);
+        populate(params);
+        protocol().on_parameters_updated(params);
         
         if(was_open)
             open();
     }
 
     void populate(const core::Parameters& params) {
-        assert(peers().empty());
-        for(auto p: params) {
-            std::string_view type = p["type"].get_string();
-            auto proto = ft::str_suffix(type, '.');
-            auto iface = p.value_or("interface", std::string{});
+        assert(Base::peers_.empty());
+        std::string proto = params.str("protocol");
+        auto conns_pa = params["connections"];
+        for(auto p: conns_pa) {
+            std::string_view type = p.str("type");
+            //auto proto = ft::str_suffix(type, '.');
+            auto iface = p.str("interface","");
             if(Peer::supports(proto)) {
                 for(auto e : p["urls"]) {
                     std::string url {e.get_string()};
@@ -142,7 +117,7 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
     }
 
     void on_connected(std::error_code ec) {
-        TOOLBOX_INFO << "connected to "<<peers().size()<<" peers, ec "<<ec;
+        TOOLBOX_INFO << "connected to "<<Base::peers_.size()<<" peers, ec "<<ec;
         state(State::Open); // notifies on state changed
     }
 

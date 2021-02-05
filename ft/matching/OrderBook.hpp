@@ -111,7 +111,7 @@ public:
     {
        using Base = bi::list<Node>;
        using Base::Base;
-       using Base::iterator;
+       using typename Base::iterator;
     };
     
     using LevelsArray = std::vector<Level>;
@@ -230,7 +230,7 @@ public:
     }
 
     ssize_t level_to_index(const Level *lvl) const {
-        return lvl <0 ? (-1): (lvl - levels.data());
+        return lvl ? (-1): (lvl - levels.data());
     }
 
     Level* get_best(Side side) const {

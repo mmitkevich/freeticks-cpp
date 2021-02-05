@@ -6,8 +6,10 @@ namespace ft{ inline namespace util {
 
 template<typename T> 
 struct DoubleConversion {
-    constexpr double to_double(T arg) { return (double) arg;}
-    constexpr T from_double(double arg) { return (T) arg; }
+    template<typename...ArgsT>
+    constexpr double to_double(T arg, ArgsT...) { return (double) arg;}
+    template<typename...ArgsT>
+    constexpr T from_double(double arg, ArgsT...) { return (T) arg; }
 };
 
 template<> 
@@ -17,8 +19,10 @@ struct DoubleConversion<std::int64_t> {
     constexpr DoubleConversion(std::int64_t multiplier)
     : multiplier(multiplier) {}
     
-    constexpr double to_double(std::int64_t val) const { return (double)val/multiplier; }
-    constexpr std::int64_t from_double(double val) { return std::round(val*multiplier); }
+    template<typename...ArgsT>
+    constexpr double to_double(std::int64_t val, ArgsT...args) const { return ((double)val * ... * args)/multiplier; }
+    template<typename...ArgsT>
+    std::int64_t from_double(double val, ArgsT...args) { return std::round((val/.../args)*multiplier); }
 };
 
 template<typename T> 

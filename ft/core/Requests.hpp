@@ -6,7 +6,6 @@
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/sys/Time.hpp"
 #include "ft/sbe/SbeTypes.hpp"
-#include "ft/core/Subscription.hpp"
 #include "toolbox/util/Slot.hpp"
 
 namespace ft { inline namespace core {
@@ -41,7 +40,7 @@ public:
     std::size_t length() { return impl_.ft_len; };
     void length(std::size_t len) { impl_.ft_len = len; }
     ft_event_t event() const { return impl_.ft_type.ft_event; } 
-    ft_topic_t topic() const { return impl_.ft_type.ft_topic; }
+    StreamTopic topic() const { return StreamTopic(impl_.ft_type.ft_topic); }
     ft_seq_t sequence() const { return impl_.ft_seq; }
     void sequence(ft_seq_t seq) { impl_.ft_seq = seq; }
     tb::WallTime recv_time() const { return tb::WallTime(tb::Nanos(impl_.ft_recv_time)); }
@@ -70,7 +69,7 @@ public:
     std::size_t bytesize() const { return Base::ft_hdr.ft_len; };
     void bytesize(std::size_t len) { Base::ft_hdr.ft_len = len; }
         
-    ft_topic_t topic() const { return Base::ft_hdr.ft_type.ft_topic; }
+    StreamTopic topic() const { return StreamTopic(Base::ft_hdr.ft_type.ft_topic); }
     void topic(ft_topic_t val) { Base::ft_hdr.ft_type.ft_topic = val; }
     
     ft_seq_t sequence() const { return Base::ft_hdr.ft_seq; }

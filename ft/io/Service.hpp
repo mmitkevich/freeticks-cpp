@@ -2,13 +2,18 @@
 
 #include "ft/core/Component.hpp"
 #include "ft/core/Parameters.hpp"
+#include "ft/core/Service.hpp"
 #include "ft/core/State.hpp"
+#include "ft/core/Stream.hpp"
 #include "toolbox/io/Reactor.hpp"
 #include "toolbox/io/Runner.hpp"
 #include "ft/io/Routing.hpp"
 #include "toolbox/util/Slot.hpp"
+#include <boost/mp11/algorithm.hpp>
+#include <boost/mp11/tuple.hpp>
 #include <exception>
 #include <stdexcept>
+#include <type_traits>
 
 namespace ft::io {
 
@@ -45,7 +50,7 @@ public:
     : Base(parent, id)
     , Reactive(reactor) {}
     
-    Self* parent() { assert(parent_); return static_cast<Self*>(parent_);}
+    Self* parent() { return static_cast<Self*>(parent_);}
     const Self* parent() const { assert(parent_); return static_cast<const Self*>(parent_); }
     void parent(Self* val) { assert(val);  parent_ = val;}
 };
@@ -56,13 +61,14 @@ class BasicService: public io::BasicReactiveComponent<ReactorT>
 , public core::BasicParameterized<Self>
 , public core::BasicStateful<StateT>
 {
-    FT_MIXIN(Self);
+    FT_SELF(Self);
     using Base = io::BasicReactiveComponent<ReactorT>;
     using Stateful = core::BasicStateful<StateT>;
   public:
     using Reactor = ReactorT;
     using Stateful::state, Base::parent;
     using Base::reactor;
+    using Ref = BasicRef<IService>;
     
     explicit BasicService(Reactor* reactor=nullptr, Component* parent=nullptr, Identifier id={})
     : Base(reactor, parent, id) {
@@ -74,6 +80,7 @@ class BasicService: public io::BasicReactiveComponent<ReactorT>
         try {
             self()->open();
         } catch(std::exception& e) {
+            TOOLBOX_ERROR<<" Component "<<Base::id()<<" Failed with error: "<<e.what();            
             state(State::Failed);
             throw std::runtime_error(e.what());
         }
@@ -130,11 +137,11 @@ using BasicApp = io::BasicService<Self, ReactorT, StateT, ArgsT...>;
 
 
 /// Adds PeersMap
-template<class Self, class PeerT, typename StateT=core::State, typename...Ts>
-class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, StateT, Ts...>
+template<class Self, class PeerT, typename StateT=core::State, typename...>
+class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, StateT>
 {
-    FT_MIXIN(Self);
-    using Base = BasicService<Self, typename PeerT::Reactor, StateT, Ts...>;
+    FT_SELF(Self);
+    using Base = BasicService<Self, typename PeerT::Reactor, StateT>;
   public:
     using Peer = PeerT;
     using PeerPtr = std::unique_ptr<Peer>;
@@ -144,8 +151,9 @@ class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, Stat
     using typename Base::Reactor;
     using Socket = typename Peer::Socket;
     using Transport = typename Peer::Transport;
+    using typename Base::Ref;
   public:
-    using Base::State;
+    using typename Base::State;
     using Base::open, Base::close;
     
     using Base::Base;
@@ -154,7 +162,7 @@ class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, Stat
     , Base(reactor, parent, id) {}
 
     void do_open() {
-        TOOLBOX_INFO << "opening "<< peers().size() << " peers";
+        TOOLBOX_INFO << "opening "<< peers_.size() << " peers";
         for_each_peer([this](auto& peer) { 
             self()->do_open(peer);
         });
@@ -169,7 +177,7 @@ class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, Stat
     }
 
     void do_close() {
-        TOOLBOX_INFO << "closing "<< peers().size() << " peers";
+        TOOLBOX_INFO << "closing "<< peers_.size() << " peers";
         for_each_peer([this](auto& peer) { 
             do_close(peer);
         });
@@ -211,11 +219,13 @@ class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, Stat
     }
 
     /// @returns peers by endpoint
-    const PeersMap& peers() const { return peers_; }
+    auto peers() const { return std::cref(peers_); }
+    auto peers() { return std::ref(peers_); }  
 
     template<typename Fn>
     int for_each_peer(const Fn& fn) {
-      for(auto& [id, peer]: peers_) {
+      for(auto& it: peers_) {
+        auto& peer=it.second;
         fn(*peer);
       }
       return peers_.size();
@@ -223,16 +233,108 @@ class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, Stat
     Peer& emplace_peer(PeerPtr peer) {
         auto* ptr = peer.get();
         //auto ep = peer->remote();
-        assert(peer->id());
+        auto id = peer->id();
+        assert(id);
         assert(peer);
-        peers_[peer->id()] = std::move(peer);
-        assert(peers_[peer->id()]!=nullptr);
+        peers_[id] = std::move(peer);
+        assert(peers_[id]!=nullptr);
         return *ptr;
     }
   protected:
-    PeersMap& peers() { return peers_; }  
     PeersMap peers_;
     Endpoint local_; /// interface to bind to
+};
+
+
+template<class Self, class L, typename...O>
+class BasicMultiService : public io::BasicService<Self, O...> {
+    using Base = io::BasicService<Self, O...>;
+    FT_SELF(Self);
+public:
+    //using Base::Base;
+    using ServicesTuple = mp::mp_rename<mp::mp_transform<std::unique_ptr,L>, std::tuple>; /// tuple
+    using Base::parent;
+    
+    explicit BasicMultiService(Reactor* reactor=nullptr, Component* parent=nullptr, Identifier id={})
+    : Base(reactor, parent, id) {
+        TOOLBOX_DUMPV(5)<<"Service::ctor, self:"<<self()<<", reactor:"<<reactor<<", parent(Component): "<<parent<<", id:"<<id;
+        //mp::tuple_for_each(services_,[&](auto& svc){
+        //    using ServiceT = std::decay_t<decltype(*svc)>;
+        //    svc = self()->template make_service<ServiceT>();
+        //});
+    }
+    template<typename Fn>
+    int for_each_service(Fn&& fn) {
+        int count = 0;
+        mp::tuple_for_each(services_, [&](auto& ptr) {
+            if(ptr!=nullptr) {
+                fn(*ptr);
+                ++count;
+            }
+        });
+        return count;
+    }
+
+    template<class ServiceT>
+    std::unique_ptr<ServiceT> make_service(StreamTopic topic) {
+        auto svc =  std::unique_ptr<ServiceT>(new ServiceT());
+        svc->parent(self());
+        svc->topic(topic);
+        self()->on_child_service_created(*svc);
+        return svc;
+    }
+
+    template<class ServiceT>
+    void on_child_service_created(ServiceT& svc) {}
+
+    template<class R>
+    struct is_compatible_sink {
+        template<typename S>
+        struct fn: std::is_same<typename S::element_type::Type, R> {};
+    };
+
+    template<class T>
+    auto& service(core::StreamTopic topic) {
+        static_assert(!std::is_pointer_v<T>);
+        static_assert(mp::mp_count_if_q<ServicesTuple, is_compatible_sink<T>>::value==1, "L does not contain T");
+        constexpr std::size_t index = mp::mp_find_if_q<ServicesTuple, is_compatible_sink<T>>::value;
+        auto& ptr = std::get<index>(services_);
+        if(ptr==nullptr) {
+            // lazy
+            using ServiceT = std::decay_t<decltype(*ptr)>;
+            ptr = self()->template make_service<ServiceT>(topic);
+        }
+        return *ptr;
+    }
+    
+    /// forward open
+    void do_open() {
+        Base::do_open();
+        for_each_service([](auto& svc) {
+            svc.open();
+        });
+    }
+    
+    /// forward close
+    void do_close() {
+        Base::do_close();        
+        for_each_service([](auto& svc) {
+            svc.close();
+        });
+    }
+
+    template<class T>
+    void write(const T& val) {
+       service<T>().write(val);
+    }
+
+    /// write
+    template<class T, typename DoneT>
+    void async_write(const T& val, DoneT done) {
+       service<T>().async_write(val, std::forward<DoneT>(done));
+    }
+protected:
+    ServicesTuple services_;
 };
 
 } // ft::io

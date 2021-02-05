@@ -48,18 +48,19 @@ typedef struct  {
 } ft_hdr_t;
 
 enum ft_topic_enum {
-    FT_BESTPRICE    = 1,
-    FT_INSTRUMENT   = 2,
-    FT_ORDERSTATUS  = 8,
-    FT_STATISTICS   = 16,    
-    FT_CANDLE       = 32,
-    FT_STREAM       = 64    // state: stale/failed/etc
+    FT_TOPIC_EMPTY = 0,
+    FT_TOPIC_BESTPRICE = 1,
+    FT_TOPIC_INSTRUMENT = 2,
+    FT_TOPIC_ORDERSTATUS = 3,
+    FT_TOPIC_STATISTICS = 4,    
+    FT_TOPIC_CANDLE = 5,
+    FT_TOPIC_STREAM = 6    // state: stale/failed/etc
 };
 
 enum ft_event_enum {
-    FT_INVALID_EVENT = 0,
-    FT_SNAPSHOT = 1,
-    FT_UPDATE = 2
+    FT_EVENT_EMPTY = 0,
+    FT_EVENT_SNAPSHOT = 1,
+    FT_EVENT_UPDATE = 2
 };
 
 /// common event types, applied to L1/L2/L3 market data
@@ -140,7 +141,7 @@ struct ft_tick_t {
     ft_instrument_id_t ft_venue_instrument_id;       // venue-specific numeric instrument id, e.g. 100500
     ft_slen_t ft_item_len;              // SBE: blockLength
     ft_slen_t ft_items_count;           // SBE: numInGroup
-    ft_byte_t ft_items[0];                // data block, SBE: "repeating group"
+    ft_char_t ft_items[0];                // data block, SBE: "repeating group"
 };
 
 // instrument update
@@ -158,8 +159,8 @@ typedef struct  {
 /// subscription or unsubscription request
 typedef struct  {
     ft_hdr_t ft_hdr;
-    ft_request_id_t ft_request_id;              // client-generated request id
-    ft_instrument_id_t ft_instrument_id;           // hash of instrument symbol or some other object
+    ft_instrument_id_t ft_instrument_id;           // hash of instrument symbol or some other object    
+    ft_request_id_t ft_request_id;                  // client-generated request id
     ft_slen_t ft_symbol_len;
     ft_char_t   ft_symbol[0];
 } ft_subscribe_t;
@@ -167,12 +168,11 @@ typedef struct  {
 /// response on arbitrary request
 typedef struct  {
     ft_hdr_t ft_hdr;
-    ft_id_t ft_request_id;
+    ft_id_t ft_instrument_id;           // hash of instrument symbol or some other object    
+    ft_id_t ft_request_id {};
+    ft_id_t ft_response_id {};            // server-generated response id (could identifiy request as well)
     ft_status_t ft_status;
-    ft_id_t ft_client_id {};            // client-generated request id
-    ft_id_t ft_server_id {};            // server-generated response id (could identifiy request as well)
     ft_time_t ft_timestamp;             // exchange timestamp (e.g. gateway timestamp)
-    ft_id_t ft_instrument_id;           // hash of instrument symbol or some other object
     ft_slen_t ft_message_len;           // error message
     ft_char_t ft_message[0];
 } ft_response_t;
@@ -180,25 +180,26 @@ typedef struct  {
 /// order request
 typedef struct {
     ft_hdr_t ft_hdr;
-    ft_time_t ft_timestamp {};          // exchange timestamp                
     ft_instrument_id_t ft_instrument_id;
     ft_order_id_t ft_client_order_id;               // client order id
     ft_order_id_t ft_server_order_id;               // exchange order id
     ft_order_id_t ft_linked_order_id;               // reserved: linked id (client order id of replaced order, etc)
+    ft_time_t ft_timestamp {};          // exchange timestamp                    
     ft_side_t ft_side;                  // BUY +1, SELL -1, UNKNOWN 0
     ft_qty_t ft_qty;                    // original qty
     ft_qty_t ft_price;                  // price
     ft_slen_t ft_symbol_len;            // symbol len
-    ft_char_t ft_symbol[0];                // symbol characters
+    ft_char_t ft_symbol[0];             // symbol characters
 } ft_order_t;
 
 /// order update
 struct ft_execution_t {
     ft_hdr_t ft_hdr;
-    ft_time_t ft_timestamp {};          // exchange timestamp                
-    ft_id_t ft_instrument_id;
-    ft_id_t ft_client_order_id;         // client order id
-    ft_id_t ft_server_order_id;         // server-generated order id
+    ft_id_t ft_instrument_id;    
+    ft_order_id_t ft_client_order_id;         // client order id
+    ft_order_id_t ft_server_order_id;         // server-generated order id
+    ft_order_id_t ft_linked_order_id;               // reserved: linked id (client order id of replaced order, etc)    
+    ft_time_t ft_timestamp {};          // exchange timestamp                    
     ft_side_t ft_side;                  // BUY +1, SELL -1, UNKNOWN 0
     ft_qty_t ft_qty;                    // order active qty
     ft_qty_t ft_price;                  // price
@@ -210,8 +211,8 @@ struct ft_execution_t {
 /// instrument status update
 typedef struct  {
     ft_hdr_t ft_hdr;
-    ft_time_t ft_timestamp;                     // exchange timetamp    
     ft_id_t ft_instrument_id;
+    ft_time_t ft_timestamp;                     // exchange timetamp        
     ft_status_t  ft_instrument_status;          // numeric status
     ft_slen_t ft_message_len;                   // string status
     ft_char_t ft_message[0]; 

@@ -1,26 +1,28 @@
 #include <boost/mp11.hpp>
+#include <boost/mp11/detail/mp_list.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string_view>
 #include <system_error>
 #include <unordered_map>
-
+#include <unordered_set>
 #include "ft/core/Component.hpp"
+#include "ft/core/Service.hpp"
 #include "ft/core/Stream.hpp"
-#include "ft/core/Subscription.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/capi/ft-types.h"
 #include "ft/core/Instrument.hpp"
 #include "ft/core/InstrumentsCache.hpp"
 #include "ft/core/BestPriceCache.hpp"
-#include "ft/core/MdClient.hpp"
-#include "ft/core/MdServer.hpp"
+#include "ft/core/Client.hpp"
+#include "ft/core/Server.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/io/Conn.hpp"
 #include "ft/io/MdClient.hpp"
@@ -50,7 +52,8 @@
 #include "ft/io/MdServer.hpp"
 #include "ft/tbricks/TbricksProtocol.hpp"
 #include "toolbox/util/RobinHood.hpp"
-#include "ft/core/CsvSink.hpp"
+#include "ft/io/Csv.hpp"
+#include "ft/io/ClickHouse.hpp"
 #include "toolbox/util/Slot.hpp"
 
 namespace tb = toolbox;
@@ -59,8 +62,14 @@ namespace ft::mds {
 
 
 class App : public io::BasicApp<App> {
-  FT_CRTP(App, io::BasicApp<App>);  // boilerplate: Self=App, Base=io::BasicApp<App>, self()->App
+  using Base = io::BasicApp<App>;
+  using Self = App;
+  FT_SELF(Self);
 public:
+  enum class MdMode {
+      Real,
+      Pcap
+  };
   struct MdOptions {
     int log_level = 0;
     std::string input_format;
@@ -76,8 +85,8 @@ public:
 
   template<typename T, typename HandlerT>
   auto stat_sum(T result, HandlerT&& h) {
-      for(auto& [k, client]: mdclients_) {
-          result += h(*client);
+      for(auto& it: mdclients_) {
+          result += h(*it.second);
       }
       return result;
   }
@@ -90,7 +99,7 @@ public:
     if (state == core::State::Closed) {
       // gateway().report(std::cerr);
       auto elapsed = tb::MonoClock::now() - start_timestamp_;
-      std::size_t total_received = stat_sum(0U, [](auto& cl){ return cl.stats().received(); });
+      std::size_t total_received = stat_sum(0U, [](auto& cl){ return cl.stream(core::StreamTopic::BestPrice).stats().received(); });
       std::cerr << " read " << total_received << " in "
                    << elapsed.count() / 1e9 << " s"
                    << " at " << (1e3 * total_received / elapsed.count())
@@ -98,52 +107,54 @@ public:
     }
   };
 
-  void on_tick(const core::Tick& e) {
-    auto &ins = instruments_[e.venue_instrument_id()];
-    switch(e.topic()) {
-      case StreamTopic::BestPrice: {
-        auto& bp = bestprice_.update(e);
-        bestprice_csv_(bp);
-        break;
-      }
-      default: break;
-    }
-    for(auto& [venue, server]: mdservers_) {
-      auto& sink = server->ticks(e.topic());
-      sink(e, nullptr);
+  template<class ServicesT, class T>
+  void forward(ServicesT& services, const T& e, tb::DoneSlot done) {
+    for(auto& it: services) {
+      auto& svc = it.second;
+      auto& slot = Stream::Slot<const T&, tb::DoneSlot>::from(svc->stream(e.topic()));
+      slot(e, done);
     }
   }
 
+  void on_tick(const core::Tick& e) {
+    //auto& ins = instruments_[e.venue_instrument_id()];
+    TOOLBOX_DUMP << e;
+    forward(mdservers_, e, nullptr);
+    forward(mdsinks_, e, nullptr);
+  }
+
   void on_instrument(const core::InstrumentUpdate& e) {
+    TOOLBOX_DUMP << e;
     instruments_.update(e);
-    for(auto& [venue, server]: mdservers_) {
-      auto& sink = server->instruments(e.topic());
-      sink(e, nullptr);
-    }
-    instrument_csv_(e);
+    //forward(mdservers_, e, nullptr);
+    //instrument_csv_(e);
   }
 
   template<class T>
   using Factory = std::function<std::unique_ptr<T>(std::string_view id, core::Component* parent)>;
 
-  template<typename BinaryPacketT, 
-          template<typename ProtocolT> typename ClientTT>
-  Factory<IMdClient> make_mdclients_factory () {
-    return [this](std::string_view venue, core::Component* parent) -> std::unique_ptr<core::IMdClient> { 
+  template<typename BinaryPacketT, template<typename ProtocolT> typename ClientTT>
+  Factory<IClient> make_mdclients_factory () {
+    return [this](std::string_view venue, core::Component* parent) -> std::unique_ptr<core::IClient> { 
       if (venue=="SPB_MDBIN") {
           using ClientImpl = ClientTT<spb::SpbUdpProtocol<BinaryPacketT>>;
-          return std::unique_ptr<core::IMdClient>(new core::MdClientImpl<ClientImpl>(reactor(), parent));
+          using Proxy = core::Proxy<ClientImpl, core::IClient::Impl>;
+          return std::unique_ptr<core::IClient>(new Proxy(reactor(), parent));
       } else if(venue=="QSH") {
           using ClientImpl = qsh::QshMdClient;
-          return std::unique_ptr<core::IMdClient>(new core::MdClientImpl<ClientImpl>(reactor(), parent));
+          using Proxy = core::Proxy<ClientImpl, core::IClient::Impl>;
+          return std::unique_ptr<core::IClient>(new Proxy(reactor(), parent));
       } else if(venue=="TB1") {
           using ClientImpl = ClientTT<tbricks::TbricksProtocol<BinaryPacketT>>;
-          return std::unique_ptr<core::IMdClient>(new core::MdClientImpl<ClientImpl>(reactor(), parent));
-      } else throw std::logic_error("Unknown venue");
+          using Proxy = core::Proxy<ClientImpl, core::IClient::Impl>;
+          return std::unique_ptr<core::IClient>(new Proxy(reactor(), parent));
+      } else {
+        Self::fail("venue not supported", venue, TOOLBOX_FILE_LINE);
+        return nullptr;
+      }
     };
   }
   
-
   // type functions to get concrete MdClient from Protocol, connections types and reactor
   template<typename ProtocolT> 
   using McastMdClient = io::MdClient<ProtocolT, io::Conn<tb::McastSocket<>>>;  
@@ -157,57 +168,86 @@ public:
 
   // concrete packet types decoded by Protocols. FIXME: UdpPacket==McastPacket?
 
-  Factory<IMdClient> make_mdclients_factory(std::string_view mode) {
-    if(mode=="mcast") {
+  Factory<IClient> make_mdclients_factory(std::string_view proto) {
+    if(proto=="mcast") {
       return make_mdclients_factory<tb::McastPacket, McastMdClient>();
-    } else if(mode=="pcap") {
+    } else if(proto=="pcap") {
       return make_mdclients_factory<tb::PcapPacket, PcapMdClient>();
-    } else if(mode=="udp") {
+    } else if(proto=="udp") {
       return make_mdclients_factory<tb::UdpPacket, UdpMdClient>();
     } else {
-      std::stringstream ss;
-      ss<<"Invalid mode "<<mode;
-      throw std::runtime_error(ss.str());
+      Self::fail("protocol not supported", proto, TOOLBOX_FILE_LINE);
+      return nullptr;
     }
   }
-  std::unique_ptr<core::IMdClient> make_mdclient(std::string_view venue, std::string_view mode, const core::Parameters &params) {
+  std::unique_ptr<core::IClient> make_mdclient(std::string_view venue,const core::Parameters &params) {
     //TOOLBOX_DEBUG<<"run venue:'"<<venue<<"', params:"<<params;
     //start_timestamp_ = tb::MonoClock::now();
-    Factory<IMdClient> make_mdclient = make_mdclients_factory(mode);
-    TOOLBOX_DUMP<<"make_mdclient venue:"<<venue<<", mode:"<<mode;
-    std::unique_ptr<core::IMdClient> client = make_mdclient(venue, self());
+    auto protocol = params.strv("protocol");
+    if(mode()=="pcap")
+      protocol = "pcap";
+    Factory<IClient> make_mdclient = make_mdclients_factory(protocol);
+    TOOLBOX_DUMP<<"make_mdclient venue:"<<venue<<", protocol:"<<protocol;
+    std::unique_ptr<core::IClient> client = make_mdclient(venue, self());
     auto& c = *client;
     c.parameters(params);
     c.state_changed().connect(tb:: bind<&Self::on_state_changed>(self()));
-    c
-      .ticks(core::StreamTopic::BestPrice)
-      .connect(tb::bind<&Self::on_tick>(self()));
-    c
-      .instruments(core::StreamTopic::Instrument)
-      .connect(tb::bind<&Self::on_instrument>(self()));    
+    c.signal<const core::Tick&>(core::StreamTopic::BestPrice)
+     .connect(tb::bind<&Self::on_tick>(self()));
+    c.signal<const core::InstrumentUpdate&>(core::StreamTopic::Instrument)
+     .connect(tb::bind<&Self::on_instrument>(self()));    
+    TOOLBOX_INFO << "created md client venue:'"<<venue<<"', protocol:'"<<protocol<<"'";
     return client;
   }
 
-  std::unique_ptr<core::IMdServer> make_mdserver(std::string_view venue, const core::Parameters &params) {
-    //TOOLBOX_DEBUG<<"run venue:'"<<venue<<"', params:"<<params;
-    using TbricksMdServer = UdpMdServer<tbricks::TbricksProtocol<tb::UdpPacket>>;
-    auto* r = reactor();
-    assert(r);
-    auto server =  std::unique_ptr<core::IMdServer>(new core::MdServerImpl<TbricksMdServer>(r, self()));
-    auto &s = *server;
-    s.parameters(params);
-    s.subscribe(StreamTopic::BestPrice)
-      .connect(tb::bind<&Self::on_subscribe>(self()));
+  std::unique_ptr<core::IServer> make_mdserver(std::string_view venue, const core::Parameters &params) {
+    std::unique_ptr<core::IServer> server;
+    if(venue=="TB1") {
+      using TbricksMdServer = UdpMdServer<tbricks::TbricksProtocol<tb::UdpPacket>>;
+      auto* r = reactor();
+      assert(r);
+      /// implement IServer using TbricksMdServer class
+      using Proxy = core::Proxy<TbricksMdServer, core::IServer::Impl>;
+      server =  std::unique_ptr<core::IServer>(new Proxy(r, self()));
+      auto &s = *server;
+      s.parameters(params);
+      s.subscription(StreamTopic::BestPrice)
+        .connect(tb::bind([serv=&s](PeerId peer, const core::SubscriptionRequest& req) {
+            Self* self = static_cast<Self*>(serv->parent());
+            self->on_subscribe(*serv, peer, req);
+        }));
+    } else {
+      Self::fail("venue not supported", venue, TOOLBOX_FILE_LINE);
+    }
+    TOOLBOX_INFO << "created md server '"<<venue<<"'";
     return server;
   }
-
-  void on_subscribe(PeerId peer, const core::SubscriptionRequest& req) {
+  std::unique_ptr<core::IService> make_mdsink(std::string_view venue, const core::Parameters& params) {
+    std::unique_ptr<core::IService> sink;
+    if(venue=="ClickHouse") {
+        using ClickHouseSinksL = mp::mp_list<io::ClickHouseSink<core::Tick>>;
+        using ClickHouseService = io::ClickHouseService<ClickHouseSinksL>;
+        using Proxy = core::Proxy<ClickHouseService, core::IService::Impl>;
+        auto* proxy = new Proxy(&instruments_, reactor(), self());
+        sink = std::unique_ptr<core::IService>(proxy);
+        sink->parameters(params);
+        return sink;
+    } else {
+      Self::fail("venue not supported", venue, TOOLBOX_FILE_LINE);
+    }
+    TOOLBOX_INFO << "created md sink '"<<venue<<"'";
+    return sink;
+  }
+  static void fail(std::string_view what, std::string_view id="", const char* line="") {
+    std::stringstream ss;
+    ss << what << " " << id;
+    TOOLBOX_ERROR << line <<": " << ss.str();
+    throw std::runtime_error(ss.str());
+  }
+  void on_subscribe(core::IServer& serv, PeerId peer, const core::SubscriptionRequest& req) {
     TOOLBOX_INFO << "subscribe:"<<req;
     switch(req.request()) {
       case Request::Subscribe: {
-        for(auto& [venue, server]: mdservers_) {
-          
-        }
       } break;
       default: {
         TOOLBOX_ERROR<<"request not supported: "<<req.request();
@@ -228,19 +268,12 @@ public:
   }
 
   void stop() {
-    for(auto& [k, s]: mdservers_) {
-      s->stop();
+    for(auto& it: mdservers_) {
+      it.second->stop();
     }
-    for(auto& [k, c]: mdclients_) {
-      c->stop();
+    for(auto& it: mdclients_) {
+      it.second->stop();
     }
-  }
-
-  std::string_view mode(std::string_view venue_mode={}) const {
-    auto global_mode =  parameters().value_or("mode", std::string_view{});
-    if(!global_mode.empty())
-      return global_mode;
-    return venue_mode;
   }
 
   void start() {
@@ -255,40 +288,59 @@ public:
       run();
     }
   }
+  std::unordered_set<std::string> get_modeset(const core::Parameters& params) {
+    std::unordered_set<std::string> modeset;
+    for(auto it: params) {
+      modeset.insert(std::string(it.get_string()));
+    }
+    return modeset;
+  }
+
+  bool is_service_enabled(const core::Parameters& params, std::string mode) {
+    auto modes = get_modeset(params["enable"]);
+    return modes.find(mode)!=modes.end();
+  }
+  std::string mode() const { return mode_; }
 
   /// returns true if something has really started and reactor thread is required
   void run() {
-      const auto& pa = parameters();
+      const auto& params = parameters();
       
-      std::string output_path = pa.value_or("output", std::string{"/dev/stdout"});
+      std::string output_path = params.str("output", "/dev/stdout");
       
       if(output_path!="/dev/null") {
-        bestprice_csv_.open(output_path+"-bbo.csv");
-        instrument_csv_.open(output_path+"-ins.csv");
+        //FIXME: back to universal output
+        //bestprice_csv_.open(output_path+"-bbo.csv");
+        //instrument_csv_.open(output_path+"-ins.csv");
       }
       
-      std::size_t nstarted = 0;
-
-      for(auto [venue, venue_opts] : pa["servers"]) {
-        bool enabled = venue_opts.value_or("enabled", true);
+      for(auto [id, pa]: params["sinks"]) {
+        bool enabled = is_service_enabled(pa, mode());
         if(enabled) {
-          auto s = make_mdserver(venue, venue_opts);
+            auto s = make_mdsink(id, pa);
+            auto& sink = *s;
+            mdsinks_.emplace(id, std::move(s));
+            sink.start();
+        }
+      }
+
+      for(auto [id, pa] : params["servers"]) {
+        bool enabled = is_service_enabled(pa, mode());
+        if(enabled) {
+          auto s = make_mdserver(id, pa);
           auto& server = *s;
-          mdservers_.emplace(venue, std::move(s));            
+          mdservers_.emplace(id, std::move(s));            
           server.start();
         }
       }
-      for(auto [venue, venue_pa]: pa["clients"]) {
-        bool enabled = venue_pa.value_or("enabled", true);
+      for(auto [id, pa]: params["clients"]) {
+        bool enabled = is_service_enabled(pa, mode());
         if(enabled) {
-          std::string_view mod = mode(venue_pa.value_or("mode", std::string_view{}));
-          auto c = make_mdclient(venue, mod, venue_pa);
+          auto c = make_mdclient(id, pa);
           auto* client = c.get();
-          TOOLBOX_DUMP<<TOOLBOX_FILE_LINE<<"Client "<<std::hex<<client;
-          mdclients_.emplace(venue, std::move(c));
+          mdclients_.emplace(id, std::move(c));
           client->state_changed().connect(tb::bind([client](core::State state, core::State old_state, ExceptionPtr ex) {
             Self* self = static_cast<Self*>(client->parent());
-            TOOLBOX_DUMP<<TOOLBOX_FILE_LINE<<"Client "<<std::hex<<client<<" self "<<self<<" state "<<state;
             if(state==core::State::Open) {
               self->on_client_open(*client);
             }
@@ -298,7 +350,7 @@ public:
       }
   }
 
-  void on_client_open(core::IMdClient& client) {
+  void on_client_open(core::IClient& client) {
     async_subscribe(client, client.parameters()["subscriptions"], tb::bind([this](ssize_t size, std::error_code ec) {
       if(ec) {
         on_io_error(ec);
@@ -307,7 +359,7 @@ public:
   }
 
   /// will call done when all subscribed
-  void async_subscribe(core::IMdClient& client, const core::Parameters& params, tb::SizeSlot done) {
+  void async_subscribe(core::IClient& client, const core::Parameters& params, tb::SizeSlot done) {
     subscribe_done_.pending(0);
     subscribe_done_.set_slot(done);
     for(auto strm_pa: params) {
@@ -330,8 +382,7 @@ public:
   }
 
   void wait() {
-    auto mode = parameters().value_or("mode",std::string_view{});
-    if(mode == "pcap")
+    if(mode() == "pcap")
       return; // all done already
     tb::wait_termination_signal();  // main loop is in Reactor thread
   }
@@ -341,51 +392,55 @@ public:
   }
 
   int main(int argc, char *argv[]) {
-    tb::set_log_level(tb::Log::Dump);
-    
     tb::Options parser{"mdserv [OPTIONS] config.json"};
+    std::string config_file;
+    std::vector<std::string> pcaps;
+    bool help = false;
+    int log_level=tb::Log::Info;
+    parser('h', "help", tb::Switch{help}, "print help")
+      ('v', "verbose", tb::Value{log_level}, "log level")
+      ('o', "output", tb::Value{parameters(), "output", std::string{}}, "output file")
+      ('m', "mode", tb::Value{mode_}, "pcap, prod, test")
+      (tb::Value{config_file}.required(), "config.json file");
     try {
-      std::string config_file;
-      bool help = false;
-
-      parser('h', "help", tb::Switch{help}, "print help")
-        ('v', "verbose", tb::Value{parameters(), "verbose", std::uint32_t{}}, "log level")
-        ('o', "output", tb::Value{parameters(), "output", std::string{}}, "output file")
-        ('m', "mode", tb::Value{parameters(), "mode", std::string{}}, "valid values: pcap, prod, test")
-        (tb::Value{config_file}.required(), "config.json file")
-      .parse(argc, argv);
-
+      parser.parse(argc, argv);
       if(help) {
         std::cerr << parser << std::endl;
         return EXIT_SUCCESS;
       }
+      TOOLBOX_CRIT<<"log_level:"<<log_level;
+      tb::set_log_level(log_level);
       if(!config_file.empty()) {
         Base::parameters_.parse_file(config_file);
       }
+    } catch(std::runtime_error &e) {
+      std::cerr << e.what() << std::endl;
+      std::cerr << std::endl << parser << std::endl;
+      return EXIT_FAILURE;
+    }
+    try {
       start();
       wait();
       return EXIT_SUCCESS;
-    } catch (std::system_error &e) {
+    } catch (std::exception &e) {
       std::cerr << e.what() << std::endl;
-      return EXIT_FAILURE;
-    } catch (std::runtime_error &e) {
-      std::cerr << e.what() << std::endl;
-      std::cerr << std::endl << parser << std::endl;
       return EXIT_FAILURE;
     }
   }
 
 private:
   tb::PendingSlot<ssize_t, std::error_code> subscribe_done_;
-
   core::MutableParameters opts_;
+  std::string mode_ {"prod"};
   tb::MonoTime start_timestamp_;
   core::InstrumentsCache instruments_;
   core::BestPriceCache bestprice_;
-  core::SymbolCsvSink<BestPrice> bestprice_csv_ {instruments_};
-  core::CsvSink<InstrumentUpdate> instrument_csv_;
-  tb::RobinFlatMap<std::string, std::unique_ptr<core::IMdClient>> mdclients_;
-  tb::RobinFlatMap<std::string, std::unique_ptr<core::IMdServer>> mdservers_;
+  // csv sink
+  //core::SymbolCsvSink<BestPrice> bestprice_csv_ {instruments_};
+  //core::CsvSink<InstrumentUpdate> instrument_csv_;
+  tb::unordered_map<std::string, std::unique_ptr<core::IService>> mdsinks_;
+  tb::RobinFlatMap<std::string, std::unique_ptr<core::IClient>> mdclients_;
+  tb::RobinFlatMap<std::string, std::unique_ptr<core::IServer>> mdservers_;
 };
 
 } // namespace ft::apps::serv

@@ -1,5 +1,5 @@
 #pragma once
-
+#include "ft/core/Ref.hpp"
 #include "ft/core/Identifiable.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Parameters.hpp"
@@ -9,16 +9,6 @@
 
 
 namespace ft { inline namespace core {
-
-
-/*
-/// convert some template into single-argument mixin template
-template<template<typename, auto...> class TemplateT, auto...ArgsT>
-struct Bind {
-    template<class Self>
-    using Type = TemplateT<Self, ArgsT...>;
-};
-*/
 
 class Movable {
 public:
@@ -38,22 +28,37 @@ public:
     NonMovable() = default;
 };
 
+/// Final class of CRTP hierarchy
+template<class ImplT, template<class SelfT, typename...> class BaseTT> 
+class Proxy : public BaseTT<Proxy<ImplT, BaseTT>>  {
+public:
+    /// forward ctor
+    template<typename...ArgsT>
+    Proxy(ArgsT...args)
+    : impl_(std::forward<ArgsT>(args)...) {}
+    
+    /// selects actual impl for base
+    auto* impl() { return &impl_; }
+    const auto* impl() const { return &impl_; }
+protected:
+    ImplT impl_;
+};
+
 class Component;
 
 class IComponent {
 public:
+    FT_IFACE(IComponent);
+
     virtual ~IComponent() = default;
     virtual Component* parent() = 0;
 };
 
 /// implements stuff for IComponent taking actual implementation from derived class
-template<class Self, class Base=core::IComponent>
-class ComponentImpl : virtual public Base {
+template<class SelfT, class BaseT=core::IComponent>
+class ComponentImpl : virtual public BaseT {
 public:    
-    // forward decision on impl to derived
-    auto* impl() { return static_cast<Self*>(this)->impl(); }
-    const auto* impl() const { return static_cast<const Self*>(this)->impl(); }
-
+    FT_IMPL(SelfT);
     Component* parent() override { return impl()->parent(); }
 protected:
     std::unique_ptr<IComponent> parent_{};
@@ -64,6 +69,7 @@ class Component :  public Identifiable, public Movable {
 public:
     using Parent = Component;
     using Base = Identifiable;
+    using Ref = BasicRef<IComponent>;
     
     explicit Component(Component* parent=nullptr, Identifier id={})
     : Identifiable(parent, id)
@@ -79,7 +85,7 @@ protected:
 
 /// declares Parent type
 template<class ParentT=core::Component, class Base=core::Component>
-class TypedParent : public Base {
+class EnableParent : public Base {
   public:
     using Parent = ParentT;
     

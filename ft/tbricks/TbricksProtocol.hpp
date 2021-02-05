@@ -11,6 +11,7 @@
 #include "toolbox/util/Slot.hpp"
 #include "ft/io/Service.hpp"
 #include "ft/io/Conn.hpp"
+#include <stdexcept>
 #include <system_error>
 #include "ft/utils/StringUtils.hpp"
 
@@ -67,19 +68,19 @@ public:
                 req.symbol(msg.symbol().str());
                 req.request(Request::Subscribe);
                 TOOLBOX_INFO << req;
-                subscribe().invoke(conn.id(), std::move(req));
+                subscription().invoke(conn.id(), std::move(req));
             } break;
             case MessageType::SubscriptionCancelRequest: {
                 core::SubscriptionRequest req;
                 req.symbol(msg.symbol().str());
                 req.request(core::Request::Unsubscribe);
-                subscribe().invoke(conn.id(), std::move(req));
+                subscription().invoke(conn.id(), std::move(req));
             } break;
             case MessageType::ClosingEvent: {
                 core::SubscriptionRequest req;
                 req.symbol(msg.symbol().str());
                 req.request(core::Request::UnsubscribeAll);
-                subscribe().invoke(conn.id(), std::move(req));
+                subscription().invoke(conn.id(), std::move(req));
             } break;
             case MessageType::HeartBeat: {
                 if constexpr(io::HeartbeatsTraits::has_heartbeats<ConnT>) {
@@ -101,21 +102,26 @@ public:
     auto& stats() { return stats_; }
 
     /// requests
-    core::SubscriptionSignal& subscribe() { return subscribe_; }
+    core::SubscriptionSignal& subscription() { return subscription_; }
 
     /// streams
-    core::TickStream& ticks(core::StreamTopic topic) { return ticks_; }
-    core::InstrumentStream& instruments(core::StreamTopic topic) { return instruments_; }    
+    core::Stream& stream(core::StreamTopic topic) {
+        switch(topic) {
+            case core::StreamTopic::BestPrice: return ticks_;
+            case core::StreamTopic::Instrument: return instruments_;
+            default: throw std::logic_error("no such stream");
+        } 
+    }
     
     void on_parameters_updated(const core::Parameters& params) { }
 
 protected:
     core::StreamStats stats_;
     // from client to server
-    core::SubscriptionSignal subscribe_;
+    core::SubscriptionSignal subscription_;
     // from server to client
-    core::TickStream ticks_;
-    core::InstrumentStream instruments_;
+    core::Stream::Signal<core::Tick> ticks_;
+    core::Stream::Signal<core::InstrumentUpdate> instruments_;
     // from client to server 
     Sequence out_seq_ {};
     RequestId  out_req_id_;

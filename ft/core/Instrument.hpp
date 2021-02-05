@@ -3,6 +3,7 @@
 #include "ft/core/Stream.hpp"
 #include "ft/core/Object.hpp"
 #include "ft/core/Fields.hpp"
+#include <initializer_list>
 
 namespace ft { inline namespace core {
 
@@ -68,9 +69,8 @@ inline std::ostream& operator<<(std::ostream&os, const InstrumentType& self) {
 
 // Pad
 template<std::size_t DataLength=0>
-class BasicInstrumentUpdate : public ft_instrument_t, public BasicFieldsWriter<BasicInstrumentUpdate<DataLength>, core::Fields> {
+class BasicInstrumentUpdate : public ft_instrument_t, public Movable {
     using Base = ft_instrument_t;
-    using FieldsWriter = BasicFieldsWriter<BasicInstrumentUpdate<DataLength>, core::Fields>;
 public:
     template<typename InstrumentT>
     explicit BasicInstrumentUpdate(const InstrumentT& ins) {
@@ -142,19 +142,20 @@ public:
     const BasicInstrumentUpdate<NewSizeI>& as_size() const {
         return *reinterpret_cast<const BasicInstrumentUpdate<NewSizeI>*>(this);
     }
-    using typename FieldsWriter::Fields;
-    static std::vector<Fields> fields() {
-        return {Fields::Symbol, Fields::InstrumentId, Fields::VenueInstrumentId, Fields::VenueSymbol, Fields::Exchange};
+    template<class Field=core::Field>
+    constexpr static tb::BitMask<Field> fields() {
+        return tb::BitMask<Field>({
+                Field::Symbol,
+                Field::InsturmentId,
+                Field::VenueInstrumentId,
+                Field::VenueSymbol,
+                Field::Exchange});
     }
 private:
     ft_char_t data_[DataLength];
 };
 
 using InstrumentUpdate = BasicInstrumentUpdate<0>;
-
-using InstrumentStream = core::Stream<const core::InstrumentUpdate &>;
-using InstrumentSink = core::Sink<const core::InstrumentUpdate &>;
-
 
 class Instrument : public BasicObject<Instrument> {
     using Base = BasicObject<Instrument>;

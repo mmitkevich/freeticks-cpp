@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ft/core/Identifiable.hpp"
-#include "ft/core/MdClient.hpp"
+#include "ft/core/Client.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Instrument.hpp"
 #include "toolbox/util/InternedStrings.hpp"
@@ -37,6 +37,9 @@ public:
     }
     void on_instrument(const core::InstrumentUpdate& vi) {
         update(vi);
+    }
+    std::string_view symbol(const core::VenueInstrumentId id) {
+        return instruments_[id].symbol();
     }
 private:
     ft::unordered_map<VenueInstrumentId, core::VenueInstrument> instruments_;

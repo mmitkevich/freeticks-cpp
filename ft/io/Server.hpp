@@ -10,15 +10,15 @@
 #include <ft/io/Service.hpp>
 #include <type_traits>
 #include "ft/utils/Compat.hpp"
-#include "ft/core/MdServer.hpp"
+#include "ft/core/Server.hpp"
 
 namespace ft::io {
 
 template<class Self, class PeerT, class ServerSocketT, typename StateT, class ParentT, typename...ArgsT>
-class BasicSocketService : public TypedParent<ParentT, BasicPeerService<Self, PeerT, StateT, ArgsT...>>
+class BasicSocketService : public EnableParent<ParentT, BasicPeerService<Self, PeerT, StateT, ArgsT...>>
 {
-    FT_MIXIN(Self);
-    using Base = TypedParent<ParentT, BasicPeerService<Self, PeerT, StateT, ArgsT...>>;
+    FT_SELF(Self);
+    using Base = EnableParent<ParentT, BasicPeerService<Self, PeerT, StateT, ArgsT...>>;
   public:
     using typename Base::Parent;
     using ServerSocket = ServerSocketT;
@@ -32,7 +32,7 @@ class BasicSocketService : public TypedParent<ParentT, BasicPeerService<Self, Pe
     using typename Base::Packet;
 
   public:
-    using Base::parent, Base::peers, Base::reactor
+    using Base::parent, Base::peers, Base::peers_, Base::reactor
         , Base::make_peer, Base::emplace_peer
         , Base::local;
     using Base::Base;
@@ -115,9 +115,9 @@ class BasicSocketService : public TypedParent<ParentT, BasicPeerService<Self, Pe
         }
     }
     void async_accept_and_handle(Peer& peer, tb::DoneSlot done) {
-        TOOLBOX_DUMPV(5)<<"self:"<<self()<<" peer:"<<&peer<<",local:"<<peer.local()<<",remote:"<<peer.remote()<<", peer_id:"<<peer.id()<<", #peers:"<<peers().size();
-        auto it = peers().find(peer.id());
-        if(it==peers().end()) {
+        TOOLBOX_DUMPV(5)<<"self:"<<self()<<" peer:"<<&peer<<",local:"<<peer.local()<<",remote:"<<peer.remote()<<", peer_id:"<<peer.id()<<", #peers:"<<peers_.size();
+        auto it = peers_.find(peer.id());
+        if(it==peers_.end()) {
             resume_ = done; // save continuation
             parent()->async_accept(peer, tb::bind(
             [p=&peer](std::error_code ec) {
@@ -156,12 +156,11 @@ template<class Self
 , class ProtocolT
 , class PeerT
 , class ServerSocketT
-, class RoutingStrategyT
 , typename StateT
 >
 class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, StateT, core::Component>
 {
-    FT_MIXIN(Self);
+    FT_SELF(Self);
     using Base = io::BasicService<Self, typename PeerT::Reactor, StateT, core::Component>;
   public:
     using Service = io::SocketService<PeerT, ServerSocketT, StateT, Self>;
@@ -172,8 +171,6 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
     using Endpoint = typename Peer::Endpoint;
     using Protocol = ProtocolT;
     using ServicesMap = tb::unordered_map<Endpoint, std::unique_ptr<Service>>;    
-    using Routing = io::BasicRouting<Self, Peer, RoutingStrategyT>;
-    using PeersMap = io::PeersMap<Peer, Peer*>;
   public:
     using Base::Base;
     using Base::parameters;
@@ -181,8 +178,87 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
     using Base::is_open;
     using Base::open, Base::close;
 
+    template<typename T>
+    class Stream : public core::Stream::BasicSlot<Stream<T>, const T&, tb::SizeSlot> {
+      public:
+        Stream(Self* parent)
+        : parent_(parent) {}
+
+        void invoke(const T&e, tb::SizeSlot done) {
+            parent_->async_write(e, done);
+        }
+      protected:
+        Self* parent_;
+    };
+
+    class PeersMap {
+        using ServicesIterator = typename ServicesMap::iterator;
+        using PeersIterator = typename Service::PeersMap::iterator;
+      public:
+        using key_type = decltype(std::declval<PeersIterator>()->first);
+        using mapped_type = decltype(std::declval<PeersIterator>()->second);
+        
+        PeersMap(ServicesIterator begin, ServicesIterator end)
+        : begin_(begin)
+        , end_(end) {}
+
+        class iterator {
+          public:
+            iterator() = default;
+            iterator(ServicesIterator svc_it, ServicesIterator svc_end)
+            : svc_it_(svc_it)
+            , svc_end_(svc_end)
+            { 
+                if(svc_it_!=svc_end_) {
+                    maybe_peer_it_ = peers().begin();
+                }
+            }
+            typename Service::PeersMap& peers() {
+                return svc_it_->second->peers();
+            }
+
+            auto& operator*() { return *maybe_peer_it_.value(); }
+            auto* operator->() { return &(*maybe_peer_it_.value()); }
+            auto& operator++() { advance(); return *this; }
+            //auto& operator++(int) { advance(); return *this;}
+            friend bool operator==(const iterator& lhs, const iterator& rhs) {
+                return lhs.svc_it_ == rhs.svc_it_ && lhs.maybe_peer_it_ == rhs.maybe_peer_it_;
+            }
+            friend bool operator!=(const iterator& lhs, const iterator& rhs) {
+                return !operator==(lhs, rhs);
+            }
+
+            void advance() {
+                if(maybe_peer_it_) {
+                    ++maybe_peer_it_.value();
+                    if(maybe_peer_it_.value()==peers().end()) {
+                        maybe_peer_it_.reset();
+                        do {
+                            ++svc_it_;
+                            if(svc_it_!=svc_end_)
+                                maybe_peer_it_ = peers().begin();
+                            else 
+                                break;
+                        } while(!maybe_peer_it_);
+                    }
+                }
+            }
+          private:
+            ServicesIterator svc_it_;
+            ServicesIterator svc_end_;            
+            std::optional<PeersIterator> maybe_peer_it_;
+        };
+        auto begin() const { return iterator(begin_, end_); }
+        auto end() const { return iterator(begin_, end_); }
+      private:
+        ServicesIterator begin_, end_;
+    };
+    
     //using tt = tb::SocketTraits::sock_async_accept_t<ServerSocket>;
     const ServicesMap& services() { return services_; }
+
+    const PeersMap peers() const { return PeersMap(services_.begin(), services_.end()); }
+    PeersMap peers() { return PeersMap(services_.begin(), services_.end()); }
 
     Protocol& protocol() { return protocol_; }
 
@@ -206,7 +282,8 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
 
     template<typename Fn>
     int for_each_service(Fn fn) {
-        for(auto& [ep, svc]: services_) {
+        for(auto& it: services_) {
+            auto& svc=it.second;
             fn(*svc);
         }        
         return services_.size();
@@ -261,16 +338,6 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
       return count;
     }
 
-    template<typename MessageT>
-    void async_publish(const MessageT& message, tb::SizeSlot done) {
-      for_each_peer([&message, done, this](auto& peer) {
-        auto topic = message.topic();
-        if(peer.subscription().test(topic)) {
-            self()->async_write(peer, message, done);
-        }
-      });
-    }
-
     void async_handle(Peer& peer, const Packet& packet, tb::DoneSlot done) {
         TOOLBOX_DEBUG<<"received from: "<<peer.remote()<<", size:"<<packet.buffer().size();
         protocol_.async_handle(peer, packet, done);
@@ -284,12 +351,10 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
     NewPeerSignal& newpeer() { return newpeer_; }
 
   protected:
-    
     Protocol protocol_;
     ServicesMap services_; // indexed by local endpoint
     Endpoint remote_;
     NewPeerSignal newpeer_;
-    Routing routing_{self()};
 }; // BasicService
 
 } // ft::io

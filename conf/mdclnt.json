@@ -4,13 +4,13 @@
         "enabled": true
         ,"mode" : "udp"
         ,"connections":[                                               // channel A,            channel B
-            { "stream":"bestprice",  "type": "snapshot.udp", "urls": [
+            { "stream":"BestPrice",  "type": "snapshot.udp", "urls": [
                     "127.0.0.1:10050|interface=127.0.0.1:10010"
                 ] 
             }
         ]
         , "subscriptions":[
-            { "stream":"bestprice", "symbols": ["BABA", "JD"] }
+            { "stream":"BestPrice", "symbols": ["BABA", "JD"] }
         ]
     }
 }

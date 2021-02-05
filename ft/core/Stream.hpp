@@ -5,6 +5,7 @@
 #include "toolbox/util/Slot.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/capi/ft-types.h"
+#include <boost/core/noncopyable.hpp>
 
 namespace ft { inline namespace core {
 
@@ -13,7 +14,7 @@ namespace ft { inline namespace core {
 /// so, it has to have connect()/disconnect() methods and invoke()/empty()/operator()
 
 template<typename SequenceId>
-class Sequenced {
+class BasicSequenced {
 public:
     SequenceId sequence() const { return sequence_; }
     void sequence(SequenceId val) { sequence_ = val; }
@@ -33,26 +34,48 @@ enum class StreamState : int8_t {
 
 
 enum class StreamTopic: ft_topic_t {
-    Empty = 0,
-    BestPrice = FT_BESTPRICE,
-    Instrument = FT_INSTRUMENT,
-    Candle = FT_CANDLE,
+    Empty = FT_TOPIC_EMPTY,
+    BestPrice = FT_TOPIC_BESTPRICE,
+    Instrument = FT_TOPIC_INSTRUMENT,
+    Candle = FT_TOPIC_CANDLE,
 };
+
+
+inline constexpr StreamTopic topic_from_name(std::string_view s) {
+    if(s=="BestPrice") {
+        return StreamTopic::BestPrice;
+    } else if(s=="Instrument") {
+        return StreamTopic::Instrument;
+    } else  {
+        return StreamTopic::Empty;
+    }
+}
+inline constexpr const char* topic_to_name(const StreamTopic topic) {
+    switch(topic) {
+        case StreamTopic::BestPrice: return "BestPrice";
+        case StreamTopic::Instrument: return "Instrument";
+        case StreamTopic::Candle: return "Candle";
+        case StreamTopic::Empty: return "Empty";
+        default: return "Invalid";
+    }
+}
 
 inline std::ostream& operator<<(std::ostream& os, const StreamTopic self) {
     switch(self) {
-        case StreamTopic::Empty: return os << "Empty";
-        case StreamTopic::BestPrice: return os << "BestPrice";
-        case StreamTopic::Instrument: return os << "Instrument";
-        case StreamTopic::Candle: return os << "Candle";
-        default: return os << (int)tb::unbox(self);
+        case StreamTopic::BestPrice:
+        case StreamTopic::Instrument:
+        case StreamTopic::Candle:
+        case StreamTopic::Empty:
+            return os << topic_to_name(self);
+        default:
+            return os << tb::unbox(self);
     }
 }
 
 enum class Event : ft_event_t {
-    Empty = 0,
-    Snapshot = FT_SNAPSHOT,
-    Update = FT_UPDATE
+    Empty = FT_EVENT_EMPTY,
+    Snapshot = FT_EVENT_SNAPSHOT,
+    Update = FT_EVENT_UPDATE
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Event self) {
@@ -65,51 +88,137 @@ inline std::ostream& operator<<(std::ostream& os, const Event self) {
 }
 
 
-class StreamBase :  public BasicStateful<core::StreamState>, public Sequenced<std::uint64_t> 
-{
+using StreamSet = tb::BitMask<StreamTopic>;
+
+class Subscription: public tb::BitMask<StreamTopic> {
+    using Base = tb::BitMask<StreamTopic>;
 public:
-    StreamBase() = default;
+    Subscription() = default;
+    template<typename InstrumentsT, typename...ArgsT>
+    Subscription(InstrumentsT&& instruments, ArgsT...args)
+    : instruments_(std::move(instruments))
+    , Base(std::forward<ArgsT>(args)...)
+    {}
+    template<class MessageT>
+    bool check(const MessageT& m) {
+        if(!Base::test(m.topic()))
+            return false;
+        auto it = std::find(instruments_.begin(), instruments_.end(), m.instrument_id());
+        if(it==instruments_.end())
+            return false;
+        return true;
+    }
+    std::vector<InstrumentId>& instruments() { return instruments_; }
+    const std::vector<InstrumentId>& instruments() const { return instruments_; }
+protected:
+    std::vector<InstrumentId> instruments_;
+};
 
-    StreamBase(const StreamBase&) = delete;
-    StreamBase& operator=(const StreamBase&) = delete;
 
-    StreamBase(StreamBase&&) = delete;
-    StreamBase& operator=(StreamBase&&) = delete;
+class Stream
+: public core::BasicStateful<core::StreamState>
+, public core::BasicSequenced<std::uint64_t>
+, public core::Movable
+{
+    using Sequenced = core::BasicSequenced<std::uint64_t>;
+    using Stateful = core::BasicStateful<core::StreamState>;
+public:
+    Stream() = default;
+    Stream(StreamTopic topic) {
+        topic_= topic;
+    }
+    using Sequenced::sequence;
+    using Stateful::state;
 
     core::StreamStats& stats() { return stats_; }
 
-    StreamTopic topic() const { return topic_; }
+    constexpr StreamTopic topic() const { return topic_; }
     void topic(StreamTopic topic) { topic_ = topic; }
+
+    core::Subscription& subscription() { return sub_;}
+
+    constexpr std::string_view name() { return topic_to_name(topic()); }
+
+    template<typename...ArgsT>
+    class Signal; /// type erased signal
+
+    template<typename...ArgsT>
+    class Slot;  /// type erased sink
+
+    template<class Impl, typename...ArgsT>
+    class BasicSlot; /// typed sink (fast)
+
+    template<typename...ArgsT>
+    Signal<ArgsT...>& signal();
+    template<typename...ArgsT>
+    Slot<ArgsT...>& slot();
 protected:
-    core::StreamStats stats_;
     StreamTopic topic_{StreamTopic::Empty};
+    core::StreamStats stats_;
+    core::Subscription sub_;
 };
 
-/// (Input)Stream = Sequenced Signal
+/// (Input) Stream = Sequenced Signal
 template<typename ...ArgsT>
-class Stream : public StreamBase, public tb::Signal<ArgsT...>
+class Stream::Signal : public tb::Signal<ArgsT...>, public Stream
 {
     using Base = tb::Signal<ArgsT...>;
-    using Sequenced = Sequenced<std::uint64_t>;
 public:
     using Base::Base;
-    using Base::connect;
-    using Base::disconnect;
-    using Sequenced::sequence;
+    using Base::connect, Base::disconnect;
+    using Stream::sequence, Stream::topic;
+    using Stream::Stream;
+    
+    static Stream::Signal<ArgsT...>& from(Stream& strm) {
+        // FIXME: type check?
+        return static_cast<Stream::Signal<ArgsT...>&>(strm);
+    }
 };
 
-/// (Output) Sink is Sequenced Slot
-template<typename MessageT>
-class Sink: public StreamBase, public tb::Slot<const MessageT&, tb::SizeSlot> {
-    using Base = tb::Slot<const MessageT&, tb::SizeSlot>;
-    using Slot = Base;
-    using Sequenced = Sequenced<std::uint64_t>;
+
+template<typename...ArgsT>
+Stream::Signal<ArgsT...>& Stream::signal() {
+    return Stream::Signal<ArgsT...>::from(this);
+}
+
+
+/// Output stream (type erased)
+template<typename...ArgsT>
+class Stream::Slot : public tb::Slot<ArgsT...>,  public Stream  {
+    using Base = tb::Slot<ArgsT...>;
 public:
     using Base::Base;
-    Sink(Slot slot)
-    : Base(slot) {}
-    using Base::operator();
-    using Base::invoke;
+    using Base::connect, Base::disconnect;
+    using Stream::sequence, Stream::topic;
+    
+    static Slot& from(Stream& strm) {
+        // FIXME: type check?
+        return static_cast<Slot&>(strm);
+    }
 };
 
+template<typename...ArgsT>
+Stream::Slot<ArgsT...>& Stream::slot() {
+    return Stream::Slot<ArgsT...>::from(this);
+}
+/// Output Stream (faster if type is known)
+template<class Self, typename...ArgsT>
+class Stream::BasicSlot: public Stream::Slot<ArgsT...> {
+    using Base = Stream::Slot<ArgsT...>;
+public:
+    FT_SELF(Self);
+    using Stream::sequence, Stream::topic;
+    
+    /// binds pointer to derived Self 
+    BasicSlot() : Base(tb::bind<&Self::invoke>(self())) {}
+
+    void operator()(ArgsT... args) {
+        self()->invoke(std::forward<ArgsT>(args)...);
+    }
+
+    static Self& from(Stream& strm) {
+        // FIXME: type check?
+        return static_cast<Self&>(strm);
+    }
+};
 }} // ft::core

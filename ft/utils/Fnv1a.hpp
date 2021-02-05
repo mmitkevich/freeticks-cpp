@@ -12,7 +12,7 @@ constexpr std::size_t fnv1a_32(char const* s, std::size_t count)
     return ((count ? fnv1a_32(s, count - 1) : 2166136261u) ^ s[count]) * 16777619u;
 }
 
-int constexpr ct_strlen(const char* str)
+inline int constexpr ct_strlen(const char* str)
 {
     return *str ? 1 + ct_strlen(str + 1) : 0;
 }

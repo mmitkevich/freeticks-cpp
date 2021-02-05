@@ -1,4 +1,5 @@
 #pragma once
+#include "ft/core/Client.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Parameters.hpp"
@@ -22,16 +23,17 @@ using Timestamp = core::Timestamp;
 
 using Ticks = core::Ticks<3>;
 
-template<typename ProtocolT
-, typename SnapshotUpdatesT = SpbReplacingUpdates<spb::SnapshotKey, spb::Ticks>
-> class SpbBestPriceStream : public BasicSpbStream<SpbBestPriceStream<ProtocolT>, ProtocolT, core::TickStream>
+template<
+    typename ProtocolT
+,   typename SnapshotPolicyT = SpbReplacingUpdates<spb::SnapshotKey, spb::Ticks>
+> class SpbBestPriceStream : public BasicSpbStream<SpbBestPriceStream<ProtocolT>, core::Tick, ProtocolT>
 {
 public:
     using This = SpbBestPriceStream<ProtocolT>;
-    using Base = BasicSpbStream<This, ProtocolT, core::TickStream>;
-    using Protocol = typename Base::Protocol;
-    using Schema = typename Base::Schema;
-    using SnapshotUpdates = SnapshotUpdatesT;  
+    using Base = BasicSpbStream<This, core::Tick, ProtocolT>;
+    using typename Base::Protocol;
+    using typename Base::Schema;
+    using SnapshotPolicy = SnapshotPolicyT;  
 
     // packet type meta function
     template<typename MessageT>
@@ -47,7 +49,7 @@ public:
     using TypeList = mp::mp_list<PriceOnline, PriceSnapshot, SnapshotStart, SnapshotFinish, Heartbeat>;
 public:
     SpbBestPriceStream(Protocol& protocol)
-    : Base(protocol) 
+    : Base(protocol, StreamTopic::BestPrice) 
     {
         //TOOLBOX_DUMP_THIS;
     }
@@ -55,7 +57,6 @@ public:
     using Base::protocol;
     using Base::invoke;
 
-    static constexpr std::string_view name() { return "bestprice"; }
 public:
     void on_parameters_updated(const core::Parameters &params) {
         Base::on_parameters_updated(params);
@@ -66,16 +67,17 @@ public:
         on_message(payload.header(), payload.value(), pkt.header().recv_timestamp());
     }
     void on_message(const typename SnapshotStart::Header& h, const spb::Snapshot& e, Timestamp cts) { 
-        impl_.start(h.sequence(), e.update_seq);
+        policy_.start(h.sequence(), e.update_seq);
     }
     void on_message(const typename SnapshotFinish::Header& h, const spb::Snapshot& e, Timestamp cts) { 
-        impl_.finish(h.sequence(), e.update_seq);
+        policy_.finish(h.sequence(), e.update_seq);
     }
 
     void on_message(const typename PriceSnapshot::Header& h, const spb::Price& e, Timestamp cts) {
-        auto ticks = to_ticks(impl_.updates_snapshot_seq(), cts, h.server_time(), e);
+        auto ticks = to_ticks(policy_.updates_snapshot_seq(), cts, h.server_time(), e);
         SnapshotKey key {e.instrument, h.header.sourceid};
-        auto [tick, is_replaced] = impl_.snapshot(impl_.updates_snapshot_seq(), std::move(key), ticks);
+        auto [tick, is_replaced] = policy_.snapshot(policy_.updates_snapshot_seq(), std::move(key), ticks);
+        TOOLBOX_DUMP<<"SpbBestPriceStream::PriceSnapshot tick:"<<*tick<<" is_replaced:"<<is_replaced; 
         if(is_replaced) {
             invoke(tick->template as_size<1>());
         }
@@ -84,7 +86,8 @@ public:
     void on_message(const typename PriceOnline::Header& h, const spb::Price& e, Timestamp cts) {
         auto ticks = to_ticks(h.sequence(), cts, h.server_time(), e);
         SnapshotKey key {e.instrument, h.header.sourceid};
-        auto [tick, is_replaced]  = impl_.update(h.sequence(), std::move(key), ticks);
+        auto [tick, is_replaced]  = policy_.update(h.sequence(), std::move(key), ticks);
+        TOOLBOX_DUMP<<"SpbBestPriceStream::PriceOnline tick:"<<*tick<<" is_replaced:"<<is_replaced; 
         if(is_replaced) {
             invoke(tick->template as_size<1>());
         }
@@ -107,7 +110,8 @@ protected:
         spb::Ticks ticks;
         assert(e.sub_best.size()<=ticks.capacity());
         ticks.sequence(seq);
-        ticks.resize(std::min(e.sub_best.size(), ticks.capacity()));
+        auto bests_size = e.sub_best.size();
+        ticks.resize(std::min(bests_size, ticks.capacity()));
         for(std::size_t i=0; i<ticks.size(); i++) {
             auto &best = e.sub_best[i];
             auto &tick = ticks[i];
@@ -129,11 +133,11 @@ protected:
         switch(self.type) {
             case SubBest::Type::Buy: return core::TickSide::Buy;
             case SubBest::Type::Sell: return core::TickSide::Sell;
-            default: return core::TickSide::Invalid;
+            default: return core::TickSide::Empty;
         }
     }
 private:
-    SnapshotUpdates impl_;
+    SnapshotPolicy policy_;
 };
 
 }

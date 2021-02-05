@@ -31,7 +31,7 @@ public:
         if constexpr(core::ft_stats_enabled()) {
             std::size_t n = values_.size();
             os <<"msg_stat["<<n<<"]:"<<std::endl;
-            for(auto& [k,v]: values_) {
+            for(auto [k,v]: values_) {
                 os << std::setw(12) << v << "    " << k << std::endl;
             }
         }
@@ -47,9 +47,9 @@ protected:
     MsgStats values_;
 };
 
-template<typename DerivedT, typename ProtocolT, typename BaseT> 
-class BasicSpbStream : public BaseT {
-    using Base = BaseT;
+template<class DerivedT, class T, class ProtocolT> 
+class BasicSpbStream : public Stream::Signal<const T&> {
+    using Base = Stream::Signal<const T&>;
 public:
     using Protocol = ProtocolT;
     using Decoder = typename Protocol::Decoder;
@@ -60,8 +60,9 @@ public:
     using SpbPacket = typename Decoder::template SpbPacket<MessageT>;
     using Multiplexer = SequenceMultiplexer<DerivedT>;
 public:
-    explicit BasicSpbStream(Protocol& protocol)
-    : protocol_(protocol) {
+    explicit BasicSpbStream(Protocol& protocol, StreamTopic topic)
+    : protocol_(protocol)
+    , Base(topic) {
         //TOOLBOX_DUMP_THIS;
         //auto& ex = protocol.parent();
         //ex.state_changed().connect(tb::bind<&DerivedT::on_gateway_state_changed>(&impl()));
@@ -158,7 +159,7 @@ public:
                 using Stream = std::decay_t<decltype(*stream)>;
                 using TypeList = typename Stream::TypeList;//Message = typename CB::value_type::value_type;
 
-                mp::mp_for_each<TypeList>([&](auto &&message) {
+                mp::mp_for_each<TypeList>([&](const auto &message) {
                     using Message = std::decay_t<decltype(message)>;
                     if(!found && Message::msgid == frame.msgid) {
                         found = true;
@@ -170,7 +171,7 @@ public:
             });
             if(!found) {
                 stats_.on_rejected(frame);
-                TOOLBOX_DUMP << name()<<": ["<<(ptr-begin)<<"] unknown msgid "<<frame.msgid;
+                TOOLBOX_DUMP << "SpbDecoder rejected "<<name()<<": ["<<(ptr-begin)<<"] unknown msgid "<<frame.msgid;
             }
             ptr += sizeof(Frame) + frame.size;
         }

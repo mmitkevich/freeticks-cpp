@@ -5,7 +5,7 @@
 #include "ft/utils/Common.hpp"
 #include "QshDecoder.hpp"
 #include "ft/io/Service.hpp"
-#include "ft/core/MdClient.hpp"
+#include "ft/core/Client.hpp"
 #include <ostream>
 #include <string_view>
 
@@ -32,8 +32,7 @@ class QshMdClient:  public io::BasicService<QshMdClient, tb::Scheduler, core::St
     }
     core::StreamStats& stats() { return decoder_.ticks().stats(); }
     
-    core::TickStream& ticks(core::StreamTopic topic) { return decoder_.ticks(); }
-    core::InstrumentStream& instruments(core::StreamTopic topic) { return decoder_.instruments(); }
+    core::Stream& stream(core::StreamTopic topic) { return decoder_.stream(topic); }
 private:
     QshDecoder decoder_;
     std::string url_;

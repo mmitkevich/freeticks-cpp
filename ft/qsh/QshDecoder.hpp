@@ -87,11 +87,19 @@ public:
     void input(std::istream &is) {
         input_stream_ = &is;
     }
-    std::istream& input_stream(){ return *input_stream_;}
+    auto& input_stream(){ return *input_stream_;}
 
-    core::TickStream& ticks() { return ticks_; }
-    core::InstrumentStream& instruments() { return instruments_; }
-    
+    core::Stream& stream(core::StreamTopic topic) {
+        switch(topic) {
+            case core::StreamTopic::BestPrice:
+                return ticks();
+            case core::StreamTopic::Instrument:
+                return instruments();
+            default: throw std::logic_error("no such stream");
+        }
+    }
+    core::Stream::Signal<Tick>& ticks() { return ticks_; }
+    core::Stream::Signal<InstrumentUpdate>& instruments() { return instruments_; }
     /// decode stream until EOF
     void run();
 private:
@@ -110,8 +118,8 @@ private:
 private:
     State state_;
     std::istream* input_stream_;
-    core::TickStream ticks_;
-    core::InstrumentStream instruments_;
+    core::Stream::Signal<Tick> ticks_;
+    core::Stream::Signal<InstrumentUpdate> instruments_;
 };
 
 }

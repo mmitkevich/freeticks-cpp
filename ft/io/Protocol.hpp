@@ -8,8 +8,8 @@ namespace ft::io {
 
 template<class Self>
 class BasicProtocol: public core::Component {
-    FT_MIXIN(Self)
     using Base = core::Component;
+    FT_SELF(Self);
   public:
     /// open
     void open() {}

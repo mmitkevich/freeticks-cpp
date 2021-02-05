@@ -1,5 +1,6 @@
 #pragma once
 #include "ft/utils/Common.hpp"
+#include "ft/core/Ref.hpp"
 #include "toolbox/io/State.hpp"
 #include <exception>
 #include <deque>
@@ -15,6 +16,8 @@ using BasicStateSignal = tb::Signal<StateT, StateT, ExceptionPtr>;
 
 class IStateful {
 public:
+    using Ref = BasicRef<IStateful>;
+
     using State = core::State;
     using StateSignal = core::BasicStateSignal<State>;
     virtual ~IStateful() = default;

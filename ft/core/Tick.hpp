@@ -54,15 +54,15 @@ inline std::ostream& operator<<(std::ostream& os, const TickEvent self) {
 
 
 
-enum class TickSide: ft_side_t {
-    Invalid = 0,
+enum class TickSide: char {
+    Empty = 0,
     Buy     = 1,
     Sell    = -1,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const TickSide self) {
     switch(self) {
-        case TickSide::Invalid: return os<<"Invalid";
+        case TickSide::Empty: return os<<"Empty";
         case TickSide::Buy: return os<<"Buy";
         case TickSide::Sell: return os<<"Sell";
         default: return os<<(int)tb::unbox(self);
@@ -84,6 +84,9 @@ public:
     using Event = TickEvent;
     using Side = TickSide;
     using Policy = PolicyT;
+
+    static auto price_conv() { return PolicyT{}.price_conv(); }
+    static auto qty_conv() { return PolicyT{}.qty_conv(); }
 
     constexpr static std::size_t length() { return sizeof(ft_price_t); }
     
@@ -109,6 +112,7 @@ public:
 
 using TickElement = BasicTickElement<TickPolicy>;
 
+#pragma pack(push, 1)
 template<typename T, std::size_t SizeI=1>
 struct BasicTicks : ft_tick_t {
 public:
@@ -116,6 +120,9 @@ public:
     using Topic = core::StreamTopic;
     using Sequence = ft_seq_t;
     using Element = T;
+    using Field = core::Field;
+
+    constexpr BasicTicks() = default;
     
     std::size_t bytesize() const { return ft_hdr.ft_len + ft_items_count*ft_item_len; }
     static constexpr std::size_t capacity() { return SizeI; }
@@ -142,7 +149,7 @@ public:
     void venue_instrument_id(VenueInstrumentId val) { ft_venue_instrument_id = val; }
 
     const T* begin() const { return &operator[](0); }
-    const T* end() const { return &operator[](size()-1); }
+    const T* end() const { return &operator[](size()); }
 
     bool empty() const { 
         auto ev = event();
@@ -169,15 +176,32 @@ public:
     const BasicTicks<T,NewSizeI>& as_size() const {
         return *reinterpret_cast<const BasicTicks<T, NewSizeI>*>(this);
     }
+    
+    template<typename Field>
+    constexpr static tb::BitMask<Field> fields() {
+        /*return {
+            Field::Topic,
+            Field::Event,
+            Field::Symbol,
+            Field::InstrumentId,
+            Field::VenueInstrumentId,
+            Field::LocalTime,
+            Field::Time,
+            Field::Seq,
+            Field::Side,
+            Field::Price,
+            Field::Qty
+        };*/
+        return tb::BitMask<Field>{}.set();
+    }
 private:
     T data_[SizeI];
 };
+#pragma pack(pop)
 
 template<std::size_t SizeI>
 using Ticks = BasicTicks<TickElement, SizeI>;
 using Tick = Ticks<1>;
-using TickStream = core::Stream<const Tick&>;
-using TickSink = core::Sink<const Tick&>;
 
 
 template<typename...ArgsT>

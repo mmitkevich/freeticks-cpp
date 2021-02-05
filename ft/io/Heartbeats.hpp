@@ -13,7 +13,7 @@ struct HeartbeatsTraits {
 
 template<class Self>
 class BasicHeartbeats {
-    FT_MIXIN(Self);
+    FT_SELF(Self);
   public:
     
     tb::Duration heartbeats_interval() { 

@@ -18,7 +18,6 @@
 #include "ft/core/Parameters.hpp"
 #include "ft/core/EndpointStats.hpp"
 #include "ft/core/Stream.hpp"
-#include "ft/core/Subscription.hpp"
 #include "toolbox/net/ParsedUrl.hpp"
 #include "toolbox/net/Sock.hpp"
 #include "toolbox/sys/Time.hpp"
@@ -31,12 +30,12 @@
 
 namespace ft::io {
 
-template<class Self, class SocketT, class ParentT, typename...ArgsT> 
-class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typename ParentT::Reactor>>
+template<class Self, class SocketT, class ParentT, typename...> 
+class BasicConn : public EnableParent<ParentT, io::BasicReactiveComponent<typename ParentT::Reactor>>
 , public BasicHeartbeats<Self> // feature mixin
 {
-    FT_MIXIN(Self);
-    using Base = TypedParent<ParentT, io::BasicReactiveComponent<typename ParentT::Reactor>>;
+    FT_SELF(Self);
+    using Base = EnableParent<ParentT, io::BasicReactiveComponent<typename ParentT::Reactor>>;
   public:
     using SocketRef = SocketT;
     using Socket = std::decay_t<util::unwrap_reference_t<SocketT>>;
@@ -46,7 +45,7 @@ class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typenam
     using Transport = typename Socket::Protocol;
     using Packet = tb::Packet<tb::ConstBuffer, Endpoint>;
     using Stats = core::EndpointStats<tb::BasicIpEndpoint<Transport>>;
-    using Subscription = core::Subscription;
+    //using Subscription = core::Subscription;
   public:
     using Base::parent, Base::reactor;
     using Base::Base;
@@ -129,8 +128,20 @@ class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typenam
     const Endpoint& local() const { return local_; }
 
     ///remote endpoint connection is connected to
-    Endpoint& remote() { return packet_.header().src(); }
-    const Endpoint& remote() const { return packet_.header().src(); }
+    Endpoint& remote() { 
+        if constexpr(tb::SocketTraits::is_mcast<Socket>) {
+            return packet_.header().dst();
+        } else {
+            return packet_.header().src();
+        }
+    }
+    const Endpoint& remote() const { 
+        if constexpr(tb::SocketTraits::is_mcast<Socket>) {
+            return packet_.header().dst();
+        } else {
+            return packet_.header().src();
+        }
+    }
     
     /// configure connection using text url
     void url(std::string_view url) {
@@ -144,9 +155,8 @@ class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typenam
     }
 
     // subscription handled by connection
-    const Subscription& subscription() const  { return sub_; }
-    Subscription& subscription() { return sub_; }
-
+    //const Subscription& subscription() const  { return sub_; }
+    //Subscription& subscription() { return sub_; }
 
     /// connection stats
     Stats& stats() { return stats_; }
@@ -214,20 +224,20 @@ class BasicConn : public TypedParent<ParentT, io::BasicReactiveComponent<typenam
 
     template<typename HandlerT>
     void run() {
-        TOOLBOX_DUMPV(5)<<"self="<<self()<<", rbuf(size="<< self()->buffer_size()<<"), local:"<<local()<<", remote:"<<remote();
+        TOOLBOX_DUMP<<"Conn::async_read self="<<self()<<", rbuf(size="<< self()->buffer_size()<<"), local:"<<local()<<", remote:"<<remote();
         self()->async_read(rbuf().prepare(self()->buffer_size()), tb::bind(
         [this](ssize_t size, std::error_code ec) {
             if(!ec) {
                 assert(size>=0);
-                TOOLBOX_DUMPV(5)<<"self:"<<self()<<", size:"<<size<<" local:"<<local()<<", remote:"<<remote()<<", ec:"<<ec;
                 rbuf().commit(size);
                 // replace total buffer size with real received data size
                 packet_.buffer() = typename Packet::Buffer {packet_.buffer().data(), (size_t) size}; 
                 packet_.header().recv_timestamp(tb::WallClock::now());
-                TOOLBOX_DUMPV(5)<<"self:"<<self()<<", local:"<<local()<<",remote:"<<remote();
+                TOOLBOX_DUMP<<"Conn::recv self:"<<self()<<", size:"<<size<<
+                    " local:"<<local()<<", remote:"<<remote()<<", ec:"<<ec<<" pkt hdr:"<<packet_.header();
                 HandlerT{}(*self(), packet_, tb::bind([this](std::error_code ec) {
                     auto size = packet().buffer().size(); 
-                    TOOLBOX_DUMPV(5)<<"self:"<<self()<<", size:"<< size;
+
                     rbuf().consume(size);
                     if(!ec) {
                         self()->template run<HandlerT>();
@@ -249,12 +259,12 @@ protected:
     SocketRef socket_;
     Stats stats_;
     tb::ParsedUrl url_;
-    tb::DoneSlot write_;
+tb::DoneSlot write_;
     Endpoint local_;
     tb::Buffer rbuf_;
     tb::Buffer wbuf_;
     std::deque<std::tuple<std::size_t,tb::SizeSlot>> wqueue_;
-    Subscription sub_;
+    //Subscription sub_;
     Transport transport_ = Transport::v4();
 };
 

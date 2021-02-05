@@ -52,9 +52,14 @@ public:
     auto low() const { return Base::low; }
     auto high() const { return Base::high; }
 
+    auto pair() const { return std::pair<std::uint64_t, std::uint64_t> {low(), high()}; }
+
     bool operator==(const Identifier& rhs) const noexcept { return low()==rhs.low() && high()==rhs.high(); }
     bool operator!=(const Identifier& rhs) const noexcept { return low()!=rhs.low() || high()!=rhs.high(); }
-    bool operator<(const Identifier& rhs) const noexcept { return high()<rhs.high() || high()==rhs.high() && low()<rhs.low(); }
+    bool operator<(const Identifier& rhs) const noexcept { 
+        return high()<rhs.high() || 
+        (high()==rhs.high() && low()<rhs.low());
+    }
 
     Identifier operator^(const Identifier& rhs) {
         return Identifier {low()^rhs.low(), high()^rhs.high()} ;

@@ -16,6 +16,7 @@
 #include <boost/mp11/list.hpp>
 #include <cstdint>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <vector>
 
@@ -84,8 +85,8 @@ public:
     }
 
     void on_parameters_updated(const core::Parameters& params) {
-        for(auto e: params) {
-            auto strm = e.value_or("stream", std::string{});
+        for(auto e: params["connections"]) {
+            auto strm = e.str("stream", "");
             StreamsTuple strms = streams();
             mp::tuple_for_each(strms, [&](auto* s) {
                 if(s->name() == strm) {
@@ -98,14 +99,16 @@ public:
     std::string_view venue() { return Venue; }
     PriceConv price_conv() { return PriceConv();}
 
-    BestPriceStream& bestprice() { return bestprice_;}
-    InstrumentStream& instruments() { return instruments_; }
+    auto& bestprice() { return bestprice_;}
+    auto& instruments() { return instruments_; }
 
-    core::TickStream& ticks(core::StreamTopic topic) {
+    core::Stream& stream(core::StreamTopic topic) {
+        switch(topic) {
+            case core::StreamTopic::BestPrice: return bestprice();
+            case core::StreamTopic::Instrument: return instruments();
+            default: throw std::logic_error("no such stream");
+        }
         return bestprice();
-    }
-    core::InstrumentStream& instruments(core::StreamTopic topic) {
-        return  instruments();
     }
 private:
     Decoder decoder_;    

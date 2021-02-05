@@ -18,26 +18,11 @@
 #include "toolbox/util/Enum.hpp"
 #include "toolbox/util/RobinHood.hpp"
 
-#include "Trace.hpp"
+#include "Defs.hpp"
 #include "Signal.hpp"
+#include "Mixin.hpp"
 
-#define FT_NO_INLINE __attribute__((noinline)) 
-#define FT_ALWAYS_INLINE __attribute__((always_inline))
-#define FT_LIKELY(x) (x)
-#define FT_UNLIKELY(x) (x)
-
-/// CRTP boilerplate
-#define FT_MIXIN(Self) \
-    constexpr Self* self() { return static_cast<Self*>(this); } \
-    constexpr const Self* self() const { return static_cast<const Self*>(this); } 
-
-#define FT_CRTP(T, B) \
-  using Self = T; \
-  using Base = B; \
-  FT_MIXIN(Self)
-
-namespace toolbox {
-}
+namespace toolbox {}
 
 //namespace tb = toolbox;
 

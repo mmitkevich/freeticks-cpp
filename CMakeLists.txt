@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12)
 project(freeticks-cpp)
 include(GNUInstallDirs)
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../toolbox-cpp/cmake)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../toolbox-cpp/cmake ./cmake)
 
 set(CMAKE_C_STANDARD 11)
 # Emits -std=gnu++1z on OSX which is not working as expected.
@@ -31,6 +31,10 @@ endif()
 if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
   add_definitions(-DTOOLBOX_BUILD_DEBUG=1)
 endif()
+
+#add_definitions(--gcc-toolchain=/opt/gcc-8.2.0 -stdlib=libstdc++)
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L/opt/gcc-8.2.0/lib64")
 
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${PROJECT_SOURCE_DIR}/etc/cmake")
 
@@ -76,10 +80,13 @@ find_package(Boost 1.67 REQUIRED COMPONENTS unit_test_framework)
 if(NOT "${Boost_UNIT_TEST_FRAMEWORK_LIBRARY_RELEASE}" MATCHES "\\.a$")
   add_definitions(-DBOOST_TEST_DYN_LINK)
 endif()
-include_directories(SYSTEM ${Boost_INCLUDE_DIR})
+include_directories(PRIVATE ${Boost_INCLUDE_DIR})
 
 find_package(PCAP)
 find_package(AERON)
+find_package(ClickhouseCpp)
+include_directories(PRIVATE
+  "${CLICKHOUSECPP_INCLUDE_DIR}")
 
 add_subdirectory(ft)
 set(ft_core_LIBRARY ft-core-static)

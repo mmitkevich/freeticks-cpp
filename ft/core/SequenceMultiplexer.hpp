@@ -13,8 +13,8 @@ namespace ft { inline namespace core {
 
 /// list of source endpoints multiplexed using same sequence id
 template<typename PacketHandlerT, typename EndpointT = tb::IpEndpoint, typename SequenceT = std::uint64_t>
-class BasicSequenceMultiplexer : public core::Sequenced<SequenceT> {
-    using Base = core::Sequenced<SequenceT>;
+class BasicSequenceMultiplexer : public core::BasicSequenced<SequenceT> {
+    using Base = core::BasicSequenced<SequenceT>;
     using Sequence = SequenceT;
     using Endpoint = EndpointT;
 public:
@@ -35,8 +35,11 @@ public:
         if(endpoints_.size()==0)
             return true;
         for(auto &ep : endpoints_) {
-            //TOOLBOX_DUMP<<"match filter "<<ep<<" packet src "<<packet.header().dst();
-            if(ep == packet.header().dst()) {
+            bool is_matched = (ep == packet.header().dst());
+            TOOLBOX_DUMP<<"match filter name:"<<name_<<", ep: "<<ep<<
+                ", packet dst " << packet.header().dst() <<
+                " src " << packet.header().src() << " is_matched:"<<is_matched;
+            if(is_matched) {
                 return true;
             }
         }

@@ -12,14 +12,15 @@
 namespace ft::spb {
 
 template<typename ProtocolT>
-class SpbInstrumentStream : public BasicSpbStream<SpbInstrumentStream<ProtocolT>, ProtocolT, core::InstrumentStream>
+class SpbInstrumentStream : public BasicSpbStream<SpbInstrumentStream<ProtocolT>, core::InstrumentUpdate, ProtocolT>
 {
 public:
     using This = SpbInstrumentStream<ProtocolT>;
-    using Base = BasicSpbStream<This, ProtocolT, core::InstrumentStream>;
-    using Protocol = typename Base::Protocol;
-    using Decoder = typename Base::Decoder;
-    using Schema = typename Base::Schema;
+    using Base = BasicSpbStream<This, core::InstrumentUpdate, ProtocolT>;
+    using typename Base::Protocol;
+    using typename Base::Decoder;
+    using typename Base::Schema;
+    
     template<typename MessageT>
     using SpbPacket = typename Base::template SpbPacket<MessageT>;
 
@@ -28,7 +29,7 @@ public:
 
 public:
     SpbInstrumentStream(Protocol& protocol)
-    : Base(protocol) 
+    : Base(protocol, ft::core::StreamTopic::Instrument) 
     {
         //TOOLBOX_DUMP_THIS;
     }
@@ -36,36 +37,30 @@ public:
     using Base::invoke;
     using Base::protocol;
 
-    static constexpr std::string_view name() { return "instrument"; }
-
     void on_packet(const SpbPacket<InstrumentSnapshot>& pkt) {
         //TOOLBOX_INFO << pkt;
         auto& d = pkt.value().value();
         core::BasicInstrumentUpdate<4096> u;
         u.symbol(d.symbol.str());
         u.exchange(protocol().exchange());
+        u.venue_symbol(d.symbol.str());
         auto id = std::hash<std::string>{}(u.exchange_symbol());
         u.instrument_id(Identifier(id));
         u.venue_instrument_id(Identifier(d.instrument_id));
-        invoke(u.as_size<0>());
+        invoke(std::move(u.as_size<0>()));
     }
     
     void on_parameters_updated(const core::Parameters& params) {
         Base::on_parameters_updated(params);
-        std::string_view type = params["type"].get_string();
-        if(type == "snapshot.xml") {
-            for(auto e:params["urls"]) {
-                std::string url = std::string{e.get_string()};
-                //TOOLBOX_DUMP_THIS;
-                snapshot_xml_url_ = url;
-                //parent().state_hook(core::State::Started, [url, this] { snapshot_xml(url); });
-            }
+        std::string_view type = params.strv("type");
+        if(type == "snapshot") {
+            params["files"].copy(snapshot_files_);
         }
     }
     void open() {
         //TOOLBOX_DUMP_THIS;
-        if(!snapshot_xml_url_.empty())
-            snapshot_xml(snapshot_xml_url_);
+        for(auto& file: snapshot_files_)
+            snapshot_xml(file);
     }
     void snapshot_xml(std::string_view path) {
         TOOLBOX_DEBUG<<"start load snapshot file "<<path;
@@ -90,13 +85,14 @@ public:
             u.instrument_type(InstrumentType::Stock);
             u.venue_instrument_id(Identifier(viid));
 
-            if(is_test!="true")
-                invoke(u.as_size<0>());
+            if(is_test!="true") {
+                invoke(std::move(u.as_size<0>()));
+            }
         }
         TOOLBOX_DEBUG<<"done loading snapshot file "<<path;
     }
 private:
-    std::string snapshot_xml_url_;
+    std::vector<std::string> snapshot_files_;
 };
 
 }

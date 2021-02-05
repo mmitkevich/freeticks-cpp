@@ -2,11 +2,16 @@
 #include "ft/core/Component.hpp"
 #include "ft/core/Identifiable.hpp"
 #include "ft/utils/Numeric.hpp"
-
 #include "toolbox/util/Enum.hpp"
 #include "toolbox/sys/Time.hpp"
+#include <boost/callable_traits/is_invocable.hpp>
 #include <cstdint>
 #include <ostream>
+#include <sstream>
+#include <toolbox/util/TypeTraits.hpp>
+#include <type_traits>
+
+using namespace boost::callable_traits;
 
 namespace ft { inline namespace core {
 
@@ -47,82 +52,67 @@ struct TickPolicy {
     constexpr QtyConv qty_conv() { return QtyConv(CoreQtyMultiplier); }
 };
 
-enum class Fields: uint64_t {
-    BidPrice    = 1<<0,
-    BidQty      = 1<<1,
-    AskPrice    = 1<<2,
-    AskQty      = 1<<3,
-    Time        = 1<<4,
-    LocalTime   = 1<<5,
-    LastPrice   = 1<<6,
-    LastQty     = 1<<7,
-    LastTime    = 1<<8,
-    VenueInstrumentId  = 1<<16,
-    VenueSymbol = 1<<17,
-    InstrumentId = 1<<18,
-    Exchange    = 1<<19,
-    Symbol      = 1<<20
+
+// values represent bits 1..64, 0 is "empty"
+enum class Field: uint8_t {
+    Empty       = 0,
+    // Tick fields
+    Seq,
+    LocalTime,    
+    Time,
+    InstrumentId,    
+    VenueInstrumentId,
+    VenueSymbol,
+    Exchange,
+    Price,
+    Qty,
+    Side,
+    // Resolved symbol
+    Symbol,    
+    // BestPrice fields
+    BidPrice,
+    BidQty,
+    AskPrice,
+    AskQty,
+    LastPrice,
+    LastQty,
+    LastTime,
+    Event,
+    Topic
 };
 
-inline std::ostream& operator<<(std::ostream& os, Fields self) {
+inline std::ostream& operator<<(std::ostream& os, Field self) {
     switch(self) {
-        case Fields::BidPrice: return os << "BidPrice";
-        case Fields::BidQty: return os << "BidQty";
-        case Fields::AskPrice: return os << "AskPrice";
-        case Fields::AskQty: return os << "AskQty";
-        case Fields::Time: return os << "Time";
-        case Fields::LocalTime: return os << "LocalTime";
-        case Fields::InstrumentId: return os << "InstrumentId";
-        case Fields::Symbol: return os << "Symbol";
-        case Fields::LastPrice: return os << "LastPrice";
-        case Fields::LastQty: return os << "LastQty";
-        case Fields::LastTime: return os << "LastTime";
-        case Fields::VenueInstrumentId: return os << "VenueInstrumentId";
-        case Fields::Exchange: return os << "Exchange";
-        case Fields::VenueSymbol: return os <<"VenueSymbol";
-        default: return os << toolbox::unbox(self);
+        case Field::Seq: return os << "Seq";
+        case Field::BidPrice: return os << "BidPrice";
+        case Field::BidQty: return os << "BidQty";
+        case Field::AskPrice: return os << "AskPrice";
+        case Field::AskQty: return os << "AskQty";
+        case Field::Time: return os << "Time";
+        case Field::LocalTime: return os << "LocalTime";
+        case Field::InstrumentId: return os << "InstrumentId";
+        case Field::Symbol: return os << "Symbol";
+        case Field::LastPrice: return os << "LastPrice";
+        case Field::LastQty: return os << "LastQty";
+        case Field::LastTime: return os << "LastTime";
+        case Field::VenueInstrumentId: return os << "VenueInstrumentId";
+        case Field::Exchange: return os << "Exchange";
+        case Field::VenueSymbol: return os <<"VenueSymbol";
+        case Field::Price: return os << "Price";
+        case Field::Qty: return os << "Qty";
+        case Field::Side: return os << "Side";
+        case Field::Event: return os <<"Event";
+        case Field::Topic: return os <<"Topic";
+        case Field::Empty: return os <<"<empty>";
+        default: return os << "F"<<(std::size_t)toolbox::unbox(self);
     }
 }
 
-template<class Self, typename FieldsT>
-class BasicFields {
-    FT_MIXIN(Self);
-public:
-    using Fields = FieldsT;
-    uint64_t fields_mask() const { return fields_mask_;}
-    uint64_t& fields_mask() { return fields_mask_; }
-    bool contains_field(Fields field) const {
-        return fields_mask_ & tb::unbox(field);
-    }
-protected:
-    uint64_t fields_mask_{};
-};
+inline std::string to_string(Field field) {
+    std::ostringstream ss;
+    ss<<field;
+    return ss.str();
+}
 
-template<class Self, typename FieldsT>
-class BasicFieldsWriter : public BasicFields<Self, FieldsT> {
-    using Base = BasicFields<Self, FieldsT>;
-    FT_MIXIN(Self);
-public:
-    using Fields = FieldsT;
-    void write_field(std::ostream& os, Fields field) const {
-        switch(field) {
-            case Fields::InstrumentId: os << self()->instrument_id(); break;
-            case Fields::Exchange: os << "\""<<self()->exchange()<<"\""; break;
-            case Fields::VenueSymbol: os << "\""<<self()->venue_symbol()<<"\""; break;
-            case Fields::Symbol: os << "\""<<self()->symbol()<<"\""; break;
-            case Fields::VenueInstrumentId: os << self()->venue_instrument_id(); break;
-            case Fields::Time: os << toolbox::sys::put_time<toolbox::Nanos>(self()->send_time()); break;
-            case Fields::LocalTime: os << toolbox::sys::put_time<toolbox::Nanos>(self()->recv_time()); break;
-            default:  os << "<invalid>";
-        }
-    }
-    InstrumentId instrument_id() const { return {}; }
-    VenueInstrumentId venue_instrument_id() const { return {}; }
-    std::string_view venue_symbol() const { return {}; }    
-    std::string_view exchange() const { return {}; }
-    std::string_view symbol() const { return {}; }
-    ft::Timestamp send_time() const { return {}; }
-    ft::Timestamp recv_time() const { return {}; }
-};
 
 }} // ft::core

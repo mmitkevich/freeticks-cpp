@@ -1,36 +1,62 @@
 {
 "clients": {
     "SPB_MDBIN":{
-        "enabled": true
-        //,"mode": "pcap"
-        ,"mode": "mcast"
-        ,"connections":[                                                   // channel A,            channel B
-            { "stream":"bestprice",  "type": "snapshot.mcast", "interface":"10.1.110.55", 
-                "urls": ["233.26.38.16:6016", "233.26.38.144:6144"] }
-            ,{ "stream":"bestprice",  "type": "update.mcast",  "interface":"10.1.110.55", 
-                "urls": ["233.26.38.17:6017", "233.26.38.145:6145"],    "recovery": "BEX.TOB" }
-            //,{ "stream":"instrument", "type": "snapshot.mcast", "interface":"10.1.110.55", "urls": ["233.26.38.36:6036", "233.26.38.164:6164"] }
-            //,{ "stream":"instrument", "type": "update.mcast",  "interface":"10.1.110.55", "urls": ["233.26.38.37:6037", "233.26.38.165:6165"] }
-            ,{ "stream":"instrument", "type": "snapshot.xml", "urls": ["/opt/tbricks/instr-2020-11-02.xml"]}
-        ]
-        ,"pcaps": ["/opt/tbricks/spb_20201013.pcap"]
-        ,"filter": {
-            "protocols": ["udp"]
-            ,"dst": [
-                "233.26.38.16:6016","233.26.38.144:6144"
-                ,"233.26.38.17:6017", "233.26.38.145:6145"
-                //,"233.26.38.36:6036", "233.26.38.164:6164"
-                //,"233.26.38.37:6037", "233.26.38.165:6165"
-            ]
+        "enable": ["serv", "pcap"]
+        , "protocol": "mcast" // FIXME: make MdClient support multiple Conn types
+        , "connections": [  // channel A,            channel B
+            {   "stream":"BestPrice",  "type": "snapshot", "interface":"10.1.110.55"
+                    , "urls": ["233.26.38.16:6016", "233.26.38.144:6144"] }
+            , { "stream":"BestPrice",  "type": "update", "interface":"10.1.110.55"
+                    , "urls": ["233.26.38.17:6017", "233.26.38.145:6145"],    "recovery": "BEX.TOB" }
+            , { "stream":"Instrument", "type": "snapshot"
+                , "files": ["/opt/tbricks/instr-2020-11-02.xml"]
+                , "interface":"10.1.110.55"
+                    , "urls": ["233.26.38.36:6036", "233.26.38.164:6164"] }
+            , { "stream":"instrument", "type": "update", "interface":"10.1.110.55"
+                    , "urls": ["233.26.38.37:6037", "233.26.38.165:6165"] }
+        ],
+        "pcap": {
+            "urls": ["/opt/tbricks/spb_20201012.pcap.gz", "/opt/tbricks/spb_20201013.pcap"]
+            , "filter": {
+                "protocols": ["udp"]
+                ,"dst": [
+                    "233.26.38.16:6016","233.26.38.144:6144"
+                    , "233.26.38.17:6017", "233.26.38.145:6145"
+                    , "233.26.38.36:6036", "233.26.38.164:6164"
+                    , "233.26.38.37:6037", "233.26.38.165:6165"
+                ]
+            }
         }
-    }
-}, 
-"servers": {
-    "TB1": {
-        "enabled": true
-        , "connections" : [
-            { "stream": "bestprice", "type":"snapshot.udp", "interface": "127.0.0.1:10050" }
+    },
+    "TB1" : {
+         "enable": ["clnt"]
+        , "protocol" : "udp"
+        , "connections":[
+            {"stream":"BestPrice",  "type": "snapshot"
+            , "urls": ["127.0.0.1:10050|interface=127.0.0.1:10010"]}
         ]
+        , "subscriptions":[
+            { "stream":"BestPrice", "symbols": ["BABA", "JD"] }
+        ]
+    }
+}
+, "servers": {
+    "TB1": {
+        "enable": ["serv"]
+        , "connections" : [
+            { "stream": "BestPrice", "type":"snapshot", "interface": "127.0.0.1:10050" }
+        ]
+    }
+}
+, "sinks": {
+    "ClickHouse" : {
+        "enable": ["pcap"]
+        , "url": "10.1.110.24:9000"
+        , "connections" : [{
+            // select * from spb_taq where LocalTime>(select addMinutes(max(LocalTime),-10) from spb_taq) limit 5
+            "stream":"BestPrice", "table": "spb_taq"
+            //, "fields": ["Time", "LocalTime", "Event", "Symbol", "InstrumentId", "VenueInstrumentId", "Price", "Qty", "Side"]
+        }]
     }
 }
 }

@@ -21,8 +21,8 @@ public:
     void on_report(std::ostream& os) {
         if constexpr(enabled()) {
             os << "dst_stat:" << std::endl;
-            for(auto& [k,v]: dst_stat_) {
-                os <<  std::setw(12) << v << "    " << k << std::endl;
+            for(auto it : dst_stat_) {
+                os <<  std::setw(12) << it.second << "    " << it.first << std::endl;
             }
         }
     }
