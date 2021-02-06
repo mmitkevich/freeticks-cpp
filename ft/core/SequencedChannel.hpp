@@ -12,13 +12,13 @@ namespace ft { inline namespace core {
 
 
 /// list of source endpoints multiplexed using same sequence id
-template<typename PacketHandlerT, typename EndpointT = tb::IpEndpoint, typename SequenceT = std::uint64_t>
-class BasicSequenceMultiplexer : public core::BasicSequenced<SequenceT> {
+template<class HandlerT, class EndpointT, typename SequenceT>
+class BasicSequencedChannel : public core::BasicSequenced<SequenceT> {
     using Base = core::BasicSequenced<SequenceT>;
     using Sequence = SequenceT;
     using Endpoint = EndpointT;
 public:
-    BasicSequenceMultiplexer(PacketHandlerT &handler, std::string_view name)
+    BasicSequencedChannel(HandlerT& handler, std::string_view name)
     : handler_(handler)
     , name_(name) {}
     
@@ -29,8 +29,8 @@ public:
     const std::vector<Endpoint>& endpoints() const {
         return endpoints_;
     }
-    template<typename TypedPacketT>
-    bool match(const TypedPacketT& packet) const {
+    template<class PacketT>
+    bool match(const PacketT& packet) const {
         
         if(endpoints_.size()==0)
             return true;
@@ -45,15 +45,16 @@ public:
         }
         return false;
     }
-    template<typename TypedPacketT>
-    bool is_stale(const TypedPacketT& packet) const {
+
+    template<class PacketT>
+    bool is_stale(const PacketT& packet) const {
         return packet.sequence()<=sequence();
     }
 
-    template<typename TypedPacketT>
-    void on_packet(const TypedPacketT& packet) {
+    template<class PacketT>
+    void on_packet(const PacketT& packet) {
         if(is_stale(packet)) {
-            handler_.on_stale(packet, *this);
+            handler_.on_stale(packet);
         } else {
             sequence(packet.sequence());
             handler_.on_packet(packet);
@@ -72,7 +73,7 @@ public:
 private:
     std::vector<Endpoint> endpoints_;
     std::string_view name_;
-    PacketHandlerT& handler_;
+    HandlerT& handler_;
 };
 
 

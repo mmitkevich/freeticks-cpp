@@ -16,7 +16,7 @@
                     , "urls": ["233.26.38.37:6037", "233.26.38.165:6165"] }
         ],
         "pcap": {
-            "urls": ["/opt/tbricks/spb_20201012.pcap.gz", "/opt/tbricks/spb_20201013.pcap"]
+            "urls": ["/opt/tbricks/spb_20201012.tgz", "/opt/tbricks/spb_20201013.pcap"]
             , "filter": {
                 "protocols": ["udp"]
                 ,"dst": [

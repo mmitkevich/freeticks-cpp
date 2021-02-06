@@ -13,6 +13,7 @@
 #include "ft/core/State.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/Tick.hpp"
+#include "ft/io/Protocol.hpp"
 #include "toolbox/net/ParsedUrl.hpp"
 #include "toolbox/sys/Log.hpp"
 #include "toolbox/sys/Time.hpp"
@@ -227,11 +228,12 @@ protected:
 
 /// Multiple sinks
 template<class Self, class L, typename...O>
-class BasicClickHouseService: public io::BasicMultiService<Self, L, O...>, public ClickHouseConn
+class BasicClickHouseService: public io::BasicMultiService<Self, L, O...>, public ClickHouseConn, public BasicSignalSlot<Self>
 {
     FT_SELF(Self);
     using Base = io::BasicMultiService<Self, L, O...>;
     using Conn = ClickHouseConn;
+    using SignalSlot = BasicSignalSlot<Self>;
   public:
     using Base::Base;
     using Conn::url;
@@ -253,12 +255,11 @@ class BasicClickHouseService: public io::BasicMultiService<Self, L, O...>, publi
     void instruments(core::InstrumentsCache* val) { instruments_ = val; }
     core::InstrumentsCache* instruments() { return instruments_; }
 
-    core::Stream& stream(core::StreamTopic topic) { 
+    core::Stream& slot(core::StreamTopic topic) { 
       switch(topic) {
         case core::StreamTopic::BestPrice:
           return Base::template service<core::Tick>(topic);
-        default:
-          throw std::logic_error("no such stream");
+        default: return SignalSlot::slot(topic);
       }
     }
 
@@ -272,7 +273,7 @@ class BasicClickHouseService: public io::BasicMultiService<Self, L, O...>, publi
             if(topic==StreamTopic::Empty) {
                 throw std::logic_error("no such stream");
             }
-            stream(topic);  // will make_stream;
+            slot(topic);  // will make_stream;
             for_each_service([&topic, p=pa](auto& svc) {
                 //TOOLBOX_DUMP<<"svc.topic "<<svc.topic()<<", topic "<<topic;
                 if(svc.topic() == topic) {

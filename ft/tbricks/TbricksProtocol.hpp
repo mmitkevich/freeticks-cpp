@@ -1,4 +1,5 @@
 #pragma once
+#include "boost/mp11/bind.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Requests.hpp"
 #include "ft/core/Stream.hpp"
@@ -17,20 +18,23 @@
 
 namespace ft::tbricks {
 
-
-template<typename BinaryPacketT>
-class TbricksProtocol : public io::BasicProtocol<TbricksProtocol<BinaryPacketT>> {
-    using This = TbricksProtocol<BinaryPacketT>;
-    using Base = io::BasicProtocol<This>;
+// plugin mixin
+template<class Self, typename...>
+class TbricksProtocol : public io::BasicMdProtocol<Self> {
+    FT_SELF(Self);
+protected:    
+    using Base = io::BasicMdProtocol<Self>;
 public:
     using Message = tbricks::v1::Message<0>;
     using MessageOut = tbricks::v1::Message<4096>;
     using MessageType = tbricks::v1::MessageType;
     using Sequence = tbricks::v1::Sequence;
-    using BinaryPacket = BinaryPacketT;
 
     using Base::Base;
     using Base::async_write;
+
+    using BestPriceSignal = typename Base::template Signal<core::Tick>;
+    using InstrumentSignal = typename Base::template Signal<core::InstrumentUpdate>;
 
     template<typename ConnT, typename DoneT>
     void async_write(ConnT& conn, const SubscriptionRequest& request, DoneT done) {
@@ -53,8 +57,8 @@ public:
     }
     constexpr std::string_view name() { return "TB1"; }
     
-    template<typename ConnT, typename DoneT>
-    void async_handle(ConnT& conn, const BinaryPacket& e, DoneT done) { 
+    template<class ConnT, class PacketT, class DoneT>
+    void async_handle(ConnT& conn, const PacketT& e, DoneT done) { 
         std::error_code ec{};
 
         auto& buf = e.buffer();
@@ -64,23 +68,29 @@ public:
         switch(msg.msgtype()) {
             case MessageType::SubscriptionRequest: {
                 TOOLBOX_INFO << name()<<": in: t:"<<(int)tb::unbox(msg.msgtype())<<", sym:'"<<msg.symbol().str()<<"', seq:"<<msg.seq();
-                core::SubscriptionRequest req {};
-                req.symbol(msg.symbol().str());
-                req.request(Request::Subscribe);
-                TOOLBOX_INFO << req;
-                subscription().invoke(conn.id(), std::move(req));
+                if constexpr(TB_IS_VALID(self(), self()->subscription())) {
+                    core::SubscriptionRequest req {};
+                    req.symbol(msg.symbol().str());
+                    req.request(Request::Subscribe);
+                    TOOLBOX_INFO << req;
+                    self()->subscription().invoke(conn.id(), std::move(req));
+                }
             } break;
             case MessageType::SubscriptionCancelRequest: {
-                core::SubscriptionRequest req;
-                req.symbol(msg.symbol().str());
-                req.request(core::Request::Unsubscribe);
-                subscription().invoke(conn.id(), std::move(req));
+                if constexpr(TB_IS_VALID(self(), self()->subscription())) {
+                    core::SubscriptionRequest req;
+                    req.symbol(msg.symbol().str());
+                    req.request(core::Request::Unsubscribe);
+                    self()->subscription().invoke(conn.id(), std::move(req));
+                }
             } break;
             case MessageType::ClosingEvent: {
-                core::SubscriptionRequest req;
-                req.symbol(msg.symbol().str());
-                req.request(core::Request::UnsubscribeAll);
-                subscription().invoke(conn.id(), std::move(req));
+                if constexpr(TB_IS_VALID(self(), self()->subscription())) {
+                    core::SubscriptionRequest req;
+                    req.symbol(msg.symbol().str());
+                    req.request(core::Request::Close);
+                    self()->subscription().invoke(conn.id(), std::move(req));
+                }
             } break;
             case MessageType::HeartBeat: {
                 if constexpr(io::HeartbeatsTraits::has_heartbeats<ConnT>) {
@@ -100,28 +110,15 @@ public:
     }
 
     auto& stats() { return stats_; }
-
-    /// requests
-    core::SubscriptionSignal& subscription() { return subscription_; }
-
-    /// streams
-    core::Stream& stream(core::StreamTopic topic) {
-        switch(topic) {
-            case core::StreamTopic::BestPrice: return ticks_;
-            case core::StreamTopic::Instrument: return instruments_;
-            default: throw std::logic_error("no such stream");
-        } 
-    }
     
-    void on_parameters_updated(const core::Parameters& params) { }
-
+    auto& bestprice() { return bestprice_signal_; }
+    auto& instruments() { return instruments_signal_; }
 protected:
-    core::StreamStats stats_;
-    // from client to server
-    core::SubscriptionSignal subscription_;
     // from server to client
-    core::Stream::Signal<core::Tick> ticks_;
-    core::Stream::Signal<core::InstrumentUpdate> instruments_;
+    BestPriceSignal bestprice_signal_;
+    InstrumentSignal instruments_signal_;
+
+    core::StreamStats stats_;
     // from client to server 
     Sequence out_seq_ {};
     RequestId  out_req_id_;

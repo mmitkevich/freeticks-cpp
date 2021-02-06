@@ -1,14 +1,51 @@
 #pragma once
 
 #include "ft/core/Component.hpp"
+#include "ft/core/Parameters.hpp"
+#include "toolbox/io/Buffer.hpp"
 #include "toolbox/sys/Log.hpp"
+#include "ft/core/Stream.hpp"
 
 namespace ft::io {
 
 
-template<class Self>
-class BasicProtocol: public core::Component {
-    using Base = core::Component;
+
+template<class Self, typename...>
+class BasicSignalSlot {
+    FT_SELF(Self);
+public:
+    core::Stream& signal(StreamTopic topic) {
+        std::stringstream ss;
+        ss << "no signal for topic "<<topic;
+        throw std::logic_error(ss.str());
+    }
+
+    core::Stream& slot(StreamTopic topic) {
+        std::stringstream ss;
+        ss << "no slot for topic "<<topic;
+        throw std::logic_error(ss.str());
+    }
+
+    template<typename T>
+    class Slot : public core::Stream::BasicSlot<Slot<T>, const T&, tb::SizeSlot> {
+      public:
+        Slot(Self* parent)
+        : parent_(parent) {}
+
+        void invoke(const T&e, tb::SizeSlot done) {
+            parent_->async_write(e, done);
+        }
+      protected:
+        Self* parent_;
+    };
+
+    template<typename T>
+    using Signal = core::Stream::Signal<const T&, tb::SizeSlot>;
+};
+
+
+template<class Self, typename...O>
+class BasicProtocol : public BasicSignalSlot<Self, O...> {
     FT_SELF(Self);
   public:
     /// open
@@ -47,6 +84,22 @@ class BasicProtocol: public core::Component {
     void async_read(ConnT& conn, tb::MutableBuffer buf, DoneT done) {
         conn.async_read(buf, std::forward<DoneT>(done));
     }
+    
+    void on_parameters_updated(const core::Parameters& params) {}
+
 }; // Protocol
 
+template<class Self, typename...O>
+class BasicMdProtocol : public BasicProtocol<Self, O...> {
+    using Base = BasicProtocol<Self, O...>;
+    FT_SELF(Self);
+  public:
+    core::Stream& signal(core::StreamTopic topic) {
+        switch(topic) {
+            case core::StreamTopic::BestPrice: return self()->bestprice();
+            case core::StreamTopic::Instrument: return self()->instruments();
+            default: return Base::signal(topic);
+        } 
+    }
+};
 } // ft::io

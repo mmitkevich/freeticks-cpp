@@ -1,5 +1,4 @@
-#include <boost/mp11.hpp>
-#include <boost/mp11/detail/mp_list.hpp>
+
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -12,11 +11,11 @@
 #include <system_error>
 #include <unordered_map>
 #include <unordered_set>
+#include "ft/utils/Common.hpp"
 #include "ft/core/Component.hpp"
 #include "ft/core/Service.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/Tick.hpp"
-#include "ft/utils/Common.hpp"
 #include "ft/capi/ft-types.h"
 #include "ft/core/Instrument.hpp"
 #include "ft/core/InstrumentsCache.hpp"
@@ -33,6 +32,7 @@
 #include "toolbox/net/DgramSock.hpp"
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/EndpointFilter.hpp"
+#include "toolbox/net/Protocol.hpp"
 #include "toolbox/sys/Log.hpp"
 #include "toolbox/sys/Time.hpp"
 #include "toolbox/util/Finally.hpp"
@@ -99,7 +99,7 @@ public:
     if (state == core::State::Closed) {
       // gateway().report(std::cerr);
       auto elapsed = tb::MonoClock::now() - start_timestamp_;
-      std::size_t total_received = stat_sum(0U, [](auto& cl){ return cl.stream(core::StreamTopic::BestPrice).stats().received(); });
+      std::size_t total_received = stat_sum(0U, [](auto& cl){ return cl.signal(core::StreamTopic::BestPrice).stats().received(); });
       std::cerr << " read " << total_received << " in "
                    << elapsed.count() / 1e9 << " s"
                    << " at " << (1e3 * total_received / elapsed.count())
@@ -111,7 +111,7 @@ public:
   void forward(ServicesT& services, const T& e, tb::DoneSlot done) {
     for(auto& it: services) {
       auto& svc = it.second;
-      auto& slot = Stream::Slot<const T&, tb::DoneSlot>::from(svc->stream(e.topic()));
+      auto& slot = Stream::Slot<const T&, tb::DoneSlot>::from(svc->slot(e.topic()));
       slot(e, done);
     }
   }
@@ -133,11 +133,11 @@ public:
   template<class T>
   using Factory = std::function<std::unique_ptr<T>(std::string_view id, core::Component* parent)>;
 
-  template<typename BinaryPacketT, template<typename ProtocolT> typename ClientTT>
+  template<template<template<class...> class ProtocolM> class ClientM, class EndpointT>
   Factory<IClient> make_mdclients_factory () {
     return [this](std::string_view venue, core::Component* parent) -> std::unique_ptr<core::IClient> { 
       if (venue=="SPB_MDBIN") {
-          using ClientImpl = ClientTT<spb::SpbUdpProtocol<BinaryPacketT>>;
+          using ClientImpl = ClientM<spb::SpbProtocol<EndpointT>::template Mixin>;
           using Proxy = core::Proxy<ClientImpl, core::IClient::Impl>;
           return std::unique_ptr<core::IClient>(new Proxy(reactor(), parent));
       } else if(venue=="QSH") {
@@ -145,7 +145,7 @@ public:
           using Proxy = core::Proxy<ClientImpl, core::IClient::Impl>;
           return std::unique_ptr<core::IClient>(new Proxy(reactor(), parent));
       } else if(venue=="TB1") {
-          using ClientImpl = ClientTT<tbricks::TbricksProtocol<BinaryPacketT>>;
+          using ClientImpl = ClientM<tbricks::TbricksProtocol>;
           using Proxy = core::Proxy<ClientImpl, core::IClient::Impl>;
           return std::unique_ptr<core::IClient>(new Proxy(reactor(), parent));
       } else {
@@ -156,25 +156,25 @@ public:
   }
   
   // type functions to get concrete MdClient from Protocol, connections types and reactor
-  template<typename ProtocolT> 
-  using McastMdClient = io::MdClient<ProtocolT, io::Conn<tb::McastSocket<>>>;  
-  template<typename ProtocolT>
-  using UdpMdClient = io::MdClient<ProtocolT, io::Conn<tb::DgramSocket<>>>;
-  template<typename ProtocolT>
-  using PcapMdClient = io::PcapMdClient<ProtocolT>;
+  template<template<class...> class ProtocolM> 
+  using McastMdClient = io::MdClient<ProtocolM, io::Conn<tb::McastSocket<>>>;  
+  template<template<class...> class ProtocolM>
+  using UdpMdClient = io::MdClient<ProtocolM, io::Conn<tb::DgramSocket<>>>;
+  template<template<class...> class ProtocolM>
+  using PcapMdClient = io::PcapMdClient<ProtocolM>;
 
-  template<typename ProtocolT> 
+  template<template<class> class ProtocolT> 
   using UdpMdServer = io::MdServer<ProtocolT, io::ServerConn<tb::DgramSocket<>>, tb::DgramSocket<>>;
 
   // concrete packet types decoded by Protocols. FIXME: UdpPacket==McastPacket?
 
   Factory<IClient> make_mdclients_factory(std::string_view proto) {
     if(proto=="mcast") {
-      return make_mdclients_factory<tb::McastPacket, McastMdClient>();
+      return make_mdclients_factory<McastMdClient, tb::McastEndpoint>();
     } else if(proto=="pcap") {
-      return make_mdclients_factory<tb::PcapPacket, PcapMdClient>();
+      return make_mdclients_factory<PcapMdClient, tb::IpEndpoint>();
     } else if(proto=="udp") {
-      return make_mdclients_factory<tb::UdpPacket, UdpMdClient>();
+      return make_mdclients_factory<UdpMdClient, tb::UdpEndpoint>();
     } else {
       Self::fail("protocol not supported", proto, TOOLBOX_FILE_LINE);
       return nullptr;
@@ -192,9 +192,9 @@ public:
     auto& c = *client;
     c.parameters(params);
     c.state_changed().connect(tb:: bind<&Self::on_state_changed>(self()));
-    c.signal<const core::Tick&>(core::StreamTopic::BestPrice)
+    c.signal_of<const core::Tick&>(core::StreamTopic::BestPrice)
      .connect(tb::bind<&Self::on_tick>(self()));
-    c.signal<const core::InstrumentUpdate&>(core::StreamTopic::Instrument)
+    c.signal_of<const core::InstrumentUpdate&>(core::StreamTopic::Instrument)
      .connect(tb::bind<&Self::on_instrument>(self()));    
     TOOLBOX_INFO << "created md client venue:'"<<venue<<"', protocol:'"<<protocol<<"'";
     return client;
@@ -203,7 +203,7 @@ public:
   std::unique_ptr<core::IServer> make_mdserver(std::string_view venue, const core::Parameters &params) {
     std::unique_ptr<core::IServer> server;
     if(venue=="TB1") {
-      using TbricksMdServer = UdpMdServer<tbricks::TbricksProtocol<tb::UdpPacket>>;
+      using TbricksMdServer = UdpMdServer<tbricks::TbricksProtocol>;
       auto* r = reactor();
       assert(r);
       /// implement IServer using TbricksMdServer class
@@ -211,7 +211,7 @@ public:
       server =  std::unique_ptr<core::IServer>(new Proxy(r, self()));
       auto &s = *server;
       s.parameters(params);
-      s.subscription(StreamTopic::BestPrice)
+      s.subscription()
         .connect(tb::bind([serv=&s](PeerId peer, const core::SubscriptionRequest& req) {
             Self* self = static_cast<Self*>(serv->parent());
             self->on_subscribe(*serv, peer, req);

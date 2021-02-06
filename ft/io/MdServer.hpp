@@ -13,6 +13,7 @@
 #include "ft/core/Tick.hpp"
 #include "ft/io/Conn.hpp"
 //#include "ft/io/Routing.hpp"
+#include "ft/io/Service.hpp"
 #include "toolbox/io/Socket.hpp"
 #include "toolbox/net/Endpoint.hpp"
 #include "ft/core/Client.hpp"
@@ -20,17 +21,17 @@
 #include "toolbox/util/Slot.hpp"
 namespace ft::io {
 
-
 template<
   class Self
-, class ProtocolT
+, template<class...> class ProtocolM
 , class PeerT
 , class ServerSocketT
 , typename StateT
-> class BasicMdServer : public io::BasicServer<Self, ProtocolT, PeerT, ServerSocketT, StateT>
+> class BasicMdServer : public io::BasicServer<Self, PeerT, ServerSocketT, StateT>
+, public ProtocolM<Self>
 {
     FT_SELF(Self);
-    using Base =  io::BasicServer<Self, ProtocolT, PeerT, ServerSocketT, StateT>;
+    using Base =  io::BasicServer<Self, PeerT, ServerSocketT, StateT>;
     using typename Base::PeersMap;
 public:
     using typename Base::Peer;
@@ -38,66 +39,70 @@ public:
     using typename Base::Reactor;
   public:
     using Base::Base;
-  
-    using Base::state, Base::reactor, Base::protocol;
+    using Protocol = ProtocolM<Self>;
+    using Base::state, Base::reactor;
+    using Protocol::async_write;
     using Base::async_write;
     using Base::for_each_peer;
 
     template<typename T>
-    using Stream = typename Base::template Stream<T>;
+    using Slot = typename Protocol::template Slot<T>;
 
-    core::SubscriptionSignal& subscription(core::StreamTopic topic) { return protocol().subscription(); }
+    void open() {
+        Base::open();
+        Protocol::open();
+    }
 
-    core::Stream& stream(core::StreamTopic topic) { 
+    void close() {
+        Protocol::close();
+        Base::close();
+    }
+
+    void on_parameters_updated(const core::Parameters& params) {
+        Base::on_parameters_updated(params);        
+        Protocol::on_parameters_updated(params);
+    }
+
+    /// returns Stream::Slot
+    core::Stream& slot(core::StreamTopic topic) { 
       switch(topic) {
         case core::StreamTopic::Instrument:
-          return instruments_; 
+          return instruments_slot_; 
         case core::StreamTopic::BestPrice:
-          return ticks_;
+          return ticks_slot_;
         default:
-          throw std::logic_error("no such stream");
+          return Protocol::slot(topic);
       }
     }
 
-    template<typename MessageT>
-    void async_write(const MessageT& m, tb::SizeSlot done) {
-        write_.set_slot(done);
-        write_.pending(0);
-        for_each_peer([&](auto& peer) {
-            if(self()->check(peer, m)) {
-              write_.inc_pending();
-              self()->async_write(peer, m, write_.get_slot());
-            }
-        });
+    bool route(Peer& peer, StreamTopic topic, InstrumentId instrument) {
+      bool result = peer.subscription().test(topic, instrument);
+      return result;
     }
 
-    template<typename MessageT>
-    bool check(Peer& peer, const MessageT& m) {
-      StreamTopic topic = m.topic();
-      auto& strm = stream(topic);
-      bool result = strm.subscription().check(m);
-      return result;
+    core::SubscriptionSignal& subscription() { 
+      return subscription_;
     }
 protected:
     tb::PendingSlot<ssize_t, std::error_code> write_;
-    //Router router_{self()};
-    //core::SubscriptionSignal subscribe_;
-    Stream<core::Tick> ticks_{self()};
-    Stream<core::InstrumentUpdate> instruments_{self()};
+    // from client to server
+    core::SubscriptionSignal subscription_;
+    Slot<core::Tick> ticks_slot_{self()};
+    Slot<core::InstrumentUpdate> instruments_slot_{self()};
 }; // BasicMdServer
 
 template<
-  class ProtocolT
+  template<class> class ProtocolM
 , class PeerT
 , class ServerSocketT
 , typename StateT = core::State
 > class MdServer : public io::BasicMdServer<
-  MdServer<ProtocolT, PeerT,  ServerSocketT, StateT>,
-  ProtocolT, PeerT, ServerSocketT, StateT>
+  MdServer<ProtocolM, PeerT,  ServerSocketT, StateT>,
+  ProtocolM, PeerT, ServerSocketT, StateT>
 {
     using Base = io::BasicMdServer<
-      MdServer<ProtocolT, PeerT, ServerSocketT, StateT>,
-      ProtocolT, PeerT, ServerSocketT, StateT>;
+      MdServer<ProtocolM, PeerT, ServerSocketT, StateT>,
+      ProtocolM, PeerT, ServerSocketT, StateT>;
   public:
     using Base::Base;
 };

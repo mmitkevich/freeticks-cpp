@@ -4,6 +4,7 @@
 #include "ft/core/Instrument.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/StreamStats.hpp"
+#include "ft/io/Protocol.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/utils/StringUtils.hpp"
 #include "ft/core/Client.hpp"
@@ -24,29 +25,27 @@ public:
     using Component::Component;
 };
 
-template<class ProtocolT>
-class PcapMdClient  : public BasicService<PcapMdClient<ProtocolT>>
+template<template<class...> class ProtocolM>
+class PcapMdClient  : public BasicService<PcapMdClient<ProtocolM>>
+, public ProtocolM<PcapMdClient<ProtocolM>>
 {
 public:
-    using This = PcapMdClient<ProtocolT>;
-    using Base = BasicService<PcapMdClient<ProtocolT>>;
-    using Protocol = ProtocolT;
+    using Self = PcapMdClient<ProtocolM>;
+    using Base = BasicService<PcapMdClient<ProtocolM>>;
+    using Protocol = ProtocolM<Self>;
+    friend Protocol;
     using Stats = core::EndpointStats<tb::IpEndpoint>;
     using BinaryPacket = tb::PcapPacket;
     using typename Base::Reactor;
     using Peer = PcapConn;
 public:
-    template<typename...ArgsT>
-    explicit PcapMdClient(Reactor* r, Component* p, ArgsT...args)
+    explicit PcapMdClient(Reactor* r, Component* p)
     : Base(r,p)
-    , protocol_(std::forward<ArgsT>(args)...)
     {
-        peer_.packets().connect(tb::bind<&PcapMdClient::on_packet_>(this));
+        peer_.packets().connect(tb::bind<&Self::on_packet_>(this));
     }
-    Protocol& protocol() {   return protocol_; }
     Peer& peer() { return peer_; }
     
-    auto& stats() { return protocol_.stats(); }
     auto& gw_stats() { return stats_; } 
 
     // dispatch parameters
@@ -55,8 +54,7 @@ public:
 
         pcap_pa["urls"].copy(inputs_);
 
-        auto streams_p = params["connections"];
-        protocol_.on_parameters_updated(streams_p);
+        Protocol::on_parameters_updated(params);
         
         filter(pcap_pa["filter"]); // FIXME: get filter from streams automatically?
     }
@@ -80,7 +78,7 @@ public:
     }
 
     void open() {
-        protocol_.open();
+        Protocol::open();
         run(); // FIXME: reactor.defer(&This::run);
     }
     void run() {
@@ -92,7 +90,7 @@ public:
         };
     }
     void close() {
-        protocol_.close();
+        Protocol::close();
     }
     void report(std::ostream& os) {
         //protocol_.stats().report(os);
@@ -101,16 +99,13 @@ public:
     void on_idle() {
         report(std::cerr);
     }
-    core::Stream& stream(core::StreamTopic topic) {
-       return protocol().stream(topic);
-    }
 private:
     void on_packet_(const tb::PcapPacket& pkt) {
         switch(pkt.header().protocol().protocol()) {
             case IPPROTO_TCP: case IPPROTO_UDP: {
                 stats_.on_received(pkt);
                 if(filter_(pkt.header())) {
-                    protocol_.async_handle(peer_, pkt, tb::bind([this](std::error_code ec) { 
+                    Protocol::async_handle(peer_, pkt, tb::bind([this](std::error_code ec) { 
                     })); // FIXME: sync_process?
                     on_idle();      
                 } else {
@@ -121,7 +116,6 @@ private:
         }
     }
 private:
-    Protocol protocol_;
     Peer peer_;
     Stats stats_;
     toolbox::EndpointsFilter filter_;

@@ -15,14 +15,14 @@ namespace ft { inline namespace core {
 enum class Request : ft_event_t {
     Subscribe       = FT_REQ_SUBSCRIBE,
     Unsubscribe     = FT_REQ_UNSUBSCRIBE,
-    UnsubscribeAll  = FT_REQ_UNSUBSCRIBE_ALL
+    Close           = FT_REQ_CLOSE  // unsubscribe all
 };
 
 inline std::ostream& operator<<(std::ostream& os, Request req) {
     switch(req) {
         case Request::Subscribe: return os << "Subscribe";
         case Request::Unsubscribe: return os << "Unsubscribe";
-        case Request::UnsubscribeAll: return os <<"UnsubscribeAll";
+        case Request::Close: return os <<"Close";
         default: return os << tb::unbox(req);
     }
 }
@@ -30,7 +30,7 @@ inline std::ostream& operator<<(std::ostream& os, Request req) {
 enum class Response : ft_event_t {
     Subscribe       = FT_RES_SUBSCRIBE,
     Unsubscribe     = FT_RES_UNSUBSCRIBE,
-    UnsubscribeAll  = FT_RES_UNSUBSCRIBE_ALL
+    Close  = FT_RES_CLOSE
 };
 
 template<typename ImplT>
@@ -169,7 +169,7 @@ private:
 };
 
 using SubscriptionRequest = BasicSubscriptionRequest<MaxSymbolSize>;
-using SubscriptionSignal = tb::Signal<PeerId, const core::SubscriptionRequest&>;
+using SubscriptionSignal = tb::Signal<Identifier, const core::SubscriptionRequest&>;
 
 #pragma pack(pop)
 }} // ft::core

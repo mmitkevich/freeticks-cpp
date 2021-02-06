@@ -16,7 +16,7 @@
 #include "ft/spb/SpbFrame.hpp"
 #include "toolbox/net/Protocol.hpp"
 #include "toolbox/util/Tuple.hpp"
-#include "ft/core/SequenceMultiplexer.hpp"
+#include "ft/core/SequencedChannel.hpp"
 namespace ft::spb {
 
 class Frame;
@@ -47,32 +47,15 @@ protected:
     MsgStats values_;
 };
 
-template<class DerivedT, class T, class ProtocolT> 
+template<class Self, class T, template<class> class ChannelTT, typename...> 
 class BasicSpbStream : public Stream::Signal<const T&> {
+    FT_SELF(Self);
     using Base = Stream::Signal<const T&>;
 public:
-    using Protocol = ProtocolT;
-    using Decoder = typename Protocol::Decoder;
-    template<typename ImplT>
-    using SequenceMultiplexer = typename Decoder::template SequenceMultiplexer<ImplT>;
-    using Schema = typename Decoder::Schema;
-    template<typename MessageT>
-    using SpbPacket = typename Decoder::template SpbPacket<MessageT>;
-    using Multiplexer = SequenceMultiplexer<DerivedT>;
-public:
-    explicit BasicSpbStream(Protocol& protocol, StreamTopic topic)
-    : protocol_(protocol)
-    , Base(topic) {
-        //TOOLBOX_DUMP_THIS;
-        //auto& ex = protocol.parent();
-        //ex.state_changed().connect(tb::bind<&DerivedT::on_gateway_state_changed>(&impl()));
-    }
-    
-    BasicSpbStream(const BasicSpbStream&) = delete;
-    BasicSpbStream(BasicSpbStream&&) = delete;
-
-    Protocol& protocol() { return protocol_; }
-    Decoder& decoder() { return protocol_.decoder_; }
+    using Base::Base;
+    using Channel = ChannelTT<Self>;
+    //BasicSpbStream(const BasicSpbStream&) = delete;
+    //BasicSpbStream(BasicSpbStream&&) = delete;
 
     void open() {}
     
@@ -84,12 +67,11 @@ public:
             snapshot_.on_packet(packet);
     }
     template<typename PacketT>
-    void on_stale(const PacketT& packet, const Multiplexer& mux) {
+    void on_stale(const PacketT& packet) {
         //TOOLBOX_DEBUG << DerivedT::name()<<"."<<mux.name()<<": ignored stale seq "<<packet.sequence()<<" current seq "<<mux.sequence();
     }
-    //void on_gateway_state_changed(core::State state, core::State old_state, core::ExceptionPtr err) {}
 protected:
-    void on_parameters_updated(const core::Parameters &params) {
+    void on_parameters_updated(const core::Parameters& params) {
         std::string_view type = params["type"].get_string();
         if(type == snapshot_.name()) {
             snapshot_.on_parameters_updated(params);
@@ -98,45 +80,31 @@ protected:
         }
     }
 protected:
-    DerivedT& impl() { return *static_cast<DerivedT*>(this); }
-protected:
-    Protocol& protocol_;
-    Multiplexer snapshot_{impl(), "snapshot.mcast"};
-    Multiplexer update_{impl(), "update.mcast"};
+    Channel snapshot_{*self(), "snapshot"};
+    Channel update_{*self(), "update"};
 };
 
 
 template<typename MessageT> constexpr bool spb_msgid_v = MessageT::msgid;
 
-template<typename FrameT, typename SchemaT, typename BinaryPacketT, typename StreamsTuple>
+template<class FrameT, class SchemaT, typename StreamsTuple>
 class SpbDecoder
 {
 public:
-    using BinaryPacket = BinaryPacketT;
     using Schema = SchemaT;
-    
-    template<typename ImplT>
-    using SequenceMultiplexer = core::BasicSequenceMultiplexer<ImplT, typename BinaryPacket::Header::Endpoint, std::uint64_t>;
-
-    template<typename MessageT> 
-    class SpbPacket: public tb::PacketView<MessageT, BinaryPacket> {
-        using Base = tb::PacketView<MessageT, BinaryPacket>;
-    public:
-        using Base::Base;
-        using Base::header;
-        using Base::value;
-        std::uint64_t sequence() const { return value().header().frame.seq; }
-    };
+    using Frame = FrameT;
+    template<class MessageT, class BinaryPacketT> 
+    using Packet = typename Schema::template Packet<MessageT, BinaryPacketT>;
 public:
     SpbDecoder(const SpbDecoder&) = delete;
     SpbDecoder(SpbDecoder&&) = delete;
     template<typename...StreamsT>
     SpbDecoder(StreamsTuple&& streams)
         : streams_(std::move(streams)) { }
-    
-    static constexpr std::string_view name() { return "SPB_MDBIN"; }
 
-    void operator()(const BinaryPacket& packet) {
+
+    template<class BinaryPacketT>
+    void operator()(const BinaryPacketT& packet) {
         auto& buf = packet.buffer();
         const char* begin = reinterpret_cast<const char*>(buf.data());
         const char* ptr = begin;
@@ -164,14 +132,14 @@ public:
                     if(!found && Message::msgid == frame.msgid) {
                         found = true;
                         //TOOLBOX_DEBUG << "["<<(ptr-begin)<<"] msgid "<<frame.msgid<<" seq "<<frame.seq;
-                        SpbPacket<Message> spbpkt(packet);
-                        stream->on_decoded(spbpkt);
+                        Packet<Message, BinaryPacketT> spbpacket(packet); // adds some stuff
+                        stream->on_decoded(spbpacket);
                     }
                 });
             });
             if(!found) {
                 stats_.on_rejected(frame);
-                TOOLBOX_DUMP << "SpbDecoder rejected "<<name()<<": ["<<(ptr-begin)<<"] unknown msgid "<<frame.msgid;
+                TOOLBOX_DUMP << "SpbDecoder rejected "<<Schema::Venue<<": ["<<(ptr-begin)<<"] unknown msgid "<<frame.msgid;
             }
             ptr += sizeof(Frame) + frame.size;
         }

@@ -2,10 +2,12 @@
 
 #include "ft/utils/Common.hpp"
 #include "ft/core/Component.hpp"
+#include "toolbox/util/Enum.hpp"
 #include "toolbox/util/Slot.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/capi/ft-types.h"
 #include <boost/core/noncopyable.hpp>
+#include <unordered_map>
 
 namespace ft { inline namespace core {
 
@@ -94,24 +96,26 @@ class Subscription: public tb::BitMask<StreamTopic> {
     using Base = tb::BitMask<StreamTopic>;
 public:
     Subscription() = default;
-    template<typename InstrumentsT, typename...ArgsT>
-    Subscription(InstrumentsT&& instruments, ArgsT...args)
-    : instruments_(std::move(instruments))
-    , Base(std::forward<ArgsT>(args)...)
-    {}
-    template<class MessageT>
-    bool check(const MessageT& m) {
-        if(!Base::test(m.topic()))
+    
+    bool test(StreamTopic topic, InstrumentId instrument) {
+        if(!Base::test(topic))
             return false;
-        auto it = std::find(instruments_.begin(), instruments_.end(), m.instrument_id());
+        auto it = instruments_.find(instrument);
         if(it==instruments_.end())
             return false;
-        return true;
+        return it->second.test(topic);
     }
-    std::vector<InstrumentId>& instruments() { return instruments_; }
-    const std::vector<InstrumentId>& instruments() const { return instruments_; }
+    Subscription& subscribe(StreamTopic topic, InstrumentId instrument) {
+        instruments_[instrument].set(topic);
+        Base::set(topic);
+        return *this;
+    }
+    Subscription& unsubscribe(StreamTopic topic, InstrumentId instrument) {
+        instruments_[instrument].reset(topic);
+        return *this;
+    }
 protected:
-    std::vector<InstrumentId> instruments_;
+    tb::unordered_map<InstrumentId, tb::BitMask<StreamTopic>> instruments_;
 };
 
 
@@ -135,8 +139,6 @@ public:
     constexpr StreamTopic topic() const { return topic_; }
     void topic(StreamTopic topic) { topic_ = topic; }
 
-    core::Subscription& subscription() { return sub_;}
-
     constexpr std::string_view name() { return topic_to_name(topic()); }
 
     template<typename...ArgsT>
@@ -155,7 +157,6 @@ public:
 protected:
     StreamTopic topic_{StreamTopic::Empty};
     core::StreamStats stats_;
-    core::Subscription sub_;
 };
 
 /// (Input) Stream = Sequenced Signal

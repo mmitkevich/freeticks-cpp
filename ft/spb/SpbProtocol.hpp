@@ -1,7 +1,9 @@
 #pragma once
+#include "boost/mp11/bind.hpp"
 #include "ft/core/Component.hpp"
 #include "ft/core/Instrument.hpp"
 #include "ft/core/Parameters.hpp"
+#include "ft/core/SequencedChannel.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/io/Conn.hpp"
 #include "ft/spb/SpbFrame.hpp"
@@ -39,84 +41,67 @@ Tup construct_tuple(Args&&... args) {
     return tuple_construct_t<Tup>::make_tuple(std::forward<Args>(args)...);
 }
 
-template<typename SchemaT, typename BinaryPacketT>
-class SpbProtocol : public io::BasicProtocol<SpbProtocol<SchemaT, BinaryPacketT>>
+template<class Self, class SchemaT, typename...O>
+class BasicSpbProtocol : public io::BasicMdProtocol<Self, O...>
 {
+    FT_SELF(Self)
+protected:
+    using Base = io::BasicMdProtocol<Self, O...>;
 public:
     using Schema = SchemaT;
-    using BinaryPacket = BinaryPacketT;
-    using This = SpbProtocol<Schema, BinaryPacket>;
-    using BestPriceStream = SpbBestPriceStream<This>;
-    using InstrumentStream = SpbInstrumentStream<This>;
-    using StreamsTuple = std::tuple<BestPriceStream*, InstrumentStream*>;
-    using Decoder = SpbDecoder<spb::Frame, SchemaT, BinaryPacketT, StreamsTuple>;
+    using BestPriceSignal = SpbBestPriceStream<Schema>;
+    using InstrumentSignal = SpbInstrumentStream<Schema>;
+    
+    using StreamsTuple = std::tuple<BestPriceSignal*, InstrumentSignal*>;
+    using Decoder = SpbDecoder<spb::Frame, SchemaT, StreamsTuple>;
 
-    static constexpr std::int64_t PriceMultiplier = 100'000'000;
-    using PriceConv = core::PriceConversion<std::int64_t, PriceMultiplier>;
-    using QtyConv = core::QtyConversion<std::int64_t, 1>;
-
-    static constexpr std::string_view Exchange = "XPET";
-    static constexpr std::string_view Venue = Decoder::name();
 public:
-    SpbProtocol()
-    : bestprice_(*this)
-    , instruments_(*this)
-    , decoder_(StreamsTuple{&bestprice_, &instruments_}) {  
-        //TOOLBOX_DUMP_THIS; 
-    }
-        
+    BasicSpbProtocol()
+    : decoder_(self()->streams()) {} // FIXME: streams() crashed?
+
     constexpr std::string_view name() {  return Decoder::name(); }
     
-    StreamsTuple streams() { return StreamsTuple(&bestprice_, &instruments_); }
+    StreamsTuple streams() { return StreamsTuple(&self()->bestprice(), &self()->instruments()); }
 
     Decoder& decoder() { return decoder_; }
     auto& stats() {return decoder().stats(); }
     
     /// use decoder
-    template<typename ConnT>
-    void async_handle(ConnT& conn, const BinaryPacket& packet, tb::DoneSlot done) { 
+    template<class ConnT, class BinaryPacketT>
+    void async_handle(ConnT& conn, const BinaryPacketT& packet, tb::DoneSlot done) { 
         decoder_(packet); 
         done({});
     }
 
     void open() {
-        bestprice_.open();
-        instruments_.open();
+        self()->bestprice().open();
+        self()->instruments().open();
     }
+    auto& bestprice() { return bestprice_signal_; }
+    auto& instruments() { return instruments_signal_; }
 
+protected:
     void on_parameters_updated(const core::Parameters& params) {
         for(auto e: params["connections"]) {
             auto strm = e.str("stream", "");
-            StreamsTuple strms = streams();
-            mp::tuple_for_each(strms, [&](auto* s) {
+            mp::tuple_for_each(streams(), [&](auto* s) {
                 if(s->name() == strm) {
                     s->on_parameters_updated(e);
                 }
             });
         }
     }
-    std::string_view exchange() { return Exchange; }
-    std::string_view venue() { return Venue; }
-    PriceConv price_conv() { return PriceConv();}
+protected:
+    // from server to client
+    BestPriceSignal bestprice_signal_;
+    InstrumentSignal instruments_signal_;
 
-    auto& bestprice() { return bestprice_;}
-    auto& instruments() { return instruments_; }
-
-    core::Stream& stream(core::StreamTopic topic) {
-        switch(topic) {
-            case core::StreamTopic::BestPrice: return bestprice();
-            case core::StreamTopic::Instrument: return instruments();
-            default: throw std::logic_error("no such stream");
-        }
-        return bestprice();
-    }
-private:
     Decoder decoder_;    
-    BestPriceStream bestprice_;
-    InstrumentStream instruments_;
 };
 
-template<typename BinaryPacketT>
-using SpbUdpProtocol = SpbProtocol<SpbSchema<MdHeader>, BinaryPacketT>;
-
+template<class EndpointT>
+struct SpbProtocol {
+    template<class Self, typename...O>
+    using Mixin = BasicSpbProtocol<Self, SpbSchema<spb::MdHeader, EndpointT>, O...>;
+};
 }

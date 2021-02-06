@@ -24,20 +24,17 @@ using Timestamp = core::Timestamp;
 using Ticks = core::Ticks<3>;
 
 template<
-    typename ProtocolT
-,   typename SnapshotPolicyT = SpbReplacingUpdates<spb::SnapshotKey, spb::Ticks>
-> class SpbBestPriceStream : public BasicSpbStream<SpbBestPriceStream<ProtocolT>, core::Tick, ProtocolT>
+  class SchemaT
+> class SpbBestPriceStream : public BasicSpbStream<
+    SpbBestPriceStream<SchemaT>, 
+    core::Tick,
+    SchemaT::template Channel>
 {
 public:
-    using This = SpbBestPriceStream<ProtocolT>;
-    using Base = BasicSpbStream<This, core::Tick, ProtocolT>;
-    using typename Base::Protocol;
-    using typename Base::Schema;
-    using SnapshotPolicy = SnapshotPolicyT;  
-
-    // packet type meta function
-    template<typename MessageT>
-    using SpbPacket = typename Base::template SpbPacket<MessageT>;
+    using SnapshotPolicy = SpbReplacingUpdates<spb::SnapshotKey, spb::Ticks>;  
+    using Self = SpbBestPriceStream<SchemaT>;
+    using Base = BasicSpbStream<Self, core::Tick, SchemaT::template Channel>;
+    using Schema = SchemaT;
 
     // supported messages
     using SnapshotStart = typename Schema::SnapshotStart;
@@ -48,21 +45,17 @@ public:
     // list of supported messages
     using TypeList = mp::mp_list<PriceOnline, PriceSnapshot, SnapshotStart, SnapshotFinish, Heartbeat>;
 public:
-    SpbBestPriceStream(Protocol& protocol)
-    : Base(protocol, StreamTopic::BestPrice) 
-    {
-        //TOOLBOX_DUMP_THIS;
-    }
+    SpbBestPriceStream()
+    : Base(StreamTopic::BestPrice) {}
     using Base::stats;
-    using Base::protocol;
     using Base::invoke;
 
 public:
     void on_parameters_updated(const core::Parameters &params) {
         Base::on_parameters_updated(params);
     }
-    template<typename T>
-    void on_packet(const SpbPacket<T>& pkt) {
+    template<typename PacketT>
+    void on_packet(const PacketT& pkt) {
         const auto &payload = pkt.value();
         on_message(payload.header(), payload.value(), pkt.header().recv_timestamp());
     }
@@ -94,7 +87,7 @@ public:
     }
     void on_message(const typename Heartbeat::Header& h, const spb::Heartbeat& e, Timestamp cts) {
     }
-
+    auto price_conv() { return typename Schema::PriceConv();}
 protected:    
     TickEvent to_tick_event(const spb::SubBest& best) {
         switch(best.type) {
@@ -122,7 +115,7 @@ protected:
             ticks.send_time(sts);
 
             tick.event(to_tick_event(best));
-            tick.price(protocol().price_conv().to_core(best.price));
+            tick.price(price_conv().to_core(best.price));
             tick.side(to_side(best));
             tick.qty(core::Qty(best.amount));
         }

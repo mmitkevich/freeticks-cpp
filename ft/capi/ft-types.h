@@ -111,8 +111,8 @@ enum ft_request_enum {
     FT_RES_SUBSCRIBE    = 2,
     FT_REQ_UNSUBSCRIBE  = 3,
     FT_RES_UNSUBSCRIBE  = 4,
-    FT_REQ_UNSUBSCRIBE_ALL  = 5,
-    FT_RES_UNSUBSCRIBE_ALL  = 6,
+    FT_REQ_CLOSE  = 5,
+    FT_RES_CLOSE  = 6,
 
     FT_REQ_ORDER    = 17,
     FT_RES_ORDER    = 18

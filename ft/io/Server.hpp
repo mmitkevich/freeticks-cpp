@@ -34,7 +34,7 @@ class BasicSocketService : public EnableParent<ParentT, BasicPeerService<Self, P
   public:
     using Base::parent, Base::peers, Base::peers_, Base::reactor
         , Base::make_peer, Base::emplace_peer
-        , Base::local;
+        , Base::local, Base::async_write;
     using Base::Base;
 
     BasicSocketService(const BasicSocketService& rhs)=delete;
@@ -130,6 +130,11 @@ class BasicSocketService : public EnableParent<ParentT, BasicPeerService<Self, P
             }));
         }
     }
+    template<typename MessageT>
+    void async_write(Peer& peer, const MessageT& m, tb::SizeSlot done) {
+        self()->parent()->async_write(peer, m, done);
+    }
+    
     void on_error(Peer& peer, std::error_code ec, const char* what="error", const char* loc="") {
         TOOLBOX_ERROR << loc << what <<", ec:"<<ec<<", peer:"<<peer.remote();
     }
@@ -153,7 +158,6 @@ class SocketService: public BasicSocketService<
 
 /// adds Acceptors
 template<class Self
-, class ProtocolT
 , class PeerT
 , class ServerSocketT
 , typename StateT
@@ -169,7 +173,6 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
     using ServerSocket = ServerSocketT;
     using Reactor = typename Peer::Reactor;
     using Endpoint = typename Peer::Endpoint;
-    using Protocol = ProtocolT;
     using ServicesMap = tb::unordered_map<Endpoint, std::unique_ptr<Service>>;    
   public:
     using Base::Base;
@@ -178,18 +181,7 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
     using Base::is_open;
     using Base::open, Base::close;
 
-    template<typename T>
-    class Stream : public core::Stream::BasicSlot<Stream<T>, const T&, tb::SizeSlot> {
-      public:
-        Stream(Self* parent)
-        : parent_(parent) {}
 
-        void invoke(const T&e, tb::SizeSlot done) {
-            parent_->async_write(e, done);
-        }
-      protected:
-        Self* parent_;
-    };
 
     class PeersMap {
         using ServicesIterator = typename ServicesMap::iterator;
@@ -260,8 +252,6 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
     const PeersMap peers() const { return PeersMap(services_.begin(), services_.end()); }
     PeersMap peers() { return PeersMap(services_.begin(), services_.end()); }
 
-    Protocol& protocol() { return protocol_; }
-
     void on_parameters_updated(const core::Parameters& params) {
         bool was_open = is_open();
         if(was_open)
@@ -289,13 +279,22 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
         return services_.size();
     }
 
+    template<typename MessageT>
+    void async_write(const MessageT& m, tb::SizeSlot done) {
+        write_.set_slot(done);
+        write_.pending(0);
+        for_each_service([&](auto& svc) {
+              write_.inc_pending();
+              svc.async_write(m, write_.get_slot());
+        });
+    }
+
     void do_open() {
         for_each_service([](auto& svc) {
             svc.open();
         });
         Base::do_open();
-        protocol_.open();    // change state
-        run();
+        self()->run();
     }
     
     /// accepts clients, reads messages from them and apply protocol logic
@@ -315,7 +314,6 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
     }
 
     void do_close() {
-        protocol_.close();
         for_each_service([](auto& svc) {
             svc.close();
         });
@@ -338,20 +336,10 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
       return count;
     }
 
-    void async_handle(Peer& peer, const Packet& packet, tb::DoneSlot done) {
-        TOOLBOX_DEBUG<<"received from: "<<peer.remote()<<", size:"<<packet.buffer().size();
-        protocol_.async_handle(peer, packet, done);
-    }
-
-    template<typename MessageT>
-    void async_write(Peer& peer, const MessageT& message, tb::SizeSlot done) {
-        protocol_.async_write(peer, message, done);
-    }
-
     NewPeerSignal& newpeer() { return newpeer_; }
 
   protected:
-    Protocol protocol_;
+    tb::PendingSlot<ssize_t, std::error_code> write_;
     ServicesMap services_; // indexed by local endpoint
     Endpoint remote_;
     NewPeerSignal newpeer_;

@@ -10,6 +10,7 @@
 #include "SpbSchema.hpp"
 #include "SpbProtocol.hpp"
 #include "toolbox/io/Buffer.hpp"
+#include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Packet.hpp"
 #include "toolbox/net/Pcap.hpp"
 
@@ -43,12 +44,14 @@ void maybe_bench(const char*name, std::size_t N, F fn, Args...args) {
 
 BOOST_AUTO_TEST_CASE(Parser)
 {
-    using SpbSchema = SpbSchema<MdHeader>;
-    using BinaryPacket = tb::Packet<tb::MutableBuffer, IpEndpoint>;
-    using SpbProtocol = SpbProtocol<SpbSchema, BinaryPacket>;
-    using SpbDecoder = typename  SpbProtocol::Decoder;
+    class MyProtocol : public spb::SpbProtocol<IpEndpoint>::template Mixin<MyProtocol> {
+        using Base = spb::SpbProtocol<IpEndpoint>::template Mixin<MyProtocol>;
+      public:
+        using Base::Base;
+    };
+    using MySchema = MyProtocol::Schema;
     std::size_t n_snapshot_start = 0;
-    auto on_snapshot_start = [&](SpbDecoder::SpbPacket<SpbSchema::SnapshotStart> pkt) {
+    auto on_snapshot_start = [&](MySchema::Packet<MySchema::SnapshotStart> pkt) {
         auto& e = pkt.value();
         if constexpr (!BENCH) {
             TOOLBOX_INFO << "SnapshotStart("<<e.header().frame.msgid<<", update_seq=" << e.value().update_seq << ")";
@@ -57,21 +60,21 @@ BOOST_AUTO_TEST_CASE(Parser)
     };
 
     std::size_t n_snapshot_finish = 0;    
-    auto on_snapshot_finish = [&](SpbDecoder::SpbPacket<SpbSchema::SnapshotStart> pkt) {
+    auto on_snapshot_finish = [&](MySchema::Packet<MySchema::SnapshotStart> pkt) {
          auto& e = pkt.value();
         if constexpr (!BENCH) {
             TOOLBOX_INFO << "SnapshotFinish("<<e.header().frame.msgid<<", update_seq=" << e.value().update_seq << ")";
         }
         n_snapshot_finish++;
     };
-    SpbProtocol protocol{};
+    MyProtocol protocol;
     
     char msg[] = 
         "\x04\x00\x39\x30"
         "\x04\x00\x18\x30";
 
     maybe_bench("parser", 1000*BENCH, [&] {
-        BinaryPacket bin (BinaryPacket::Buffer(msg, sizeof(msg)-1));
+        MySchema::BinaryPacket bin (MySchema::BinaryPacket::Buffer(msg, sizeof(msg)-1));
         auto& decoder = protocol.decoder();
         // FIXME: decoder(bin);
     });

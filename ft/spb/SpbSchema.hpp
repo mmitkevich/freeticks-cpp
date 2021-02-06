@@ -1,7 +1,8 @@
 #pragma once
+#include "ft/core/SequencedChannel.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/utils/Common.hpp"
-
+#include "toolbox/net/Packet.hpp"
 #include "SpbFrame.hpp"
 #include <cstdint>
 #include <ostream>
@@ -306,9 +307,12 @@ struct Instrument {
     }
 };
 
-template<typename HeaderT>
+template<class HeaderT, class EndpointT>
 struct SpbSchema
 {
+    static constexpr std::string_view Exchange = "XPET";
+    static constexpr std::string_view Venue = "SPB_MDBIN";
+
     // Declare messages
     using SnapshotStart = SpbPacket<SpbHeader<12345, HeaderT>, Snapshot>;
     using SnapshotFinish = SpbPacket<SpbHeader<12312, HeaderT>, Snapshot>;
@@ -322,6 +326,25 @@ struct SpbSchema
     using InstrumentSnapshot = SpbPacket<SpbHeader<973, HeaderT>, Instrument>;
 
     using Heartbeat = SpbPacket<SpbHeader<15236, HeaderT>, spb::Heartbeat>;
+
+    using Endpoint = EndpointT;
+    using BinaryPacket = tb::Packet<tb::ConstBuffer, Endpoint>;
+    template<class HandlerT> 
+    using Channel = BasicSequencedChannel<HandlerT, Endpoint, spb::Seq>;
+
+    template<class MessageT, class BinaryPacketT=BinaryPacket> 
+    class Packet: public tb::PacketView<MessageT, BinaryPacketT> {
+        using Base = tb::PacketView<MessageT, BinaryPacketT>;
+    public:
+        using Base::Base;
+        using Base::header;
+        using Base::value;
+        std::uint64_t sequence() const { return value().header().frame.seq; }
+    };
+
+    static constexpr std::int64_t PriceMultiplier = 100'000'000;
+    using PriceConv = core::PriceConversion<std::int64_t, PriceMultiplier>;
+    using QtyConv = core::QtyConversion<std::int64_t, 1>;
 };
 
 

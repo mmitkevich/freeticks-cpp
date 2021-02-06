@@ -22,8 +22,8 @@ public:
     virtual void async_connect(tb::DoneSlot done) = 0;
     virtual void async_write(const core::SubscriptionRequest& req, tb::SizeSlot done) = 0;
     template<typename...ArgsT>
-    Stream::Signal<ArgsT...>& signal(StreamTopic topic) {
-        return Stream::Signal<ArgsT...>::from(stream(topic));
+    Stream::Signal<ArgsT...>& signal_of(StreamTopic topic) {
+        return Stream::Signal<ArgsT...>::from(this->signal(topic));
     }
 };
 
@@ -53,7 +53,6 @@ class IClient::Impl: public core::IService::Impl<IClient::Impl<SelfT,Base>, Base
 public:
     FT_IMPL(SelfT);
     //core::StreamStats& stats() override { return impl()->stats(); }
-    core::Stream& stream(StreamTopic topic) override { return impl()->stream(topic); }
     void async_connect(tb::DoneSlot done) override {
         if constexpr (ClientTraits::has_async_connect<decltype(*impl())>) {
             impl()->async_connect(done);

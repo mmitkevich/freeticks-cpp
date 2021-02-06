@@ -40,19 +40,19 @@ public:
         idle_timer_.cancel();
     }
 
+    void on_parameters_updated(const core::Parameters& params) {}
+
     void on_idle() { TOOLBOX_DUMP << "on_idle"; }
 protected:
     tb::Timer idle_timer_;
 }; // IdleTimer
 
-template<class Self, class ProtocolT, class PeerT, typename StateT>
+template<class Self, class PeerT, typename StateT>
 class BasicClient: public BasicPeerService<Self, PeerT, StateT>
 {
     FT_SELF(Self);
-    using This = BasicClient<Self, ProtocolT, PeerT, StateT>;
     using Base = BasicPeerService<Self, PeerT, StateT>;
   public:
-    using Protocol = ProtocolT;
     using typename Base::Peer;
     using typename Base::PeersMap;
     using typename Base::Socket;
@@ -69,16 +69,12 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
             Base::peers, Base::make_peer, Base::emplace_peer,
             Base::close, Base::open, Base::is_open;
 
-    /// application level
-    Protocol& protocol() { return protocol_; }
-
     void on_parameters_updated(const core::Parameters& params) {
         auto was_open = is_open();
         if(was_open)
             close();
 
-        populate(params);
-        protocol().on_parameters_updated(params);
+        self()->populate(params);
         
         if(was_open)
             open();
@@ -107,12 +103,10 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
     void open() {
         state(State::PendingOpen);
         Base::do_open();
-        protocol_.open();
         async_connect(tb::bind<&Self::on_connected>(self()));
     }
     
     void do_close() {
-        protocol_.close();
         Base::do_close();
     }
 
@@ -146,7 +140,7 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
     /// when peer connected - run peers' processing loop
     void on_peer_connected(Peer& peer, std::error_code ec) {
         if(!ec) {
-            protocol().async_handshake(peer, [&peer](std::error_code ec) {
+           self()->async_handshake(peer, [&peer](std::error_code ec) {
                 struct fn { void operator()(Peer& peer, Packet& packet, tb::DoneSlot done) {
                     Self* self = static_cast<Self*>(peer.parent());
                     self->async_handle(peer, packet, done);
@@ -158,19 +152,12 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
         }
     }
     
-    /// forwards to protocol
-    template<typename RequestT>
-    void async_write(Peer& peer, RequestT req, tb::SizeSlot done) {
-        protocol().async_write(peer, std::forward<RequestT>(req), done);
-    }
-
     void on_error(Peer& peer, std::error_code ec, const char* what="") {
         TOOLBOX_INFO<<what<<" peer "<<peer.remote()<<" ec "<<ec;
     }
  
   protected:
-    Protocol protocol_;
-    tb::PendingSlot<std::error_code>  connect_;
+    tb::PendingSlot<std::error_code>  connect_;    
     tb::Signal<> connected_;
 }; // BasicClient
 

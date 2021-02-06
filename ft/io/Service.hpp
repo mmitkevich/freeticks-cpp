@@ -12,6 +12,7 @@
 #include <boost/mp11/algorithm.hpp>
 #include <boost/mp11/tuple.hpp>
 #include <exception>
+#include <sstream>
 #include <stdexcept>
 #include <type_traits>
 
@@ -70,6 +71,7 @@ class BasicService: public io::BasicReactiveComponent<ReactorT>
     using Base::reactor;
     using Ref = BasicRef<IService>;
     
+
     explicit BasicService(Reactor* reactor=nullptr, Component* parent=nullptr, Identifier id={})
     : Base(reactor, parent, id) {
         TOOLBOX_DUMPV(5)<<"Service::ctor, self:"<<self()<<", reactor:"<<reactor<<", parent(Component): "<<parent<<", id:"<<id;
@@ -129,6 +131,7 @@ class BasicService: public io::BasicReactiveComponent<ReactorT>
     
     /// @returns true if Service is opening 
     bool is_open_pending() const { return state()==State::PendingOpen; }
+
 };
 
 
@@ -240,9 +243,28 @@ class BasicPeerService : public BasicService<Self, typename PeerT::Reactor, Stat
         assert(peers_[id]!=nullptr);
         return *ptr;
     }
+
+      
+    template<typename MessageT>
+    void async_write(const MessageT& m, tb::SizeSlot done) {
+        write_.set_slot(done);
+        write_.pending(0);
+        for_each_peer([&](auto& peer) {
+             if(self()->route(peer, m.topic(), m.instrument_id())) {
+              write_.inc_pending();
+              self()->async_write(peer, m, write_.get_slot());
+            }
+        });
+    }
+    /// route everythere by default
+    bool route(Peer& peer, StreamTopic topic, InstrumentId instrument) {
+        return true;
+    }
+
   protected:
     PeersMap peers_;
     Endpoint local_; /// interface to bind to
+    tb::PendingSlot<ssize_t, std::error_code> write_; // when write is done
 };
 
 

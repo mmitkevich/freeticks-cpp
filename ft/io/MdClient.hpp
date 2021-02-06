@@ -1,6 +1,7 @@
 #pragma once
 #include "ft/core/Requests.hpp"
 //#include "ft/io/Routing.hpp"
+#include "ft/io/Service.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Parameters.hpp"
 #include "ft/core/Component.hpp"
@@ -27,22 +28,21 @@
 namespace ft::io {
 
 template< class Self
-, class ProtocolT
+, template<class...> class ProtocolM
 , class PeerT
 , typename StateT
-//, class RouterT = BasicRouter<Self, PeersMap<PeerT>, RoutingT>
-, class IdleTimerT = BasicIdleTimer<Self>
-> class BasicMdClient : public io::BasicClient<Self, ProtocolT, PeerT, StateT>
-, public IdleTimerT
+, template<class...> class IdleTimerM = BasicIdleTimer // mixin
+> class BasicMdClient : public io::BasicClient<Self, PeerT, StateT>
+, public IdleTimerM<Self>
+, public ProtocolM<Self>
 {
     FT_SELF(Self);
-    using Base = BasicClient<Self, ProtocolT, PeerT, StateT>;
+    
+    using Base = BasicClient<Self, PeerT, StateT>;
   //  using Router = RouterT;
-    using IdleTimer = IdleTimerT;
-    friend Base;
-    friend IdleTimer;
+    using IdleTimer = IdleTimerM<Self>;
+    using Protocol = ProtocolM<Self>;
 public:
-    using typename Base::Protocol;
     using typename Base::Peer;
     using typename Base::PeersMap;
     using typename Base::Packet;
@@ -51,72 +51,48 @@ public:
     using typename Base::State;
 public:
     using Base::Base;
-    using Base::state, Base::reactor, Base::protocol;
+    using Base::state, Base::reactor;
     using Base::peers, Base::for_each_peer;
     using Base::async_connect;
     using Base::async_write;
+    using Protocol::stats;
+    using Protocol::async_handle, Protocol::async_write;
+    using typename Protocol::BestPriceSignal;
+    using typename Protocol::InstrumentSignal;
     
-    auto& stats() { return protocol().stats(); }
 
     void open() {
         Base::open();
         IdleTimer::open();
+        Protocol::open();
     }
 
     void close() {
+        Protocol::close();
         IdleTimer::close();
         Base::close();
     }
 
-    /// forward to protocol
-    void async_handle(Peer& peer, const Packet& packet, tb::DoneSlot done) {
-        protocol().async_handle(peer, packet, done);     // will do all the stuff, then call done()
-    }
-    
-    template<typename MessageT>
-    void async_write(const MessageT& m, tb::SizeSlot done) {
-        write_.set_slot(done);
-        write_.pending(0);
-        for_each_peer([&](auto& peer) {
-            if(self()->check(peer, m)) {
-              write_.inc_pending();
-              self()->async_write(peer, m, write_.get_slot());
-            }
-        });
-    }
-    template<typename MessageT>
-    bool check(Peer& peer, const MessageT& m) {
-        /*StreamTopic topic = m.topic();
-        auto& strm = stream(topic);
-        bool result = strm.subscription().check(m);
-        return result;*/
-        return true;    // send "subscribe" to every peer for now. FIXME: order routing logic ?
+    void on_parameters_updated(const core::Parameters& params) {
+        Base::on_parameters_updated(params);        
+        Protocol::on_parameters_updated(params);
+        IdleTimer::on_parameters_updated(params);
     }
 
-    /// connectable streams
-    core::Stream& stream(core::StreamTopic topic) { 
-        return protocol().stream(topic);
-        /*switch(topic) {
-            case core::StreamTopic::BestPrice: return protocol().ticks(topic); 
-            case core::StreamTopic::Instrument: return protocol().instruments(topic);
-            default: throw std::logic_error(std::string{"stream not supported"});
-        }*/
-    }
-protected:
     void on_idle() {
         std::stringstream ss;
-        protocol().stats().report(ss);
+        stats().report(ss);
         TOOLBOX_INFO << ss.str();
     }
 protected:
+
     //Router router_{self()};
-    tb::PendingSlot<ssize_t, std::error_code> write_;
 }; // BasicMdClient
 
-template<class ProtocolT, class PeerT, typename StateT=core::State>
-class MdClient : public BasicMdClient<MdClient<ProtocolT, PeerT, StateT>, ProtocolT, PeerT, StateT>
+template<template<class...> class ProtocolTT, class PeerT, typename StateT=core::State>
+class MdClient : public BasicMdClient<MdClient<ProtocolTT, PeerT, StateT>, ProtocolTT, PeerT, StateT>
 {
-    using Base = BasicMdClient<MdClient<ProtocolT, PeerT, StateT>, ProtocolT, PeerT, StateT>;
+    using Base = BasicMdClient<MdClient<ProtocolTT, PeerT, StateT>, ProtocolTT, PeerT, StateT>;
   public:
     using Base::Base;
 };

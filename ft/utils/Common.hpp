@@ -12,6 +12,7 @@
 #include <boost/mp11/list.hpp>
 #include <boost/mp11/algorithm.hpp>
 #include <boost/mp11/tuple.hpp>
+#include <boost/mp11/bind.hpp>
 
 #include "toolbox/Config.h"
 #include "toolbox/sys/Log.hpp"

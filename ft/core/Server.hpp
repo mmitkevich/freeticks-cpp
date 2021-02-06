@@ -19,7 +19,8 @@ class IServer : public IService {
 public:
     FT_IFACE(IServer);
 
-    virtual SubscriptionSignal& subscription(StreamTopic topic) = 0;
+    /// peer subscribed
+    virtual SubscriptionSignal& subscription() = 0;
 
     /// Connection of new peer
     virtual NewPeerSignal& newpeer() = 0;
@@ -29,8 +30,8 @@ public:
 
     /// typed slot
     template<typename...ArgsT>
-    Stream::Slot<ArgsT...>& slot(StreamTopic topic) {
-        return Stream::Slot<ArgsT...>::from(core::IService::stream(topic));
+    Stream::Slot<ArgsT...>& slot_of(StreamTopic topic) {
+        return Stream::Slot<ArgsT...>::from(this->slot(topic));
     }
 
 };
@@ -47,8 +48,7 @@ public:
     void url(std::string_view url) { impl()->url(url);}
     std::string_view url() const { return impl()->url(); }
 
-    SubscriptionSignal& subscription(StreamTopic topic) override { return impl()->subscription(topic); }
-    core::Stream& stream(StreamTopic topic) override { return impl()->stream(topic); }
+    SubscriptionSignal& subscription() override { return impl()->subscription(); }
 };
 
 }} // ft::core

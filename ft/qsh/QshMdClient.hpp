@@ -12,7 +12,7 @@
 namespace ft::qsh {
 
 // file-based gateway for Qsh files
-class QshMdClient:  public io::BasicService<QshMdClient, tb::Scheduler, core::State>
+class QshMdClient:  public io::BasicService<QshMdClient, tb::Scheduler, core::State>, public io::BasicSignalSlot<QshMdClient>
 {
     using Base = io::BasicService<QshMdClient, tb::Scheduler, core::State>;
   public:
@@ -32,7 +32,7 @@ class QshMdClient:  public io::BasicService<QshMdClient, tb::Scheduler, core::St
     }
     core::StreamStats& stats() { return decoder_.ticks().stats(); }
     
-    core::Stream& stream(core::StreamTopic topic) { return decoder_.stream(topic); }
+    core::Stream& signal(core::StreamTopic topic) { return decoder_.stream(topic); }
 private:
     QshDecoder decoder_;
     std::string url_;

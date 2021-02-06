@@ -153,6 +153,8 @@ class BasicConn : public EnableParent<ParentT, io::BasicReactiveComponent<typena
         }
         TOOLBOX_INFO<<"Peer remote:"<<remote()<<", local:"<<local()<<", url="<<url;
     }
+    
+    core::Subscription& subscription() { return sub_;}
 
     // subscription handled by connection
     //const Subscription& subscription() const  { return sub_; }
@@ -255,11 +257,12 @@ class BasicConn : public EnableParent<ParentT, io::BasicReactiveComponent<typena
     }
 protected:
     tb::CompletionSlot<std::error_code> handle_;
+    core::Subscription sub_;
     Packet packet_;
     SocketRef socket_;
     Stats stats_;
     tb::ParsedUrl url_;
-tb::DoneSlot write_;
+    tb::DoneSlot write_;
     Endpoint local_;
     tb::Buffer rbuf_;
     tb::Buffer wbuf_;
