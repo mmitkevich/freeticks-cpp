@@ -5,10 +5,26 @@
 #include "toolbox/io/Buffer.hpp"
 #include "toolbox/sys/Log.hpp"
 #include "ft/core/Stream.hpp"
+#include "ft/core/Requests.hpp"
 
 namespace ft::io {
 
-
+template<class Self, typename...>
+class BasicSubscribable {
+    FT_SELF(Self);
+public:
+    core::SubscriptionSignal& subscription() { 
+      return subscription_;
+    }
+    /// implements subscription of peer
+    template<class PeerT>
+    void on_subscribe(PeerT& conn, core::SubscriptionRequest& req) {
+        TOOLBOX_INFO << "on_subscribe: " << req;
+        self()->subscription().invoke(conn.id(), std::move(req));
+    }
+  protected:
+    core::SubscriptionSignal subscription_;
+};
 
 template<class Self, typename...>
 class BasicSignalSlot {
@@ -43,9 +59,43 @@ public:
     using Signal = core::Stream::Signal<const T&, tb::SizeSlot>;
 };
 
+template<class Self, typename...>
+class BasicPeerWriter {
+    FT_SELF(Self)
+public:
+    /// write to peer as POD
+    template<class PeerT, typename MessageT, typename DoneT>
+    void async_write_to(PeerT& peer, const MessageT& m, DoneT done) {
+        self()->async_write_to(peer, tb::to_const_buffer(m), std::forward<DoneT>(done));
+    }
+    /// write to peer
+    template<class PeerT, typename MessageT, typename DoneT>
+    void async_write_to(PeerT& peer, tb::ConstBuffer buf, DoneT done) {
+        peer.async_write(buf, std::forward<DoneT>(done));
+    }
+};
 
-template<class Self, typename...O>
-class BasicProtocol : public BasicSignalSlot<Self, O...> {
+template<class Self, typename...>
+class BasicPeerReader {
+    FT_SELF(Self)
+public:
+    /// read from peer as POD
+    template<class PeerT, typename MessageT, typename DoneT>
+    void async_read_from(PeerT& peer, MessageT& m, DoneT done) {
+        self()->async_read(tb::to_mut_buffer(m), std::forward<DoneT>(done));
+    }
+    /// read from peer
+    template<class PeerT, typename DoneT>
+    void async_read_from(PeerT& peer, tb::MutableBuffer buf, DoneT done) {
+        peer.async_read(buf, std::forward<DoneT>(done));
+    }
+};
+
+template<class Self, typename...>
+class BasicProtocol
+: public BasicSignalSlot<Self>
+, public BasicSubscribable<Self>
+, public BasicPeerWriter<Self> {
     FT_SELF(Self);
   public:
     /// open
@@ -64,29 +114,10 @@ class BasicProtocol : public BasicSignalSlot<Self, O...> {
         TOOLBOX_ASSERT_NOT_IMPLEMENTED;
         done({});
     }
-    /// write POD type
-    template<typename ConnT, typename MessageT, typename DoneT>
-    void async_write(ConnT& conn, const MessageT& m, DoneT done) {
-        self()->async_write(conn, tb::to_const_buffer(m), std::forward<DoneT>(done));
-    }
-    /// write from buffer
-    template<typename ConnT, typename DoneT>
-    void async_write(ConnT& conn, tb::ConstBuffer buf, DoneT done) {
-        conn.async_write(buf, std::forward<DoneT>(done));
-    }
-    /// read POD type
-    template<typename ConnT, typename MessageT, typename DoneT>
-    void async_read(ConnT& conn, MessageT& m, DoneT done) {
-        self()->async_read(tb::to_mut_buffer(m), std::forward<DoneT>(done));
-    }
-    /// read into buffer
-    template<typename ConnT, typename DoneT>
-    void async_read(ConnT& conn, tb::MutableBuffer buf, DoneT done) {
-        conn.async_read(buf, std::forward<DoneT>(done));
-    }
-    
-    void on_parameters_updated(const core::Parameters& params) {}
 
+    void on_parameters_updated(const core::Parameters& params) {
+
+    }
 }; // Protocol
 
 template<class Self, typename...O>

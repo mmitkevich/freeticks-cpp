@@ -12,7 +12,6 @@
 #include "ft/core/Requests.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/io/Conn.hpp"
-//#include "ft/io/Routing.hpp"
 #include "ft/io/Service.hpp"
 #include "toolbox/io/Socket.hpp"
 #include "toolbox/net/Endpoint.hpp"
@@ -21,46 +20,51 @@
 #include "toolbox/util/Slot.hpp"
 namespace ft::io {
 
-template<
-  class Self
+template<class Self
 , template<class...> class ProtocolM
 , class PeerT
 , class ServerSocketT
-, typename StateT
-> class BasicMdServer : public io::BasicServer<Self, PeerT, ServerSocketT, StateT>
+, typename...O>
+class BasicMdServer : public BasicServer<Self, PeerT, ServerSocketT, O...>
 , public ProtocolM<Self>
 {
     FT_SELF(Self);
-    using Base =  io::BasicServer<Self, PeerT, ServerSocketT, StateT>;
-    using typename Base::PeersMap;
+    using Base = BasicServer<Self, PeerT, ServerSocketT, O...>;
 public:
-    using typename Base::Peer;
-    using typename Base::Endpoint;
-    using typename Base::Reactor;
-  public:
     using Base::Base;
+    using typename Base::Peer;
     using Protocol = ProtocolM<Self>;
-    using Base::state, Base::reactor;
-    using Protocol::async_write;
-    using Base::async_write;
-    using Base::for_each_peer;
+    
+    using Base::open, Base::close; // resolve ambiguity with Protocol::open
 
-    template<typename T>
-    using Slot = typename Protocol::template Slot<T>;
-
-    void open() {
-        Base::open();
+    void do_open() {
+        Base::do_open();
         Protocol::open();
     }
 
-    void close() {
+    void do_close() {
         Protocol::close();
-        Base::close();
+        Base::do_close();
     }
 
     void on_parameters_updated(const core::Parameters& params) {
         Base::on_parameters_updated(params);        
         Protocol::on_parameters_updated(params);
+    }
+
+    void on_subscribe(Peer& peer, core::SubscriptionRequest& req) {
+        Protocol::on_subscribe(peer, req); // notifies on subscription
+        peer.subscription().set(req.topic(), req.instrument_id()); // modify peers' subscription
+    }
+
+    bool route(Peer& peer, StreamTopic topic, InstrumentId instrument) {
+      bool result = peer.subscription().test(topic, instrument);
+      return result;
+    }
+
+    template<class MessageT>
+    void async_write_to(Peer& peer, const MessageT& m, tb::SizeSlot done) {
+      Protocol::async_write_to(peer, m, done);
     }
 
     /// returns Stream::Slot
@@ -75,34 +79,21 @@ public:
       }
     }
 
-    bool route(Peer& peer, StreamTopic topic, InstrumentId instrument) {
-      bool result = peer.subscription().test(topic, instrument);
-      return result;
-    }
-
-    core::SubscriptionSignal& subscription() { 
-      return subscription_;
-    }
 protected:
-    tb::PendingSlot<ssize_t, std::error_code> write_;
-    // from client to server
-    core::SubscriptionSignal subscription_;
+    template<class T>
+    using Slot = typename Protocol::template Slot<T>;
     Slot<core::Tick> ticks_slot_{self()};
-    Slot<core::InstrumentUpdate> instruments_slot_{self()};
-}; // BasicMdServer
+    Slot<core::InstrumentUpdate> instruments_slot_{self()};    
+};
+
 
 template<
   template<class> class ProtocolM
 , class PeerT
 , class ServerSocketT
-, typename StateT = core::State
-> class MdServer : public io::BasicMdServer<
-  MdServer<ProtocolM, PeerT,  ServerSocketT, StateT>,
-  ProtocolM, PeerT, ServerSocketT, StateT>
+> class MdServer : public io::BasicMdServer<MdServer<ProtocolM, PeerT, ServerSocketT>, ProtocolM, PeerT, ServerSocketT>
 {
-    using Base = io::BasicMdServer<
-      MdServer<ProtocolM, PeerT, ServerSocketT, StateT>,
-      ProtocolM, PeerT, ServerSocketT, StateT>;
+    using Base = io::BasicMdServer<MdServer<ProtocolM, PeerT,  ServerSocketT>,ProtocolM, PeerT, ServerSocketT>;
   public:
     using Base::Base;
 };

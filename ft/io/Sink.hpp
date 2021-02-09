@@ -32,12 +32,12 @@ protected:
     tb::MonoTime last_flush_ = tb::MonoClock::now();
 };
 
-template<class Self, class ValueT, class FieldsT=BasicFields<core::Field>, class ParentT=core::Component, class BaseT=core::Component, typename...>
-class BasicSink : public core::EnableParent<ParentT, BaseT>
+template<class Self, class ValueT, class FieldsT, typename...>
+class BasicSink : public core::Component
 , public Stream::BasicSlot<Self, const ValueT&>
 , public BasicFlushable<Self>
 {
-    using Base = core::EnableParent<ParentT, BaseT>; // need to repeat
+    using Base = core::Component; 
     using Slot = Stream::BasicSlot<Self, const ValueT&>;
     using Flushable = BasicFlushable<Self>;
     FT_SELF(Self);

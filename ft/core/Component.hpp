@@ -83,17 +83,4 @@ protected:
     Component* parent_{};
 };
 
-/// declares Parent type
-template<class ParentT=core::Component, class Base=core::Component>
-class EnableParent : public Base {
-  public:
-    using Parent = ParentT;
-    
-    using Base::Base;
-
-    Parent* parent() { return static_cast<Parent*>(Base::parent()); }
-    const Parent* parent() const { return static_cast<const Parent*>(Base::parent());  }
-    void parent(Parent* val) { Base::parent(val); }
-};
-
 }} // ns ft::core

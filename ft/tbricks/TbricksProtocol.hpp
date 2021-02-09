@@ -31,13 +31,14 @@ public:
     using Sequence = tbricks::v1::Sequence;
 
     using Base::Base;
-    using Base::async_write;
-
+    
     using BestPriceSignal = typename Base::template Signal<core::Tick>;
     using InstrumentSignal = typename Base::template Signal<core::InstrumentUpdate>;
 
+    using Base::async_write_to;
+    
     template<typename ConnT, typename DoneT>
-    void async_write(ConnT& conn, const SubscriptionRequest& request, DoneT done) {
+    void async_write_to(ConnT& conn, const SubscriptionRequest& request, DoneT done) {
         // remember request id
         switch(request.request()) {
             case core::Request::Subscribe: {
@@ -68,20 +69,19 @@ public:
         switch(msg.msgtype()) {
             case MessageType::SubscriptionRequest: {
                 TOOLBOX_INFO << name()<<": in: t:"<<(int)tb::unbox(msg.msgtype())<<", sym:'"<<msg.symbol().str()<<"', seq:"<<msg.seq();
-                if constexpr(TB_IS_VALID(self(), self()->subscription())) {
+                //if constexpr(TB_IS_VALID(self(), self()->subscription())) {
                     core::SubscriptionRequest req {};
                     req.symbol(msg.symbol().str());
                     req.request(Request::Subscribe);
-                    TOOLBOX_INFO << req;
-                    self()->subscription().invoke(conn.id(), std::move(req));
-                }
+                    self()->on_subscribe(conn, req);
+                //}
             } break;
             case MessageType::SubscriptionCancelRequest: {
                 if constexpr(TB_IS_VALID(self(), self()->subscription())) {
                     core::SubscriptionRequest req;
                     req.symbol(msg.symbol().str());
                     req.request(core::Request::Unsubscribe);
-                    self()->subscription().invoke(conn.id(), std::move(req));
+                    self()->on_subscribe(conn, req);
                 }
             } break;
             case MessageType::ClosingEvent: {
@@ -89,7 +89,7 @@ public:
                     core::SubscriptionRequest req;
                     req.symbol(msg.symbol().str());
                     req.request(core::Request::Close);
-                    self()->subscription().invoke(conn.id(), std::move(req));
+                    self()->on_subscribe(conn, req);
                 }
             } break;
             case MessageType::HeartBeat: {

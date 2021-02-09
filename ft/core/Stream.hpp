@@ -105,12 +105,12 @@ public:
             return false;
         return it->second.test(topic);
     }
-    Subscription& subscribe(StreamTopic topic, InstrumentId instrument) {
+    Subscription& set(StreamTopic topic, InstrumentId instrument) {
         instruments_[instrument].set(topic);
         Base::set(topic);
         return *this;
     }
-    Subscription& unsubscribe(StreamTopic topic, InstrumentId instrument) {
+    Subscription& reset(StreamTopic topic, InstrumentId instrument) {
         instruments_[instrument].reset(topic);
         return *this;
     }

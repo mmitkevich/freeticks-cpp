@@ -2,23 +2,35 @@
 #include "ft/core/Component.hpp"
 #include "ft/core/Identifiable.hpp"
 #include "ft/core/Parameters.hpp"
-#include "ft/io/Routing.hpp"
+#include "ft/core/Stream.hpp"
 #include "toolbox/io/Socket.hpp"
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Sock.hpp"
 #include "toolbox/util/Slot.hpp"
 #include <ft/io/Service.hpp>
+#include <stdexcept>
 #include <type_traits>
 #include "ft/utils/Compat.hpp"
 #include "ft/core/Server.hpp"
 
 namespace ft::io {
 
-template<class Self, class PeerT, class ServerSocketT, typename StateT, class ParentT, typename...ArgsT>
-class BasicSocketService : public EnableParent<ParentT, BasicPeerService<Self, PeerT, StateT, ArgsT...>>
+
+class PeerService: public io::Service {
+    using Base = io::Service;
+public:
+    using Base::Base;
+    NewPeerSignal& newpeer() { return newpeer_; }
+protected:
+    NewPeerSignal newpeer_;
+};
+
+/// Acceptor
+template<class Self, class PeerT, class ServerSocketT, typename...O>
+class BasicServer : public BasicPeerService<Self, PeerT, O...>
 {
     FT_SELF(Self);
-    using Base = EnableParent<ParentT, BasicPeerService<Self, PeerT, StateT, ArgsT...>>;
+    using Base = BasicPeerService<Self, PeerT, O...>;
   public:
     using typename Base::Parent;
     using ServerSocket = ServerSocketT;
@@ -30,27 +42,26 @@ class BasicSocketService : public EnableParent<ParentT, BasicPeerService<Self, P
     using typename Base::Peer;
     using typename Base::PeersMap;
     using typename Base::Packet;
-
+    using typename Base::Reactor;
   public:
-    using Base::parent, Base::peers, Base::peers_, Base::reactor
+    using Base::peers, Base::peers_, Base::reactor
         , Base::make_peer, Base::emplace_peer
         , Base::local, Base::async_write;
     using Base::Base;
 
-    BasicSocketService(const BasicSocketService& rhs)=delete;
-    BasicSocketService& operator=(const BasicSocketService& rhs)=delete;
-
-    BasicSocketService(BasicSocketService&& rhs)=default;
-    BasicSocketService& operator=(BasicSocketService&& rhs)=default;
-
-    explicit BasicSocketService(const Endpoint& ep, Parent* parent)
-    :  Base(ep, parent->reactor(), parent)
+    explicit BasicServer(const Endpoint& ep, Reactor* reactor=nullptr, io::PeerService* parent=nullptr)
+    :  Base(ep, reactor, parent)
     {}
 
     void open() {
-        socket_.open(*reactor(), local().protocol());
+        socket_.open(reactor(), local().protocol());
         socket_.bind(local());
     }
+
+    PeerService* parent() {
+        return static_cast<PeerService*>(Base::parent());
+    }
+    using Base::parent; // setter
 
     /// @see SocketRef
     void close() { socket_.close(); } 
@@ -83,21 +94,18 @@ class BasicSocketService : public EnableParent<ParentT, BasicPeerService<Self, P
         if constexpr(has_socket_accept()) { // tcp
             socket().async_accept(next_peer().remote(), tb::bind(
             [this](ClientSocket&& socket, std::error_code ec) {
-                //parent()->newpeer_(tb::ip_endpoint(remote_), ec);
                 if(!ec) {
                     next_peer().socket(std::move(socket));
-                    parent()->async_accept(next_peer(), tb::bind(
-                    [this](std::error_code ec) {
-                        if(!ec) {
-                            next_peer().run([](Peer& peer, Packet& packet, tb::DoneSlot done) {
-                                auto* self = static_cast<Self*>(peer.parent());
-                                self->parent()->async_handle(peer, packet, done);
-                            });    // peer's loop
-                            run();    // accept again
-                        } else {
-                            on_error(next_peer(), ec, "not accepted", TOOLBOX_FILE_LINE);
-                        }
-                    }));
+                    parent()->newpeer()(next_peer().id(), ec);
+                    if(!ec) {
+                        next_peer().run([](Peer& peer, Packet& packet, tb::DoneSlot done) {
+                            auto* self = static_cast<Self*>(peer.parent());
+                            self->parent()->async_handle(peer, packet, done);
+                        });    // peer's loop
+                        run();    // accept again
+                    } else {
+                        on_error(next_peer(), ec, "not accepted", TOOLBOX_FILE_LINE);
+                    }
                 } else {
                     on_error(next_peer(), ec, "not accepted", TOOLBOX_FILE_LINE);
                 }
@@ -118,206 +126,73 @@ class BasicSocketService : public EnableParent<ParentT, BasicPeerService<Self, P
         TOOLBOX_DUMPV(5)<<"self:"<<self()<<" peer:"<<&peer<<",local:"<<peer.local()<<",remote:"<<peer.remote()<<", peer_id:"<<peer.id()<<", #peers:"<<peers_.size();
         auto it = peers_.find(peer.id());
         if(it==peers_.end()) {
-            resume_ = done; // save continuation
-            parent()->async_accept(peer, tb::bind(
-            [p=&peer](std::error_code ec) {
-                auto* self = static_cast<Self*>(p->parent());                
-                if(!ec) {
-                    self->parent()->async_handle(*p, p->packet(), self->resume_.release());
-                } else {
-                    self->on_error(*p, ec,  "not accepted", TOOLBOX_FILE_LINE);
-                }
-            }));
+            parent()->newpeer()(peer.id(), {});
+            self()->async_handle(peer, peer.packet(), done);
         }
     }
-    template<typename MessageT>
-    void async_write(Peer& peer, const MessageT& m, tb::SizeSlot done) {
-        self()->parent()->async_write(peer, m, done);
-    }
-    
+
     void on_error(Peer& peer, std::error_code ec, const char* what="error", const char* loc="") {
         TOOLBOX_ERROR << loc << what <<", ec:"<<ec<<", peer:"<<peer.remote();
     }
   protected:
     ServerSocket socket_;
-    tb::DoneSlot resume_;
     std::unique_ptr<Peer> next_peer_ = make_next_peer();
 };
 
-template<class PeerT, class ServerSocketT, typename StateT, class ParentT>
-class SocketService: public BasicSocketService<
-    SocketService<PeerT, ServerSocketT, StateT, ParentT>,
-    PeerT, ServerSocketT, StateT, ParentT> 
+template<class PeerT, class ServerSocketT>
+class Server: public BasicServer<Server<PeerT, ServerSocketT>, PeerT, ServerSocketT> 
 {
-    using Base = BasicSocketService<
-        SocketService<PeerT, ServerSocketT, StateT, ParentT>,
-        PeerT, ServerSocketT, StateT, ParentT>;
+    using Base = BasicServer<Server<PeerT, ServerSocketT>, PeerT, ServerSocketT>;
   public:
     using Base::Base;
 };
 
-/// adds Acceptors
-template<class Self
-, class PeerT
-, class ServerSocketT
-, typename StateT
->
-class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, StateT, core::Component>
+
+/// multiple services
+template<class Self, class ServicesL, typename...O>
+class BasicMultiServer : public io::BasicMultiService<Self, PeerService, ServicesL, O...>
 {
     FT_SELF(Self);
-    using Base = io::BasicService<Self, typename PeerT::Reactor, StateT, core::Component>;
-  public:
-    using Service = io::SocketService<PeerT, ServerSocketT, StateT, Self>;
-    using Packet = typename Service::Packet;
-    using Peer = PeerT;
-    using ServerSocket = ServerSocketT;
-    using Reactor = typename Peer::Reactor;
-    using Endpoint = typename Peer::Endpoint;
-    using ServicesMap = tb::unordered_map<Endpoint, std::unique_ptr<Service>>;    
+    using Base = io::BasicMultiService<Self, PeerService, ServicesL, O...>;
   public:
     using Base::Base;
     using Base::parameters;
-    using Base::reactor;
-    using Base::is_open;
-    using Base::open, Base::close;
-
-
-
-    class PeersMap {
-        using ServicesIterator = typename ServicesMap::iterator;
-        using PeersIterator = typename Service::PeersMap::iterator;
-      public:
-        using key_type = decltype(std::declval<PeersIterator>()->first);
-        using mapped_type = decltype(std::declval<PeersIterator>()->second);
-        
-        PeersMap(ServicesIterator begin, ServicesIterator end)
-        : begin_(begin)
-        , end_(end) {}
-
-        class iterator {
-          public:
-            iterator() = default;
-            iterator(ServicesIterator svc_it, ServicesIterator svc_end)
-            : svc_it_(svc_it)
-            , svc_end_(svc_end)
-            { 
-                if(svc_it_!=svc_end_) {
-                    maybe_peer_it_ = peers().begin();
-                }
-            }
-            typename Service::PeersMap& peers() {
-                return svc_it_->second->peers();
-            }
-
-            auto& operator*() { return *maybe_peer_it_.value(); }
-            auto* operator->() { return &(*maybe_peer_it_.value()); }
-            auto& operator++() { advance(); return *this; }
-            //auto& operator++(int) { advance(); return *this;}
-            friend bool operator==(const iterator& lhs, const iterator& rhs) {
-                return lhs.svc_it_ == rhs.svc_it_ && lhs.maybe_peer_it_ == rhs.maybe_peer_it_;
-            }
-            friend bool operator!=(const iterator& lhs, const iterator& rhs) {
-                return !operator==(lhs, rhs);
-            }
-
-            void advance() {
-                if(maybe_peer_it_) {
-                    ++maybe_peer_it_.value();
-                    if(maybe_peer_it_.value()==peers().end()) {
-                        maybe_peer_it_.reset();
-                        do {
-                            ++svc_it_;
-                            if(svc_it_!=svc_end_)
-                                maybe_peer_it_ = peers().begin();
-                            else 
-                                break;
-                        } while(!maybe_peer_it_);
-                    }
-                }
-            }
-          private:
-            ServicesIterator svc_it_;
-            ServicesIterator svc_end_;            
-            std::optional<PeersIterator> maybe_peer_it_;
-        };
-        auto begin() const { return iterator(begin_, end_); }
-        auto end() const { return iterator(begin_, end_); }
-      private:
-        ServicesIterator begin_, end_;
-    };
-    
-    //using tt = tb::SocketTraits::sock_async_accept_t<ServerSocket>;
-    const ServicesMap& services() { return services_; }
-
-    const PeersMap peers() const { return PeersMap(services_.begin(), services_.end()); }
-    PeersMap peers() { return PeersMap(services_.begin(), services_.end()); }
+    using Base::open, Base::close, Base::is_open, Base::service, Base::for_each_service, Base::reactor;
 
     void on_parameters_updated(const core::Parameters& params) {
         bool was_open = is_open();
         if(was_open)
             close();
-        assert(services_.empty());
         for(auto conn_p: parameters()["connections"]) {
-            auto iface = conn_p.value_or("interface", std::string{});
-            auto ep = tb::TypeTraits<Endpoint>::from_string(iface);
-            auto [it, is_new] = services_.emplace(ep, make_service(ep));
+            auto ep = conn_p.strv("local");
+            auto proto = conn_p.strv("transport");
+            self()->get_service(proto, ep, reactor()); // will create service
         }
         if(was_open)
             open();
     }
 
-    std::unique_ptr<Service> make_service(const Endpoint& ep) {
-        return std::unique_ptr<Service>(new Service(ep, self()));
-    }
-
-    template<typename Fn>
-    int for_each_service(Fn fn) {
-        for(auto& it: services_) {
-            auto& svc=it.second;
-            fn(*svc);
-        }        
-        return services_.size();
-    }
-
+    /// route via all services
     template<typename MessageT>
     void async_write(const MessageT& m, tb::SizeSlot done) {
         write_.set_slot(done);
         write_.pending(0);
         for_each_service([&](auto& svc) {
-              write_.inc_pending();
-              svc.async_write(m, write_.get_slot());
+            write_.inc_pending();
+            svc.async_write(m, write_.get_slot());
         });
     }
 
     void do_open() {
-        for_each_service([](auto& svc) {
-            svc.open();
-        });
-        Base::do_open();
+        Base::do_open(); // will open services
         self()->run();
     }
     
     /// accepts clients, reads messages from them and apply protocol logic
     void run() {
-        TOOLBOX_DUMPV(5)<<"#services:"<<services_.size();
         for_each_service([](auto& svc) {
             svc.run();
         });
-
-    }
-
-    /// called when service accepts peer
-    void async_accept(Peer& peer, tb::DoneSlot done) {
-        TOOLBOX_DEBUG<<"new_peer remote:"<<peer.remote();
-        newpeer_(peer.id(), tb::ip_endpoint(peer.remote()));
-        done({});
-    }
-
-    void do_close() {
-        for_each_service([](auto& svc) {
-            svc.close();
-        });
-        services_.clear();
     }
 
     void shutdown(PeerId id) {
@@ -336,13 +211,27 @@ class BasicServer : public io::BasicService<Self, typename PeerT::Reactor, State
       return count;
     }
 
-    NewPeerSignal& newpeer() { return newpeer_; }
-
-  protected:
+    core::Stream& slot(core::StreamTopic topic) {
+        throw std::logic_error("notimpl");
+    }
+    core::Stream& signal(core::StreamTopic topic) {
+        throw std::logic_error("notimpl");
+    }
+    core::SubscriptionSignal& subscription() {
+        return subscription_;
+    }
+protected:
     tb::PendingSlot<ssize_t, std::error_code> write_;
-    ServicesMap services_; // indexed by local endpoint
-    Endpoint remote_;
-    NewPeerSignal newpeer_;
-}; // BasicService
+    core::SubscriptionSignal subscription_;
+
+};
+
+template<class ServicesL>
+class MultiServer: public BasicMultiServer<MultiServer<ServicesL>, ServicesL> 
+{
+    using Base = BasicMultiServer<MultiServer<ServicesL>, ServicesL>;
+  public:
+    using Base::Base;
+};
 
 } // ft::io

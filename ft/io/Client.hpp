@@ -11,7 +11,6 @@
 #include <system_error>
 #include <toolbox/io/Socket.hpp>
 #include <ft/utils/StringUtils.hpp>
-#include "ft/io/Routing.hpp"
 #include "ft/core/Requests.hpp"
 #include "ft/io/Service.hpp"
 #include <deque>
@@ -47,11 +46,11 @@ protected:
     tb::Timer idle_timer_;
 }; // IdleTimer
 
-template<class Self, class PeerT, typename StateT>
-class BasicClient: public BasicPeerService<Self, PeerT, StateT>
+template<class Self, class PeerT>
+class BasicClient: public BasicPeerService<Self, PeerT>
 {
     FT_SELF(Self);
-    using Base = BasicPeerService<Self, PeerT, StateT>;
+    using Base = BasicPeerService<Self, PeerT>;
   public:
     using typename Base::Peer;
     using typename Base::PeersMap;
@@ -82,14 +81,13 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
 
     void populate(const core::Parameters& params) {
         assert(Base::peers_.empty());
-        std::string proto = params.str("protocol");
+        std::string transport = params.str("transport");
         auto conns_pa = params["connections"];
         for(auto p: conns_pa) {
             std::string_view type = p.str("type");
-            //auto proto = ft::str_suffix(type, '.');
-            auto iface = p.str("interface","");
-            if(Peer::supports(proto)) {
-                for(auto e : p["urls"]) {
+            auto iface = p.str("local","");
+            if(Transport::name() == transport) {
+                for(auto e : p["remote"]) {
                     std::string url {e.get_string()};
                     if(!iface.empty())
                         url = url+"|interface="+iface;
@@ -103,7 +101,7 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
     void open() {
         state(State::PendingOpen);
         Base::do_open();
-        async_connect(tb::bind<&Self::on_connected>(self()));
+        self()->async_connect(tb::bind<&Self::on_connected>(self()));
     }
     
     void do_close() {
@@ -114,7 +112,7 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
         TOOLBOX_INFO << "connected to "<<Base::peers_.size()<<" peers, ec "<<ec;
         state(State::Open); // notifies on state changed
     }
-
+ 
     // connect all peers. Notifies when all done
     void async_connect(tb::DoneSlot done) {
         assert(connect_.empty());
@@ -161,4 +159,92 @@ class BasicClient: public BasicPeerService<Self, PeerT, StateT>
     tb::Signal<> connected_;
 }; // BasicClient
 
+
+
+
+/// multiple services
+template<class Self, class ClientsL, typename...O>
+class BasicMultiClient : public io::BasicMultiService<Self, io::Service, ClientsL, O...>
+{
+    FT_SELF(Self);
+    using Base = io::BasicMultiService<Self, io::Service, ClientsL, O...>;
+  public:
+    using Base::Base;
+    using Base::parameters;
+    using Base::open, Base::close, Base::is_open, Base::service, Base::for_each_service, Base::reactor;
+
+    void on_parameters_updated(const core::Parameters& params) {
+        bool was_open = is_open();
+        if(was_open)
+            close();
+        for(auto conn_p: parameters()["connections"]) {
+            auto ep = conn_p.strv("local");
+            auto proto = conn_p.strv("transport");
+            self()->get_service(proto, ep, reactor()); // will create service
+        }
+        if(was_open)
+            open();
+    }
+
+    /// route via all services
+    template<typename MessageT>
+    void async_write(const MessageT& m, tb::SizeSlot done) {
+        write_.set_slot(done);
+        write_.pending(0);
+        for_each_service([&](auto& svc) {
+            write_.inc_pending();
+            svc.async_write(m, write_.get_slot());
+        });
+    }
+
+    void do_open() {
+        Base::do_open(); // will open services
+        self()->run();
+    }
+    
+    /// accepts clients, reads messages from them and apply protocol logic
+    void run() {
+        for_each_service([](auto& svc) {
+            svc.run();
+        });
+    }
+
+    void shutdown(PeerId id) {
+        for_each_service([id](auto& svc) {
+            svc.shutdown(id);
+        });
+    }
+
+    template<typename Fn>
+    int for_each_peer(const Fn& fn) {
+      // decide who wants this tick and broadcast
+      int count = 0;
+      for_each_service([&](auto& svc) {
+        count += svc.for_each_peer(fn);
+      });
+      return count;
+    }
+
+    core::Stream& slot(core::StreamTopic topic) {
+        throw std::logic_error("notimpl");
+    }
+    core::Stream& signal(core::StreamTopic topic) {
+        throw std::logic_error("notimpl");
+    }
+    core::SubscriptionSignal& subscription() {
+        return subscription_;
+    }
+protected:
+    tb::PendingSlot<ssize_t, std::error_code> write_;
+    core::SubscriptionSignal subscription_;
+
+};
+
+template<class ServicesL>
+class MultiClient: public BasicMultiClient<MultiClient<ServicesL>, ServicesL> 
+{
+    using Base = BasicMultiClient<MultiClient<ServicesL>, ServicesL>;
+  public:
+    using Base::Base;
+};
 } // namespace ft::io

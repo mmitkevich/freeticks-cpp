@@ -2,18 +2,24 @@
 "clients": {
     "SPB_MDBIN":{
         "enable": ["serv", "pcap"]
-        , "protocol": "mcast" // FIXME: make MdClient support multiple Conn types
         , "connections": [  // channel A,            channel B
-            {   "stream":"BestPrice",  "type": "snapshot", "interface":"10.1.110.55"
-                    , "urls": ["233.26.38.16:6016", "233.26.38.144:6144"] }
-            , { "stream":"BestPrice",  "type": "update", "interface":"10.1.110.55"
-                    , "urls": ["233.26.38.17:6017", "233.26.38.145:6145"],    "recovery": "BEX.TOB" }
-            , { "stream":"Instrument", "type": "snapshot"
-                , "files": ["/opt/tbricks/instr-2020-11-02.xml"]
-                , "interface":"10.1.110.55"
-                    , "urls": ["233.26.38.36:6036", "233.26.38.164:6164"] }
-            , { "stream":"instrument", "type": "update", "interface":"10.1.110.55"
-                    , "urls": ["233.26.38.37:6037", "233.26.38.165:6165"] }
+            // internally structured as
+            // MultiClient
+            // +---[mcast 10.1.110.55] Client<SpbMcastProtocol>
+            // +---[tcp 10.1.110.55] Client<SpbTcpProtocol>
+
+            // MdClient1<SpbProto,Conn<Mcast>>
+            {   "topic":"BestPrice", "transport": "mcast", "protocol":"SPB", "type": "snapshot", "local":"10.1.110.55"
+                , "remote": ["233.26.38.16:6016", "233.26.38.144:6144"] }
+            // MdClient1<SpbProto,Conn<Mcast>>
+        ,   { "topic":"BestPrice", "transport": "mcast",  "protocol":"SPB", "type": "update", "local":"10.1.110.55"
+                , "remote": ["233.26.38.17:6017", "233.26.38.145:6145"],  "recovery": "BEX.TOB" }
+        ,   { "topic":"Instrument", "transport": "mcast", "protocol":"SPB", "type": "snapshot"
+                , "resource": ["/opt/tbricks/instr-2020-11-02.xml"]
+                , "local":"10.1.110.55"
+                , "remote": ["233.26.38.36:6036", "233.26.38.164:6164"] }
+        ,   { "topic":"Instrument", "transport": "mcast", "protocol":"SPB", "type": "update", "interface":"10.1.110.55"
+                , "remote": ["233.26.38.37:6037", "233.26.38.165:6165"] }
         ],
         "pcap": {
             "urls": ["/opt/tbricks/spb_20201012.tgz", "/opt/tbricks/spb_20201013.pcap"]
@@ -32,11 +38,11 @@
          "enable": ["clnt"]
         , "protocol" : "udp"
         , "connections":[
-            {"stream":"BestPrice",  "type": "snapshot"
-            , "urls": ["127.0.0.1:10050|interface=127.0.0.1:10010"]}
+            {"topic":"BestPrice",  "type": "snapshot", "transport":"udp", "protocol":"TB1", "local": "127.0.0.1:10010"
+            , "remote": ["127.0.0.1:10050|interface=127.0.0.1:10010"]}
         ]
         , "subscriptions":[
-            { "stream":"BestPrice", "symbols": ["BABA", "JD"] }
+            { "topic":"BestPrice", "symbols": ["BABA", "JD"] }
         ]
     }
 }
@@ -44,7 +50,8 @@
     "TB1": {
         "enable": ["serv"]
         , "connections" : [
-            { "stream": "BestPrice", "type":"snapshot", "interface": "127.0.0.1:10050" }
+            { "transport":"udp", "local": "127.0.0.1:10050" },    // A: many peers, MdServer1
+            { "transport":"udp", "local": "127.0.0.1:10051" }     // B: many peers, MdServer2
         ]
     }
 }

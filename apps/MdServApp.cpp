@@ -157,37 +157,39 @@ public:
   
   // type functions to get concrete MdClient from Protocol, connections types and reactor
   template<template<class...> class ProtocolM> 
-  using McastMdClient = io::MdClient<ProtocolM, io::Conn<tb::McastSocket<>>>;  
+  using McastMdClient = io::MdClient<ProtocolM, io::McastConn>;  
   template<template<class...> class ProtocolM>
-  using UdpMdClient = io::MdClient<ProtocolM, io::Conn<tb::DgramSocket<>>>;
+  using UdpMdClient = io::MdClient<ProtocolM, io::DgramConn>;
   template<template<class...> class ProtocolM>
   using PcapMdClient = io::PcapMdClient<ProtocolM>;
 
   template<template<class> class ProtocolT> 
-  using UdpMdServer = io::MdServer<ProtocolT, io::ServerConn<tb::DgramSocket<>>, tb::DgramSocket<>>;
+  using UdpMdServer = io::MultiServer<mp::mp_list<
+    io::MdServer<ProtocolT, io::ServerConn<tb::DgramSocket<>>, tb::DgramSocket<>>
+  >>;
 
   // concrete packet types decoded by Protocols. FIXME: UdpPacket==McastPacket?
 
-  Factory<IClient> make_mdclients_factory(std::string_view proto) {
-    if(proto=="mcast") {
+  Factory<IClient> make_mdclients_factory(std::string_view transport) {
+    if(transport=="mcast") {
       return make_mdclients_factory<McastMdClient, tb::McastEndpoint>();
-    } else if(proto=="pcap") {
+    } else if(transport=="pcap") {
       return make_mdclients_factory<PcapMdClient, tb::IpEndpoint>();
-    } else if(proto=="udp") {
+    } else if(transport=="udp") {
       return make_mdclients_factory<UdpMdClient, tb::UdpEndpoint>();
     } else {
-      Self::fail("protocol not supported", proto, TOOLBOX_FILE_LINE);
+      Self::fail("protocol not supported", transport, TOOLBOX_FILE_LINE);
       return nullptr;
     }
   }
   std::unique_ptr<core::IClient> make_mdclient(std::string_view venue,const core::Parameters &params) {
     //TOOLBOX_DEBUG<<"run venue:'"<<venue<<"', params:"<<params;
     //start_timestamp_ = tb::MonoClock::now();
-    auto protocol = params.strv("protocol");
+    auto transport = params.strv("transport");
     if(mode()=="pcap")
-      protocol = "pcap";
-    Factory<IClient> make_mdclient = make_mdclients_factory(protocol);
-    TOOLBOX_DUMP<<"make_mdclient venue:"<<venue<<", protocol:"<<protocol;
+      transport = "pcap";
+    Factory<IClient> make_mdclient = make_mdclients_factory(transport);
+    TOOLBOX_DUMP<<"make_mdclient venue:"<<venue<<", transport:"<<transport;
     std::unique_ptr<core::IClient> client = make_mdclient(venue, self());
     auto& c = *client;
     c.parameters(params);
@@ -196,7 +198,7 @@ public:
      .connect(tb::bind<&Self::on_tick>(self()));
     c.signal_of<const core::InstrumentUpdate&>(core::StreamTopic::Instrument)
      .connect(tb::bind<&Self::on_instrument>(self()));    
-    TOOLBOX_INFO << "created md client venue:'"<<venue<<"', protocol:'"<<protocol<<"'";
+    TOOLBOX_INFO << "created md client venue:'"<<venue<<"', transport:'"<<transport<<"'";
     return client;
   }
 
@@ -225,7 +227,7 @@ public:
   std::unique_ptr<core::IService> make_mdsink(std::string_view venue, const core::Parameters& params) {
     std::unique_ptr<core::IService> sink;
     if(venue=="ClickHouse") {
-        using ClickHouseSinksL = mp::mp_list<io::ClickHouseSink<core::Tick>>;
+        using ClickHouseSinksL = mp::mp_list<core::Tick>;
         using ClickHouseService = io::ClickHouseService<ClickHouseSinksL>;
         using Proxy = core::Proxy<ClickHouseService, core::IService::Impl>;
         auto* proxy = new Proxy(&instruments_, reactor(), self());
@@ -248,6 +250,7 @@ public:
     TOOLBOX_INFO << "subscribe:"<<req;
     switch(req.request()) {
       case Request::Subscribe: {
+        
       } break;
       default: {
         TOOLBOX_ERROR<<"request not supported: "<<req.request();
@@ -256,7 +259,7 @@ public:
   }
   
 
-  void on_reactor_state_changed(tb::Scheduler*reactor, tb::io::State state) {
+  void on_reactor_state_changed(tb::Reactor* reactor, tb::io::State state) {
     TOOLBOX_INFO<<"reactor state: "<<state;
     switch(state) {
       case State::PendingClosed: 

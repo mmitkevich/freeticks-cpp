@@ -26,12 +26,12 @@ public:
 };
 
 template<template<class...> class ProtocolM>
-class PcapMdClient  : public BasicService<PcapMdClient<ProtocolM>>
+class PcapMdClient  : public BasicService<PcapMdClient<ProtocolM>, io::Service>
 , public ProtocolM<PcapMdClient<ProtocolM>>
 {
 public:
     using Self = PcapMdClient<ProtocolM>;
-    using Base = BasicService<PcapMdClient<ProtocolM>>;
+    using Base = BasicService<PcapMdClient<ProtocolM>, io::Service>;
     using Protocol = ProtocolM<Self>;
     friend Protocol;
     using Stats = core::EndpointStats<tb::IpEndpoint>;
@@ -52,7 +52,7 @@ public:
     void on_parameters_updated(const core::Parameters& params) {
         auto pcap_pa = params["pcap"];
 
-        pcap_pa["urls"].copy(inputs_);
+        pcap_pa["remote"].copy(inputs_);
 
         Protocol::on_parameters_updated(params);
         

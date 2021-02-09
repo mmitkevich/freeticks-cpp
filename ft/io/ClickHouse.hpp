@@ -14,6 +14,7 @@
 #include "ft/core/Stream.hpp"
 #include "ft/core/Tick.hpp"
 #include "ft/io/Protocol.hpp"
+#include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/ParsedUrl.hpp"
 #include "toolbox/sys/Log.hpp"
 #include "toolbox/sys/Time.hpp"
@@ -36,10 +37,11 @@ struct static_not_supported {
     constexpr static_not_supported() { static_assert(flag, "type not supported"); }
 };
 
-class ClickHouseConn : public core::Component  {
-    using Base = core::Component;
-public:    
+class ClickHouseConn : public io::Service  {
+    using Base = io::Service;
+public:   
     using Base::Base;
+
     void url(std::string_view url) {
         url_ = tb::ParsedUrl(url);
     }
@@ -91,19 +93,22 @@ struct ClickHouseEnum<core::TickSide> {
         {"EMPTY",0 }, {"BUY",1}, {"SELL",-1}});
 };
 /// used to store
-template<class Self, class ValueT, typename FieldsT=JoinFields<BasicFields<core::Field>>, typename...O>
-class BasicClickHouseSink : public io::BasicSink<Self, ValueT, FieldsT, 
-    io::ClickHouseConn, // parent
-    io::ClickHouseConn, // base
-    O...>
+template<class Self, class ValueT, class FieldsT, typename...O>
+class BasicClickHouseSink : public io::BasicSink<Self, ValueT, FieldsT, O...>
 {
     FT_SELF(Self);
-    using Base = io::BasicSink<Self, ValueT, FieldsT, io::ClickHouseConn, io::ClickHouseConn, O...>;
+    using Base = io::BasicSink<Self, ValueT, FieldsT, O...>;
 public:
     using typename Base::Type;
-    using Base::Base;
     using Base::parent, Base::fields;
+    using Endpoint = core::StreamTopic;
 
+    template<typename...ArgsT>
+    BasicClickHouseSink(StreamTopic topic, ArgsT...args)
+    : Base(std::forward<ArgsT>(args)...) {
+        self()->topic(topic);
+    }
+    
     template<class ColumnT, typename...A>
     ColumnT& get_column(Field field, A...args) {
         auto it = cols_.find(field);
@@ -178,7 +183,8 @@ public:
     }
 
     void do_flush() {
-        auto& socket = self()->parent()->socket();
+        auto* svc = static_cast<ClickHouseConn*>(self()->parent());
+        auto& socket = svc->socket();
         Block block;
         std::size_t ncols = 0;
         std::size_t nrows = 0;
@@ -227,16 +233,16 @@ protected:
 };
 
 /// Multiple sinks
-template<class Self, class L, typename...O>
-class BasicClickHouseService: public io::BasicMultiService<Self, L, O...>, public ClickHouseConn, public BasicSignalSlot<Self>
+template<class Self, class ValueL,  template<class...> class SinkM, typename...O>
+class BasicClickHouseService: public io::BasicMultiService<Self, ClickHouseConn,  mp::mp_transform<SinkM, ValueL>, O...>
+, public BasicSignalSlot<Self>
 {
     FT_SELF(Self);
-    using Base = io::BasicMultiService<Self, L, O...>;
-    using Conn = ClickHouseConn;
+    using Base = io::BasicMultiService<Self, ClickHouseConn, mp::mp_transform<SinkM, ValueL>, O...>;
     using SignalSlot = BasicSignalSlot<Self>;
   public:
     using Base::Base;
-    using Conn::url;
+    using Base::url;
     using Base::parent;
     using Base::open, Base::close;
     using Base::for_each_service;
@@ -248,17 +254,23 @@ class BasicClickHouseService: public io::BasicMultiService<Self, L, O...>, publi
 
     }
     template<class ServiceT>
-    void on_child_service_created(ServiceT& svc) {
+    void on_new_service(ServiceT& svc) {
         svc.instruments(instruments_);
     }
 
     void instruments(core::InstrumentsCache* val) { instruments_ = val; }
     core::InstrumentsCache* instruments() { return instruments_; }
 
+    template<class ValueT, typename...ArgsT>
+    auto* service(const typename SinkM<ValueT>::Endpoint& endpoint, ArgsT...args) {
+        return Base::template service<SinkM<ValueT>, ArgsT...>(endpoint, std::forward<ArgsT>(args)...);
+    }
+
+
     core::Stream& slot(core::StreamTopic topic) { 
       switch(topic) {
         case core::StreamTopic::BestPrice:
-          return Base::template service<core::Tick>(topic);
+          return *service<core::Tick>(topic);
         default: return SignalSlot::slot(topic);
       }
     }
@@ -266,12 +278,15 @@ class BasicClickHouseService: public io::BasicMultiService<Self, L, O...>, publi
     void on_parameters_updated(const core::Parameters& params) {
         url(params.value<std::string_view>("url"));
         Base::on_parameters_updated(params);    // will set url
+        populate(params);
+    }
 
+    void populate(const core::Parameters& params) {
         for(auto [id, pa]: params["connections"]) {
-            auto strm = pa.str("stream");
-            auto topic = topic_from_name(strm);
+            auto topic_str = pa.str("topic");
+            auto topic = topic_from_name(topic_str);
             if(topic==StreamTopic::Empty) {
-                throw std::logic_error("no such stream");
+                throw std::logic_error("no such topic");
             }
             slot(topic);  // will make_stream;
             for_each_service([&topic, p=pa](auto& svc) {
@@ -285,21 +300,21 @@ class BasicClickHouseService: public io::BasicMultiService<Self, L, O...>, publi
 
     void do_open() {
         Base::do_open();
-        Conn::open();
+        ClickHouseConn::open();
     }
 
     void do_close() {
         Base::do_close();
-        Conn::close();
+        ClickHouseConn::close();
     }
 protected:
     core::InstrumentsCache* instruments_{};
 };
 
-template<class ValueT, typename...O>
-class ClickHouseSink : public BasicClickHouseSink<ClickHouseSink<ValueT, O...>, ValueT, O...>
+template<class ValueT, class FieldsT=JoinFields<BasicFields<core::Field>>, typename...O>
+class ClickHouseSink : public BasicClickHouseSink<ClickHouseSink<ValueT, FieldsT, O...>, ValueT, FieldsT, O...>
 {
-    using Base = BasicClickHouseSink<ClickHouseSink<ValueT, O...>, ValueT, O...>;
+    using Base = BasicClickHouseSink<ClickHouseSink<ValueT, FieldsT, O...>, ValueT, FieldsT, O...>;
 public:
     using typename Base::Type;
     using Base::Base;
@@ -307,10 +322,10 @@ public:
 
 }; 
 
-template<class ValueL=mp::mp_list<core::Tick>>
-class ClickHouseService: public BasicClickHouseService<ClickHouseService<ValueL>, ValueL>
+template<class ValueL, template<class...> class SinkM=ClickHouseSink>
+class ClickHouseService: public BasicClickHouseService<ClickHouseService<ValueL, SinkM>,  ValueL, SinkM>
 {
-    using Base = BasicClickHouseService<ClickHouseService<ValueL>, ValueL>;
+    using Base = BasicClickHouseService<ClickHouseService<ValueL, SinkM>, ValueL, SinkM>;
 public:
     using Base::Base;
 };

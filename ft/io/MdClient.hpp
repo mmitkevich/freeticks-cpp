@@ -1,6 +1,5 @@
 #pragma once
 #include "ft/core/Requests.hpp"
-//#include "ft/io/Routing.hpp"
 #include "ft/io/Service.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Parameters.hpp"
@@ -30,16 +29,14 @@ namespace ft::io {
 template< class Self
 , template<class...> class ProtocolM
 , class PeerT
-, typename StateT
 , template<class...> class IdleTimerM = BasicIdleTimer // mixin
-> class BasicMdClient : public io::BasicClient<Self, PeerT, StateT>
+> class BasicMdClient : public io::BasicClient<Self, PeerT>
 , public IdleTimerM<Self>
 , public ProtocolM<Self>
 {
     FT_SELF(Self);
     
-    using Base = BasicClient<Self, PeerT, StateT>;
-  //  using Router = RouterT;
+    using Base = BasicClient<Self, PeerT>;
     using IdleTimer = IdleTimerM<Self>;
     using Protocol = ProtocolM<Self>;
 public:
@@ -56,7 +53,7 @@ public:
     using Base::async_connect;
     using Base::async_write;
     using Protocol::stats;
-    using Protocol::async_handle, Protocol::async_write;
+    using Protocol::async_handle;
     using typename Protocol::BestPriceSignal;
     using typename Protocol::InstrumentSignal;
     
@@ -89,10 +86,10 @@ protected:
     //Router router_{self()};
 }; // BasicMdClient
 
-template<template<class...> class ProtocolTT, class PeerT, typename StateT=core::State>
-class MdClient : public BasicMdClient<MdClient<ProtocolTT, PeerT, StateT>, ProtocolTT, PeerT, StateT>
+template<template<class...> class ProtocolTT, class PeerT>
+class MdClient : public BasicMdClient<MdClient<ProtocolTT, PeerT>, ProtocolTT, PeerT>
 {
-    using Base = BasicMdClient<MdClient<ProtocolTT, PeerT, StateT>, ProtocolTT, PeerT, StateT>;
+    using Base = BasicMdClient<MdClient<ProtocolTT, PeerT>, ProtocolTT, PeerT>;
   public:
     using Base::Base;
 };

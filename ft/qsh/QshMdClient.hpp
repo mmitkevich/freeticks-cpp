@@ -12,9 +12,9 @@
 namespace ft::qsh {
 
 // file-based gateway for Qsh files
-class QshMdClient:  public io::BasicService<QshMdClient, tb::Scheduler, core::State>, public io::BasicSignalSlot<QshMdClient>
+class QshMdClient:  public io::BasicService<QshMdClient, io::Service>, public io::BasicSignalSlot<QshMdClient>
 {
-    using Base = io::BasicService<QshMdClient, tb::Scheduler, core::State>;
+    using Base = io::BasicService<QshMdClient, io::Service>;
   public:
     using typename Base::Reactor;
   public:

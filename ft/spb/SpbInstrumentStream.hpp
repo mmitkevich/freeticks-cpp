@@ -48,7 +48,7 @@ public:
         Base::on_parameters_updated(params);
         std::string_view type = params.strv("type");
         if(type == "snapshot") {
-            params["files"].copy(snapshot_files_);
+            params["resource"].copy(snapshot_files_);
         }
     }
     void open() {

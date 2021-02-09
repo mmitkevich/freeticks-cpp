@@ -61,7 +61,7 @@ private:
 
 
 /// State with hooks
-template<typename StateT=core::State>
+template<typename StateT>
 class BasicStateful {
   public:
     using State = StateT;

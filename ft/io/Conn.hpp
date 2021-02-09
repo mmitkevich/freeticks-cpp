@@ -4,14 +4,13 @@
 #include "ft/core/StreamStats.hpp"
 #include "toolbox/util/ByteTraits.hpp"
 #include "toolbox/io/Buffer.hpp"
-#include "toolbox/io/PollHandle.hpp"
+#include "toolbox/io/Reactor.hpp"
 #include "toolbox/net/DgramSock.hpp"
 #include "toolbox/net/IpAddr.hpp"
 #include "toolbox/net/ParsedUrl.hpp"
 #include "toolbox/net/Protocol.hpp"
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Packet.hpp"
-#include "toolbox/io/Reactor.hpp"
 #include "toolbox/io/Socket.hpp"
 #include "toolbox/io/DgramSocket.hpp"
 #include "toolbox/io/McastSocket.hpp"
@@ -30,44 +29,44 @@
 
 namespace ft::io {
 
-template<class Self, class SocketT, class ParentT, typename...> 
-class BasicConn : public EnableParent<ParentT, io::BasicReactiveComponent<typename ParentT::Reactor>>
+template<class Self, class SocketT, typename...O> 
+class BasicConn : public io::Service
 , public BasicHeartbeats<Self> // feature mixin
 {
     FT_SELF(Self);
-    using Base = EnableParent<ParentT, io::BasicReactiveComponent<typename ParentT::Reactor>>;
+    using Base = io::Service;
   public:
     using SocketRef = SocketT;
     using Socket = std::decay_t<util::unwrap_reference_t<SocketT>>;
-    using typename Base::Reactor;
-    using typename Base::Parent;
+    
     using Endpoint = typename Socket::Endpoint;
     using Transport = typename Socket::Protocol;
     using Packet = tb::Packet<tb::ConstBuffer, Endpoint>;
     using Stats = core::EndpointStats<tb::BasicIpEndpoint<Transport>>;
     //using Subscription = core::Subscription;
   public:
-    using Base::parent, Base::reactor;
+    using Base::parent;
     using Base::Base;
     
     BasicConn(BasicConn&&)=default;
     BasicConn&operator=(BasicConn&&)=default;
 
-    BasicConn(std::string_view url, Parent* parent=nullptr, Identifier id={})
-    : Base(parent->reactor(), parent, id) {
+    BasicConn(std::string_view url, core::Component* parent=nullptr, Identifier id={})
+    : Base(parent, id) {
+        Base::protocol(Socket::Protocol::name());
         TOOLBOX_DUMPV(5)<<"self:"<<self()<<" parent:"<<parent;
         self()->url(url);
     }
 
-    BasicConn(SocketRef&& socket, Parent* parent=nullptr, Identifier id={})
-    :  Base(parent->reactor(), parent)
+    BasicConn(SocketRef&& socket, core::Component* parent=nullptr, Identifier id={})
+    :  Base(parent, id)
     ,  socket_(std::move(socket))
     {
         TOOLBOX_DUMPV(5)<<"self:"<<self()<<" parent:"<<parent;
     }
 
-    BasicConn(Parent* parent, Identifier id={})
-    : Base(parent->reactor(), parent, id) {
+    BasicConn(core::Component* parent=nullptr, Identifier id={})
+    : Base(parent, id) {
         TOOLBOX_DUMPV(5)<<"self:"<<self()<<" parent:"<<parent;
     }
 
@@ -84,8 +83,8 @@ class BasicConn : public EnableParent<ParentT, io::BasicReactiveComponent<typena
         socket_ = std::move(socket);
     }
 
-    void open() {
-        socket().open(*reactor(), transport_);
+    void open(tb::IReactor* r) {
+        socket().open(r, transport_);
         if constexpr (tb::SocketTraits::is_mcast<Socket>) {
             socket().bind(remote());
             socket().join_group(remote());
@@ -271,34 +270,22 @@ protected:
     Transport transport_ = Transport::v4();
 };
 
-template<class SocketT, class ParentT=io::BasicReactiveComponent<io::Reactor>, typename... ArgsT>
-class Conn: public BasicConn<
-    Conn<SocketT, ParentT> // This
-    , SocketT, ParentT, ArgsT...>
+template<class SocketT, typename...O>
+class Conn: public BasicConn<Conn<SocketT, O...>, SocketT, O...>
 {
-    using Base = BasicConn<
-        Conn<SocketT, ParentT>, 
-        SocketT, ParentT>;
+    using Base = BasicConn<Conn<SocketT, O...>, SocketT, O...>;
     using Base::Base;
 };
 
-using DgramConn = Conn<tb::DgramSock>;
-using McastConn = Conn<tb::McastSock>;
+using DgramConn = Conn<tb::DgramSocket<>>;
+using McastConn = Conn<tb::McastSocket<>>;
 
 template<
   class SocketT
-, class ParentT = io::BasicReactiveComponent<io::Reactor>
-, typename...ArgsT>
-class ServerConn: public BasicConn<
-  ServerConn<SocketT, ParentT>          // This
-, std::reference_wrapper<SocketT>     // not-owner
-, ParentT>
+, typename...O>
+class ServerConn: public BasicConn<ServerConn<SocketT,O...>, std::reference_wrapper<SocketT>, O... >
 {
-    using Base = BasicConn<
-        ServerConn<SocketT, ParentT> // This
-        , std::reference_wrapper<SocketT>
-        , ParentT>;
+    using Base = BasicConn<ServerConn<SocketT,O...>, std::reference_wrapper<SocketT>, O... >;
     using Base::Base;
 };
-
 } // ft::io

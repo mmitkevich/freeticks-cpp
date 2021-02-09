@@ -63,7 +63,7 @@ public:
 
     void on_parameters_updated(const core::Parameters &params) {
         endpoints_.clear();
-        for(auto e: params["urls"]) {
+        for(auto e: params["remote"]) {
             std::string url = e.get_string().data();
             Endpoint ep =  tb::TypeTraits<Endpoint>::from_string(url);
             endpoints_.push_back(ep);
