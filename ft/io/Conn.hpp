@@ -58,9 +58,9 @@ class BasicConn : public io::Service
         self()->url(url);
     }
 
-    BasicConn(SocketRef&& socket, core::Component* parent=nullptr, Identifier id={})
+    BasicConn(SocketRef socket, core::Component* parent=nullptr, Identifier id={})
     :  Base(parent, id)
-    ,  socket_(std::move(socket))
+    ,  socket_(socket)
     {
         TOOLBOX_DUMPV(5)<<"self:"<<self()<<" parent:"<<parent;
     }
@@ -79,8 +79,8 @@ class BasicConn : public io::Service
         transport_ = transport;
     }
 
-    void socket(SocketRef&& socket) {
-        socket_ = std::move(socket);
+    void socket(SocketRef socket) {
+        socket_ = socket;
     }
 
     void open(tb::IReactor* r) {
@@ -278,6 +278,7 @@ class Conn: public BasicConn<Conn<SocketT, O...>, SocketT, O...>
 };
 
 using DgramConn = Conn<tb::DgramSocket<>>;
+using DgramPeer = Conn<std::reference_wrapper<tb::DgramSocket<>>>;
 using McastConn = Conn<tb::McastSocket<>>;
 
 template<

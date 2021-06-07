@@ -16,14 +16,6 @@
 namespace ft::io {
 
 
-class PeerService: public io::Service {
-    using Base = io::Service;
-public:
-    using Base::Base;
-    NewPeerSignal& newpeer() { return newpeer_; }
-protected:
-    NewPeerSignal newpeer_;
-};
 
 /// Acceptor
 template<class Self, class PeerT, class ServerSocketT, typename...O>

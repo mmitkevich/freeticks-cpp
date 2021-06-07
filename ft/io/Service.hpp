@@ -126,12 +126,21 @@ template<class Self, typename...O>
 using BasicApp = io::BasicService<Self, io::Service, O...>;
 
 
+class PeerService: public io::Service {
+    using Base = io::Service;
+public:
+    using Base::Base;
+    NewPeerSignal& newpeer() { return newpeer_; }
+protected:
+    NewPeerSignal newpeer_;
+};
+
 /// Adds PeersMap
 template<class Self, class PeerT, typename...O>
-class BasicPeerService : public BasicService<Self, io::Service, O...>
+class BasicPeerService : public BasicService<Self, io::PeerService, O...>
 {
     FT_SELF(Self);
-    using Base = BasicService<Self, io::Service, O...>;
+    using Base = BasicService<Self, io::PeerService, O...>;
   public:
     using typename Base::Reactor;
     using Peer = PeerT;
@@ -229,7 +238,6 @@ class BasicPeerService : public BasicService<Self, io::Service, O...>
         assert(peers_[id]!=nullptr);
         return *ptr;
     }
-  
     template<typename MessageT>
     void async_write(const MessageT& m, tb::SizeSlot done) {
         write_.set_slot(done);

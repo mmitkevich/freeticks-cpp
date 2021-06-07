@@ -35,7 +35,8 @@ public:
         if(endpoints_.size()==0)
             return true;
         for(auto &ep : endpoints_) {
-            bool is_matched = (ep == packet.header().dst());
+            auto const& dst = packet.header().dst();
+            bool is_matched = (ep.address() == dst.address() && ep.port() == dst.port());
             TOOLBOX_DUMP<<"match filter name:"<<name_<<", ep: "<<ep<<
                 ", packet dst " << packet.header().dst() <<
                 " src " << packet.header().src() << " is_matched:"<<is_matched;

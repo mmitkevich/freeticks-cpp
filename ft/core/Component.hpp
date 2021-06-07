@@ -49,7 +49,7 @@ class Component;
 class IComponent {
 public:
     FT_IFACE(IComponent);
-
+    virtual Identifier id() const noexcept = 0;
     virtual ~IComponent() = default;
     virtual Component* parent() = 0;
 };
@@ -60,6 +60,7 @@ class ComponentImpl : virtual public BaseT {
 public:    
     FT_IMPL(SelfT);
     Component* parent() override { return impl()->parent(); }
+    Identifier id() const noexcept { return impl()->id(); }
 protected:
     std::unique_ptr<IComponent> parent_{};
 };

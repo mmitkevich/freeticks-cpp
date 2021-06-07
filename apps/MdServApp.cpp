@@ -60,6 +60,128 @@ namespace tb = toolbox;
 
 namespace ft::mds {
 
+inline void fail(std::string_view what, std::string_view id="", const char* line="") {
+  std::stringstream ss;
+  ss << what << " " << id;
+  TOOLBOX_ERROR << line <<": " << ss.str();
+  throw std::runtime_error(ss.str());
+}
+
+
+class IServiceFactory {
+public:
+  virtual ~IServiceFactory() = default;
+  virtual std::unique_ptr<core::IService> make_service(const core::Parameters& params) = 0;
+};
+
+class BasicServiceFactory : public IServiceFactory {
+public:
+  BasicServiceFactory(io::Service* parent)
+  : parent_(parent) {}
+
+  io::Service* parent() { return parent_; }
+   void transport(std::string_view val) {
+    transport_ = val;
+  }
+
+  std::string_view transport(const core::Parameters& params) const {
+    if(!transport_.empty())
+      return transport_;
+    return params.strv("transport");
+  }
+
+  std::string_view protocol(const core::Parameters& params) const {
+    return params.strv("protocol");
+  }
+  template<class Iface, class ProxyT> 
+  auto make_proxy() {
+    return std::unique_ptr<Iface>(new ProxyT(parent()->reactor(), parent()));
+  }
+protected:
+  io::Service* parent_{};
+  std::string transport_; // override
+};
+
+class MdClientFactory : public BasicServiceFactory {
+  using Base = BasicServiceFactory;
+public:
+  using Base::Base;
+ 
+  std::unique_ptr<core::IService> make_service(const core::Parameters& params) override {
+    return std::unique_ptr<core::IService>(make_client(params).release());
+  }
+
+  std::unique_ptr<core::IClient> make_client(const core::Parameters& params) {
+      std::string_view protocol = this->protocol(params);
+      TOOLBOX_INFO<<"make_client, protocol:"<<protocol<<", transport:"<<this->transport(params);
+      if (protocol=="SPB_MDB_MCAST") {
+         return make_client<spb::SpbProtocol<tb::UdpEndpoint>::Mixin>(params);
+      } else if(protocol=="QSH") {
+          using Proxy = core::Proxy<qsh::QshMdClient, core::IClient::Impl>;
+          return make_proxy<core::IClient, Proxy>();
+      } else if(protocol=="TB1") {
+          return make_client<tbricks::TbricksProtocol>(params);
+      } else {
+        fail("unsupported client protocol", protocol, TOOLBOX_FILE_LINE);
+        return nullptr;
+      }
+  }
+  template<template<class...> class ProtocolM> 
+  std::unique_ptr<core::IClient> make_client(const core::Parameters& params) {
+    std::string_view transport = this->transport(params);
+    if(transport=="mcast") {
+      using Proxy = core::Proxy<io::MdClient<ProtocolM, io::McastConn>, core::IClient::Impl>;
+      return make_proxy<core::IClient, Proxy>();
+    } else if(transport=="udp") {
+      using Proxy = core::Proxy<io::MdClient<ProtocolM, io::DgramConn>, core::IClient::Impl>;
+      return make_proxy<core::IClient, Proxy>();
+    } else if(transport=="pcap") {
+      using Proxy = core::Proxy<io::PcapMdClient<ProtocolM>, core::IClient::Impl>;
+      return make_proxy<core::IClient, Proxy>();
+    } else {
+      fail("unsupported client transport", transport, TOOLBOX_FILE_LINE);
+      return nullptr;
+    }
+  }  
+
+};
+
+class MdServerFactory : public BasicServiceFactory {
+  using Base = BasicServiceFactory;
+public:
+  using Base::Base;
+
+  std::unique_ptr<core::IService> make_service(const core::Parameters& params) override {
+    return std::unique_ptr<core::IService>(make_server(params).release());
+  }
+  
+  std::unique_ptr<core::IServer> make_server(const core::Parameters& params) {
+    auto protocol = params.strv("protocol");
+    TOOLBOX_INFO<<"make_server protocol:"<<protocol<<", transport:"<<this->transport(params);
+    if(protocol=="TB1") {
+        return make_server<tbricks::TbricksProtocol>(params);
+    } else {
+      fail("unsupported server protocol", protocol, TOOLBOX_FILE_LINE);
+      return nullptr;
+    }
+  }
+  template<template<class, class...>class ProtocolM>
+  std::unique_ptr<core::IServer> make_server(const core::Parameters& params) {
+    auto transport = params.strv("transport");      
+    if(transport=="udp") {
+      using Proxy = core::Proxy<
+        io::MdServer<
+          ProtocolM
+        , io::ServerConn<tb::DgramSocket<>> // PeerT
+        , tb::DgramSocket<> > // ServerSocketT 
+      , core::IServer::Impl>;
+      return make_proxy<core::IServer, Proxy>();
+    } else {
+      fail("unsupported server transport", transport, TOOLBOX_FILE_LINE);
+      return nullptr;
+    }
+  };
+};
 
 class App : public io::BasicApp<App> {
   using Base = io::BasicApp<App>;
@@ -129,68 +251,10 @@ public:
     //forward(mdservers_, e, nullptr);
     //instrument_csv_(e);
   }
+  using ClientPtr = std::unique_ptr<core::IClient>;
 
-  template<class T>
-  using Factory = std::function<std::unique_ptr<T>(std::string_view id, core::Component* parent)>;
-
-  template<template<template<class...> class ProtocolM> class ClientM, class EndpointT>
-  Factory<IClient> make_mdclients_factory () {
-    return [this](std::string_view venue, core::Component* parent) -> std::unique_ptr<core::IClient> { 
-      if (venue=="SPB_MDBIN") {
-          using ClientImpl = ClientM<spb::SpbProtocol<EndpointT>::template Mixin>;
-          using Proxy = core::Proxy<ClientImpl, core::IClient::Impl>;
-          return std::unique_ptr<core::IClient>(new Proxy(reactor(), parent));
-      } else if(venue=="QSH") {
-          using ClientImpl = qsh::QshMdClient;
-          using Proxy = core::Proxy<ClientImpl, core::IClient::Impl>;
-          return std::unique_ptr<core::IClient>(new Proxy(reactor(), parent));
-      } else if(venue=="TB1") {
-          using ClientImpl = ClientM<tbricks::TbricksProtocol>;
-          using Proxy = core::Proxy<ClientImpl, core::IClient::Impl>;
-          return std::unique_ptr<core::IClient>(new Proxy(reactor(), parent));
-      } else {
-        Self::fail("venue not supported", venue, TOOLBOX_FILE_LINE);
-        return nullptr;
-      }
-    };
-  }
-  
-  // type functions to get concrete MdClient from Protocol, connections types and reactor
-  template<template<class...> class ProtocolM> 
-  using McastMdClient = io::MdClient<ProtocolM, io::McastConn>;  
-  template<template<class...> class ProtocolM>
-  using UdpMdClient = io::MdClient<ProtocolM, io::DgramConn>;
-  template<template<class...> class ProtocolM>
-  using PcapMdClient = io::PcapMdClient<ProtocolM>;
-
-  template<template<class> class ProtocolT> 
-  using UdpMdServer = io::MultiServer<mp::mp_list<
-    io::MdServer<ProtocolT, io::ServerConn<tb::DgramSocket<>>, tb::DgramSocket<>>
-  >>;
-
-  // concrete packet types decoded by Protocols. FIXME: UdpPacket==McastPacket?
-
-  Factory<IClient> make_mdclients_factory(std::string_view transport) {
-    if(transport=="mcast") {
-      return make_mdclients_factory<McastMdClient, tb::McastEndpoint>();
-    } else if(transport=="pcap") {
-      return make_mdclients_factory<PcapMdClient, tb::IpEndpoint>();
-    } else if(transport=="udp") {
-      return make_mdclients_factory<UdpMdClient, tb::UdpEndpoint>();
-    } else {
-      Self::fail("protocol not supported", transport, TOOLBOX_FILE_LINE);
-      return nullptr;
-    }
-  }
-  std::unique_ptr<core::IClient> make_mdclient(std::string_view venue,const core::Parameters &params) {
-    //TOOLBOX_DEBUG<<"run venue:'"<<venue<<"', params:"<<params;
-    //start_timestamp_ = tb::MonoClock::now();
-    auto transport = params.strv("transport");
-    if(mode()=="pcap")
-      transport = "pcap";
-    Factory<IClient> make_mdclient = make_mdclients_factory(transport);
-    TOOLBOX_DUMP<<"make_mdclient venue:"<<venue<<", transport:"<<transport;
-    std::unique_ptr<core::IClient> client = make_mdclient(venue, self());
+  ClientPtr make_mdclient(const core::Parameters &params) {
+    ClientPtr client = mdclient_factory_.make_client(params);
     auto& c = *client;
     c.parameters(params);
     c.state_changed().connect(tb:: bind<&Self::on_state_changed>(self()));
@@ -198,35 +262,27 @@ public:
      .connect(tb::bind<&Self::on_tick>(self()));
     c.signal_of<const core::InstrumentUpdate&>(core::StreamTopic::Instrument)
      .connect(tb::bind<&Self::on_instrument>(self()));    
-    TOOLBOX_INFO << "created md client venue:'"<<venue<<"', transport:'"<<transport<<"'";
     return client;
   }
 
-  std::unique_ptr<core::IServer> make_mdserver(std::string_view venue, const core::Parameters &params) {
-    std::unique_ptr<core::IServer> server;
-    if(venue=="TB1") {
-      using TbricksMdServer = UdpMdServer<tbricks::TbricksProtocol>;
-      auto* r = reactor();
-      assert(r);
-      /// implement IServer using TbricksMdServer class
-      using Proxy = core::Proxy<TbricksMdServer, core::IServer::Impl>;
-      server =  std::unique_ptr<core::IServer>(new Proxy(r, self()));
-      auto &s = *server;
-      s.parameters(params);
-      s.subscription()
-        .connect(tb::bind([serv=&s](PeerId peer, const core::SubscriptionRequest& req) {
+  using ServerPtr = std::unique_ptr<core::IServer>;
+  
+  ServerPtr make_mdserver(const core::Parameters &params) {
+    ServerPtr server = mdserver_factory_.make_server(params);
+    auto &s = *server;
+    s.parameters(params);
+    s.subscription()
+      .connect(tb::bind([serv=&s](PeerId peer, const core::SubscriptionRequest& req) {
             Self* self = static_cast<Self*>(serv->parent());
             self->on_subscribe(*serv, peer, req);
-        }));
-    } else {
-      Self::fail("venue not supported", venue, TOOLBOX_FILE_LINE);
-    }
-    TOOLBOX_INFO << "created md server '"<<venue<<"'";
+      }));
     return server;
   }
-  std::unique_ptr<core::IService> make_mdsink(std::string_view venue, const core::Parameters& params) {
+
+  std::unique_ptr<core::IService> make_mdsink(const core::Parameters& params) {
     std::unique_ptr<core::IService> sink;
-    if(venue=="ClickHouse") {
+    std::string_view protocol = params.strv("protocol");
+    if(protocol=="ClickHouse") {
         using ClickHouseSinksL = mp::mp_list<core::Tick>;
         using ClickHouseService = io::ClickHouseService<ClickHouseSinksL>;
         using Proxy = core::Proxy<ClickHouseService, core::IService::Impl>;
@@ -235,17 +291,12 @@ public:
         sink->parameters(params);
         return sink;
     } else {
-      Self::fail("venue not supported", venue, TOOLBOX_FILE_LINE);
+      fail("protocol not supported", protocol, TOOLBOX_FILE_LINE);
     }
-    TOOLBOX_INFO << "created md sink '"<<venue<<"'";
+    TOOLBOX_INFO << "created md sink '"<<protocol<<"'";
     return sink;
   }
-  static void fail(std::string_view what, std::string_view id="", const char* line="") {
-    std::stringstream ss;
-    ss << what << " " << id;
-    TOOLBOX_ERROR << line <<": " << ss.str();
-    throw std::runtime_error(ss.str());
-  }
+
   void on_subscribe(core::IServer& serv, PeerId peer, const core::SubscriptionRequest& req) {
     TOOLBOX_INFO << "subscribe:"<<req;
     switch(req.request()) {
@@ -317,31 +368,36 @@ public:
         //instrument_csv_.open(output_path+"-ins.csv");
       }
       
-      for(auto [id, pa]: params["sinks"]) {
+      for(auto pa: params["sinks"]) {
         bool enabled = is_service_enabled(pa, mode());
         if(enabled) {
-            auto s = make_mdsink(id, pa);
-            auto& sink = *s;
-            mdsinks_.emplace(id, std::move(s));
-            sink.start();
+            auto s = make_mdsink(pa);
+            auto* sink = s.get();
+            mdsinks_.emplace(sink->id(), std::move(s));
+            sink->start();
         }
       }
 
-      for(auto [id, pa] : params["servers"]) {
+      for(auto pa : params["servers"]) {
         bool enabled = is_service_enabled(pa, mode());
         if(enabled) {
-          auto s = make_mdserver(id, pa);
-          auto& server = *s;
-          mdservers_.emplace(id, std::move(s));            
-          server.start();
+          auto s = make_mdserver(pa);
+          auto* server = s.get();
+          mdservers_.emplace(server->id(), std::move(s));            
+          server->start();
         }
       }
-      for(auto [id, pa]: params["clients"]) {
+      
+      if(mode()=="pcap") {
+        mdclient_factory_.transport("pcap");
+      }
+
+      for(auto pa : params["clients"]) {
         bool enabled = is_service_enabled(pa, mode());
         if(enabled) {
-          auto c = make_mdclient(id, pa);
+          auto c = make_mdclient(pa);
           auto* client = c.get();
-          mdclients_.emplace(id, std::move(c));
+          mdclients_.emplace(client->id(), std::move(c));
           client->state_changed().connect(tb::bind([client](core::State state, core::State old_state, ExceptionPtr ex) {
             Self* self = static_cast<Self*>(client->parent());
             if(state==core::State::Open) {
@@ -441,9 +497,11 @@ private:
   // csv sink
   //core::SymbolCsvSink<BestPrice> bestprice_csv_ {instruments_};
   //core::CsvSink<InstrumentUpdate> instrument_csv_;
-  tb::unordered_map<std::string, std::unique_ptr<core::IService>> mdsinks_;
-  tb::RobinFlatMap<std::string, std::unique_ptr<core::IClient>> mdclients_;
-  tb::RobinFlatMap<std::string, std::unique_ptr<core::IServer>> mdservers_;
+  tb::unordered_map<core::Identifier, std::unique_ptr<core::IService>> mdsinks_;
+  tb::unordered_map<core::Identifier, std::unique_ptr<core::IClient>> mdclients_;
+  tb::unordered_map<core::Identifier, std::unique_ptr<core::IServer>> mdservers_;
+  MdClientFactory mdclient_factory_{this};
+  MdServerFactory mdserver_factory_{this};
 };
 
 } // namespace ft::apps::serv

@@ -88,7 +88,7 @@ protected:
 
 
 template<
-  template<class> class ProtocolM
+  template<class,class...> class ProtocolM
 , class PeerT
 , class ServerSocketT
 > class MdServer : public io::BasicMdServer<MdServer<ProtocolM, PeerT, ServerSocketT>, ProtocolM, PeerT, ServerSocketT>
