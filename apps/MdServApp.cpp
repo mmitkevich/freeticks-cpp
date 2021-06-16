@@ -240,13 +240,13 @@ public:
 
   void on_tick(const core::Tick& e) {
     //auto& ins = instruments_[e.venue_instrument_id()];
-    TOOLBOX_DUMP << e;
+    TOOLBOX_DEBUG << e;
     forward(mdservers_, e, nullptr);
     forward(mdsinks_, e, nullptr);
   }
 
   void on_instrument(const core::InstrumentUpdate& e) {
-    TOOLBOX_DUMP << e;
+    TOOLBOX_DEBUG << e;
     instruments_.update(e);
     //forward(mdservers_, e, nullptr);
     //instrument_csv_(e);

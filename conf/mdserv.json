@@ -14,11 +14,11 @@
                 , "resource": ["/opt/tbricks/instr-2020-11-02.xml"]
                 , "local":"10.1.110.55"
                 , "remote": ["233.26.38.36:6036", "233.26.38.164:6164"] }
-        ,   { "topic":"Instrument", "type": "update", "interface":"10.1.110.55"
+        ,   { "topic":"Instrument", "type": "update", "local":"10.1.110.55"
                 , "remote": ["233.26.38.37:6037", "233.26.38.165:6165"] }
         ],
         "pcap": {
-            "urls": ["/opt/tbricks/spb_20201012.tgz", "/opt/tbricks/spb_20201013.pcap"]
+            "inputs": ["/opt/tbricks/spb_20201012.pcap", "/opt/tbricks/spb_20201013.pcap"]
             , "filter": {
                 "protocols": ["udp"]
                 ,"dst": [
@@ -59,7 +59,7 @@
         , "url": "10.1.110.24:9000"
         , "connections" : [{
             // select * from spb_taq where LocalTime>(select addMinutes(max(LocalTime),-10) from spb_taq) limit 5
-            "stream":"BestPrice", "table": "spb_taq"
+            "topic":"BestPrice", "table": "spb_taq"
             //, "fields": ["Time", "LocalTime", "Event", "Symbol", "InstrumentId", "VenueInstrumentId", "Price", "Qty", "Side"]
         }]
     }

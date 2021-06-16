@@ -71,10 +71,10 @@ public:
             return {&prev.value,false};
         }
     }
-    static constexpr bool log_state_enabled = true;
+    static constexpr bool log_state_enabled = false;
     void log_state(std::uint64_t seq, const char* reason) {
         if constexpr(log_state_enabled) {
-            TOOLBOX_DEBUG << name_ << " " << reason << " seq:"<<seq
+            TOOLBOX_DUMPV(5) << name_ << " " << reason << " seq:"<<seq
             <<", updates: { snapshot:"<<updates_snapshot_seq_<<", last:"<<updates_last_seq_<<", stats: {"<<updates_stats_<<"}}"
             <<", snapshot: { start:"<<snapshot_start_seq_<<", last:"<<snapshot_last_seq_<<", size:"<<snapshot_.size()<<", stats:{"<<snapshots_stats_<<"}}";
         }
