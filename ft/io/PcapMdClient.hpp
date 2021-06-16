@@ -52,7 +52,7 @@ public:
     void on_parameters_updated(const core::Parameters& params) {
         auto pcap_pa = params["pcap"];
 
-        pcap_pa["remote"].copy(inputs_);
+        pcap_pa["inputs"].copy(inputs_);
 
         Protocol::on_parameters_updated(params);
         
