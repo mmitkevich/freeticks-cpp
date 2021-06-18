@@ -3,7 +3,7 @@
     {   "protocol":"SPB_MDB_MCAST",
         "transport": "mcast",
         "enable": ["serv", "pcap"]
-        , "connections": [  // channel A,            channel B
+        , "endpoints": [  // channel A,            channel B
             // MdClient1<SpbProto,Conn<Mcast>>
             {   "topic":"BestPrice", "type": "snapshot", "local":"10.1.110.55"
                 , "remote": ["233.26.38.16:6016", "233.26.38.144:6144"] }
@@ -32,10 +32,10 @@
     },
     {   "protocol":"TB1"
         , "transport" : "udp"        
-        , "enable": ["clnt"]
-        , "connections":[
+        , "enable": ["tb-clnt"]
+        , "endpoints":[
             {"topic":"BestPrice",  "type": "snapshot", "local": "127.0.0.1:10010"
-            , "remote": ["127.0.0.1:10050|interface=127.0.0.1:10010"]}
+            , "remote": ["127.0.0.1:10050"]}
         ]
         , "subscriptions":[
             { "topic":"BestPrice", "symbols": ["BABA", "JD"] }
@@ -45,10 +45,10 @@
 , "servers": [
     {   "protocol":"TB1"
         , "transport" : "udp"
-        , "enable": ["serv"]
-        , "connections" : [
-            { "transport":"udp", "local": "127.0.0.1:10050" },    // A: many peers, MdServer1
-            { "transport":"udp", "local": "127.0.0.1:10051" }     // B: many peers, MdServer2
+        , "enable": ["tb-serv"]
+        , "endpoints" : [
+            { "transport":"udp", "local": "0.0.0.0:10050" },    // A: many peers, MdServer1
+            { "transport":"udp", "local": "0.0.0.0:10051" }     // B: many peers, MdServer2
         ]
     }
 ]
@@ -57,7 +57,7 @@
         "protocol": "ClickHouse",
         "enable": ["pcap"]
         , "url": "10.1.110.24:9000"
-        , "connections" : [{
+        , "endpoints" : [{
             // select * from spb_taq where LocalTime>(select addMinutes(max(LocalTime),-10) from spb_taq) limit 5
             "topic":"BestPrice", "table": "spb_taq"
             //, "fields": ["Time", "LocalTime", "Event", "Symbol", "InstrumentId", "VenueInstrumentId", "Price", "Qty", "Side"]

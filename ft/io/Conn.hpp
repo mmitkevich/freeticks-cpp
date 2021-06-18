@@ -3,6 +3,7 @@
 #include "ft/core/Component.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "toolbox/util/ByteTraits.hpp"
+#include "ft/utils/StringUtils.hpp"
 #include "toolbox/io/Buffer.hpp"
 #include "toolbox/io/Reactor.hpp"
 #include "toolbox/net/DgramSock.hpp"
@@ -58,11 +59,12 @@ class BasicConn : public io::Service
         self()->url(url);
     }
 
-    BasicConn(SocketRef socket, core::Component* parent=nullptr, Identifier id={})
+    BasicConn(SocketRef socket, Endpoint local, core::Component* parent=nullptr, Identifier id={})
     :  Base(parent, id)
-    ,  socket_(socket)
+    ,  socket_(std::move(socket))
+    ,  local_(local)
     {
-        TOOLBOX_DUMPV(5)<<"self:"<<self()<<" parent:"<<parent;
+        TOOLBOX_DUMPV(5)<<"self:"<<self()<<" parent:"<<parent<<" local:"<<local_;
     }
 
     BasicConn(core::Component* parent=nullptr, Identifier id={})
@@ -165,34 +167,33 @@ class BasicConn : public io::Service
     bool can_write()  { return socket().can_write(); }
     bool can_read()  { return socket().can_read(); }
 
-    /// could enqueue (could allocate)
-    void async_write(tb::ConstBuffer buf, tb::SizeSlot slot) {
-        if(can_write()) {
-            if(!wqueue_.empty())
-                slot = tb::bind<&Self::on_write>(self()); // got some queue
-            self()->async_write_nq(buf, slot);
-        } else {
-            // serialize data
-            auto wb = wbuf_.prepare(buf.size());
-            std::memcpy(wb.data(), buf.data(), buf.size());
-            wqueue_.emplace_back(buf.size(), tb::bind<&Self::on_write>(self())); // part size + slot
+    void on_written(ssize_t size, std::error_code ec) {
+        TOOLBOX_DUMPV(5)<<"Conn::on_written wq_size="<<wqueue_.size() <<" self="<<self()<<", size="<< size <<"), local:"<<local()<<", remote:"<<remote();
+        assert(!wqueue_.empty());
+        
+        // complete head
+        auto [wsize, done] = wqueue_.front();
+        wqueue_.pop_front();
+        assert(size==wsize);
+        done(size, ec);
+        wbuf_.consume(size);
+        
+        // prepare next
+        if(!wqueue_.empty()) {
+            auto [wsize, done] = wqueue_.front();
+            self()->async_write_unbuf({wbuf_.data(), (std::size_t)wsize}, tb::bind<&Self::on_written>(self()));
         }
     }
 
-    void on_write(ssize_t size, std::error_code ec) {
-        // check queue
-        assert(!wqueue_.empty());
-        auto [wsize, done]  = wqueue_.front();
-        wqueue_.pop_front();
-        async_write_nq({wbuf_.buffer().data(), wsize}, done);
-    }
-
     /// async_write no queueing
-    void async_write_nq(tb::ConstBuffer buf, tb::SizeSlot slot) {
+    void async_write(tb::ConstBuffer buf, tb::SizeSlot slot) {
         assert(can_write());
+        TOOLBOX_DUMPV(5)<<"Conn::async_write_nq wq_size="<<wqueue_.size() <<" self="<<self()<<", buf(size="<< buf.size() <<"), local:"<<local()<<", remote:"<<remote();
         // immediate write
         if constexpr(tb::SocketTraits::is_dgram<Socket>) { // FIXME: tb::SocketTraits<Socket>::is_dgram
             // udp
+            TOOLBOX_DUMPV(5)<<"Conn::async_sendto self="<<self()<<", buf(size="<< buf.size() <<"), local:"<<local()<<", remote:"<<remote()<<", data:"<<ft::to_hex_dump(std::string_view{(const char*)buf.data(), buf.size()});
+
             socket().async_sendto(buf, remote(), slot);
         } else {
             // tcp
@@ -201,6 +202,7 @@ class BasicConn : public io::Service
     }
     /// use appropriate socket read operation according to SocketTraits
     void async_read(tb::MutableBuffer buf, tb::SizeSlot slot) {
+        assert(can_read());
         packet_.buffer() = buf;
         if constexpr(tb::SocketTraits::is_mcast<Socket>) {
             // for mcast dst = mcast addr
@@ -224,24 +226,25 @@ class BasicConn : public io::Service
     tb::Buffer& rbuf() { return rbuf_; }   
 
     template<typename HandlerT>
-    void run() {
-        TOOLBOX_DUMP<<"Conn::async_read self="<<self()<<", rbuf(size="<< self()->buffer_size()<<"), local:"<<local()<<", remote:"<<remote();
-        self()->async_read(rbuf().prepare(self()->buffer_size()), tb::bind(
+    void async_recv() {
+        TOOLBOX_DUMPV(5)<<"Conn::async_read self="<<self()<<", rbuf(size="<< self()->buffer_size()<<"), local:"<<local()<<", remote:"<<remote();
+        auto rb = rbuf().prepare(self()->buffer_size());
+        self()->async_read(rb, tb::bind(
         [this](ssize_t size, std::error_code ec) {
             if(!ec) {
                 assert(size>=0);
                 rbuf().commit(size);
                 // replace total buffer size with real received data size
-                packet_.buffer() = typename Packet::Buffer {packet_.buffer().data(), (size_t) size}; 
+                auto& buf = packet_.buffer() = typename Packet::Buffer {packet_.buffer().data(), (size_t) size}; 
                 packet_.header().recv_timestamp(tb::WallClock::now());
-                TOOLBOX_DUMP<<"Conn::recv self:"<<self()<<", size:"<<size<<
-                    " local:"<<local()<<", remote:"<<remote()<<", ec:"<<ec<<" pkt hdr:"<<packet_.header();
+                TOOLBOX_DUMPV(5)<<"Conn::recv self:"<<self()<<", size:"<<size<<
+                    " local:"<<local()<<", remote:"<<remote()<<", ec:"<<ec<<" pkt hdr:"<<packet_.header()<<" data:\n"<<ft::to_hex_dump(std::string_view{(const char*)buf.data(), buf.size()});
                 HandlerT{}(*self(), packet_, tb::bind([this](std::error_code ec) {
                     auto size = packet().buffer().size(); 
 
                     rbuf().consume(size);
                     if(!ec) {
-                        self()->template run<HandlerT>();
+                        self()->template async_recv<HandlerT>();
                     } else {
                         self()->on_error(ec);
                     }
@@ -255,17 +258,16 @@ class BasicConn : public io::Service
         TOOLBOX_ERROR << "error "<<ec<<" conn remote="<<remote()<<" local="<<local();
     }
 protected:
-    tb::CompletionSlot<std::error_code> handle_;
     core::Subscription sub_;
     Packet packet_;
     SocketRef socket_;
     Stats stats_;
     tb::ParsedUrl url_;
-    tb::DoneSlot write_;
+    tb::SizeSlot write_;
     Endpoint local_;
     tb::Buffer rbuf_;
     tb::Buffer wbuf_;
-    std::deque<std::tuple<std::size_t,tb::SizeSlot>> wqueue_;
+    std::deque<std::tuple<ssize_t,tb::SizeSlot>> wqueue_;
     //Subscription sub_;
     Transport transport_ = Transport::v4();
 };

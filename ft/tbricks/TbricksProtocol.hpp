@@ -64,8 +64,8 @@ public:
 
         auto& buf = e.buffer();
         const Message& msg = *reinterpret_cast<const Message*>(buf.data());        
-        TOOLBOX_INFO << name()<<": in["<<e.buffer().size()<<"]: t="<<tb::unbox(msg.msgtype())<<"\n"<<
-            ft::to_hex_dump(std::string_view{(const char*)e.buffer().data(), e.buffer().size()});
+        TOOLBOX_INFO << name()<<": in["<<e.buffer().size()<<"]: t="<<(int64_t)tb::unbox(msg.msgtype())<<"\n"<<
+            ft::to_hex_dump(std::string_view{(const char*)buf.data(), buf.size()});
         switch(msg.msgtype()) {
             case MessageType::SubscriptionRequest: {
                 TOOLBOX_INFO << name()<<": in: t:"<<(int)tb::unbox(msg.msgtype())<<", sym:'"<<msg.symbol().str()<<"', seq:"<<msg.seq();

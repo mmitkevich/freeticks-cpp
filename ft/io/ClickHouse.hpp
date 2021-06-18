@@ -282,7 +282,7 @@ class BasicClickHouseService: public io::BasicMultiService<Self, ClickHouseConn,
     }
 
     void populate(const core::Parameters& params) {
-        for(auto [id, pa]: params["connections"]) {
+        for(auto [id, pa]: params["endpoints"]) {
             auto topic_str = pa.str("topic");
             auto topic = topic_from_name(topic_str);
             if(topic==StreamTopic::Empty) {

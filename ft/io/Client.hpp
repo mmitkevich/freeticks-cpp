@@ -68,38 +68,28 @@ class BasicClient: public BasicPeerService<Self, PeerT>
             Base::peers, Base::make_peer, Base::emplace_peer,
             Base::close, Base::open, Base::is_open;
 
-    void on_parameters_updated(const core::Parameters& params) {
-        auto was_open = is_open();
-        if(was_open)
-            close();
+    using Base::do_open;
 
-        self()->populate(params);
-        
-        if(was_open)
-            open();
-    }
 
-    void populate(const core::Parameters& params) {
-        assert(Base::peers_.empty());
+    void configure(const core::Parameters& params) {
+        //assert(peers().empty());
         std::string transport = params.str("transport");
-        auto conns_pa = params["connections"];
+        auto conns_pa = params["endpoints"];
         for(auto p: conns_pa) {
-            std::string_view type = p.str("type");
             auto iface = p.str("local","");
             if(Transport::name() == transport) {
                 for(auto e : p["remote"]) {
                     std::string url {e.get_string()};
                     if(!iface.empty())
                         url = url+"|interface="+iface;
-                    emplace_peer(make_peer(url));
+                    self()->emplace_peer(make_peer(url));
                 }
             }
         }
     }
 
     // overrides states transition
-    void open() {
-        state(State::PendingOpen);
+    void do_open() {
         Base::do_open();
         self()->async_connect(tb::bind<&Self::on_connected>(self()));
     }
@@ -116,9 +106,11 @@ class BasicClient: public BasicPeerService<Self, PeerT>
     // connect all peers. Notifies when all done
     void async_connect(tb::DoneSlot done) {
         assert(connect_.empty());
-        int pending = 0;
+        connect_.pending(0);
+        connect_.set_slot(done);
         Base::for_each_peer([this](auto& peer) {
             if(!peer.is_open() && !peer.is_connecting()) {
+                connect_.inc_pending();
                 peer.async_connect(tb::bind(
                 [&peer](std::error_code ec) {
                     Self* self = static_cast<Self*>(peer.parent());
@@ -127,15 +119,12 @@ class BasicClient: public BasicPeerService<Self, PeerT>
                 }));
             }
         });
-        if(pending) {
-            connect_.set_slot(done);
-            connect_.pending(pending);
-        } else {
-            done({});
+        if(!connect_.pending()) {
+            connect_({});
         }
     }
 
-    /// when peer connected - run peers' processing loop
+    /// when peer connected - run peers' drain loop
     void on_peer_connected(Peer& peer, std::error_code ec) {
         if(!ec) {
            self()->async_handshake(peer, [&peer](std::error_code ec) {
@@ -143,7 +132,7 @@ class BasicClient: public BasicPeerService<Self, PeerT>
                     Self* self = static_cast<Self*>(peer.parent());
                     self->async_handle(peer, packet, done);
                 }};
-                peer.template run<fn>();
+                peer.template async_recv<fn>();
             });
         } else {
             on_error(peer, ec, "connect");
@@ -153,10 +142,16 @@ class BasicClient: public BasicPeerService<Self, PeerT>
     void on_error(Peer& peer, std::error_code ec, const char* what="") {
         TOOLBOX_INFO<<what<<" peer "<<peer.remote()<<" ec "<<ec;
     }
- 
+    
+    Endpoint& local() { return local_; }
+    const Endpoint& local() const { return local_; }
+    void local(const Endpoint& ep) { local_ = ep; }
   protected:
+    Endpoint local_;
     tb::PendingSlot<std::error_code>  connect_;    
     tb::Signal<> connected_;
+
+
 }; // BasicClient
 
 
@@ -177,7 +172,7 @@ class BasicMultiClient : public io::BasicMultiService<Self, io::Service, Clients
         bool was_open = is_open();
         if(was_open)
             close();
-        for(auto conn_p: parameters()["connections"]) {
+        for(auto conn_p: parameters()["endpoints"]) {
             auto ep = conn_p.strv("local");
             auto proto = conn_p.strv("transport");
             self()->get_service(proto, ep, reactor()); // will create service
@@ -199,13 +194,13 @@ class BasicMultiClient : public io::BasicMultiService<Self, io::Service, Clients
 
     void do_open() {
         Base::do_open(); // will open services
-        self()->run();
+        self()->async_handshake();
     }
     
     /// accepts clients, reads messages from them and apply protocol logic
-    void run() {
+    void async_handshake() {
         for_each_service([](auto& svc) {
-            svc.run();
+            svc.async_handshake();
         });
     }
 

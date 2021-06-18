@@ -84,10 +84,11 @@ class BasicService: public Base
     void open() {
         state(State::PendingOpen);
         self()->do_open();
-        state(State::Open);
     }
 
-    void do_open() { }
+    void do_open() { 
+        state(State::Open);
+    }
     
     /// stops, throws only std::runtime_error
     void stop() {
@@ -155,9 +156,19 @@ class BasicPeerService : public BasicService<Self, io::PeerService, O...>
     
     using Base::Base;
 
-    BasicPeerService(const Endpoint&ep, Reactor* reactor, Component* parent=nullptr, Identifier id={})
-    : local_(ep)
-    , Base(reactor, parent, id) {}
+    void on_parameters_updated(const core::Parameters& params) {
+        auto was_open = self()->is_open();
+        if(was_open)
+            self()->close();
+
+        self()->configure(params);
+        
+        if(was_open)
+            self()->open();
+    }
+    
+    // most basic configuration is to define local endpoint to listen on
+    void configure(const core::Parameters& params) { }
 
     void do_open() {
         TOOLBOX_INFO << "opening "<< peers_.size() << " peers";
@@ -166,9 +177,7 @@ class BasicPeerService : public BasicService<Self, io::PeerService, O...>
         });
     }
     
-    Endpoint& local() { return local_; }
-    const Endpoint& local() const { return local_; }
-    void local(const Endpoint& ep) { local_ = ep; }
+
 
     void do_open(Peer& peer) {
         peer.open(self()->reactor());
@@ -217,8 +226,8 @@ class BasicPeerService : public BasicService<Self, io::PeerService, O...>
     }
 
     /// @returns peers by endpoint
-    auto peers() const { return std::cref(peers_); }
-    auto peers() { return std::ref(peers_); }  
+    const PeersMap& peers() const { return peers_; }
+    PeersMap& peers() { return peers_; }  
 
     template<typename Fn>
     int for_each_peer(const Fn& fn) {
@@ -258,7 +267,6 @@ class BasicPeerService : public BasicService<Self, io::PeerService, O...>
 
   protected:
     PeersMap peers_;
-    Endpoint local_; /// interface to bind to
     tb::PendingSlot<ssize_t, std::error_code> write_; // when write is done
 };
 

@@ -82,7 +82,7 @@ public:
 
 protected:
     void on_parameters_updated(const core::Parameters& params) {
-        for(auto e: params["connections"]) {
+        for(auto e: params["endpoints"]) {
             auto strm = e.str("topic", "");
             mp::tuple_for_each(streams(), [&](auto* s) {
                 if(s->name() == strm) {

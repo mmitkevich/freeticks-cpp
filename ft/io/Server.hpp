@@ -16,7 +16,6 @@
 namespace ft::io {
 
 
-
 /// Acceptor
 template<class Self, class PeerT, class ServerSocketT, typename...O>
 class BasicServer : public BasicPeerService<Self, PeerT, O...>
@@ -25,110 +24,160 @@ class BasicServer : public BasicPeerService<Self, PeerT, O...>
     using Base = BasicPeerService<Self, PeerT, O...>;
   public:
     using typename Base::Parent;
-    using ServerSocket = ServerSocketT;
-    
-    static constexpr bool has_socket_accept() { return tb::SocketTraits::has_accept<ServerSocket>; }    
-
-    using ClientSocket = typename ServerSocket::ClientSocket;
     using typename Base::Endpoint;
     using typename Base::Peer;
     using typename Base::PeersMap;
     using typename Base::Packet;
     using typename Base::Reactor;
+    
+    using ServerSocket = ServerSocketT;
+    using ClientSocket = typename ServerSocket::ClientSocket;
+
+    struct Acceptor  {
+        Acceptor(Self* self)
+        : self_(self)
+        {
+            TOOLBOX_DUMPV(5)<<"Acceptor this="<<this<<" self="<<self_;
+        }
+
+        Self* self() { return self_; }
+        Peer& next_peer() { assert(next_peer_); return *next_peer_; }
+
+        template<class Reactor>    
+        void open(Reactor r) {
+            socket_.open(r, local().protocol());
+            socket_.bind(local());
+        }
+
+        void close() {
+            socket_.close();
+        }
+
+        void configure(const core::Parameters& params) {
+            auto iface = params.str("local","");
+            local_ = tb::parse_ip_endpoint<Endpoint>(iface);
+            next_peer_ = make_next_peer();
+        }
+
+        void async_accept() {
+            TOOLBOX_DUMPV(5)<<"self:"<<self()<<", local:"<<local();
+            assert(static_cast<Self*>(next_peer_->parent())==self());
+            // next possible peer
+            if constexpr(has_accept()) { // tcp
+                async_accept(next_peer().remote(), tb::bind(
+                [this](ClientSocket&& socket, std::error_code ec) {
+                    if(!ec) {
+                        next_peer().socket(std::move(socket));
+                        self()->parent()->newpeer()(next_peer().id(), ec);
+                        if(!ec) {
+                            next_peer().run([](Peer& peer, Packet& packet, tb::DoneSlot done) {
+                                auto* self = static_cast<Self*>(peer.parent());
+                                self->parent()->async_handle(peer, packet, done);
+                            });    // peer's loop
+                            self()->async_accept();    // accept again
+                        } else {
+                            self()->on_error(next_peer(), ec, "not accepted", TOOLBOX_FILE_LINE);
+                        }
+                    } else {
+                        self()->on_error(next_peer(), ec, "not accepted", TOOLBOX_FILE_LINE);
+                    }
+                }));
+            } else { // udp
+                next_peer().socket(std::move(std::ref(socket_))); // just ref to our socket
+                struct Handler {
+                    void operator()(Peer& peer, Packet& packet, tb::DoneSlot done) {
+                        auto* self = static_cast<Self*>(peer.parent());                    
+                        TOOLBOX_DUMPV(5)<<"self="<<self<<", peer="<<&peer;
+                        self->async_accept_first(peer, done);
+                    }
+                };
+                next_peer().template async_recv<Handler>(); // peer's loop
+            }
+        }
+
+        Peer* emplace_next_peer() {
+            Peer* peer = next_peer_.get();
+            assert(peer->parent()==self());
+            self()->emplace_peer(std::move(next_peer_));
+            next_peer_ = make_next_peer();
+            return peer;
+        }
+        
+        auto make_next_peer() {
+            TOOLBOX_DUMPV(5)<<"self:"<<self()<<", local:"<<local();
+            if constexpr(has_accept()) {
+                return self()->make_peer(ClientSocket(), local());
+            } else {
+                return self()->make_peer(std::ref(socket_), local());
+            }
+        }
+        Endpoint& local() { return local_; }
+        const Endpoint& local() const { return local_; }
+        void local(const Endpoint& ep) { local_ = ep; }
+    protected:
+        Self* self_{};    
+        Endpoint local_;    
+        ServerSocket socket_;
+        std::unique_ptr<Peer> next_peer_ {};
+        static constexpr bool has_accept() { return tb::SocketTraits::has_accept<ServerSocket>; }    
+    };
+
+    using Acceptors = std::vector<Acceptor>;
   public:
     using Base::peers, Base::peers_, Base::reactor
         , Base::make_peer, Base::emplace_peer
-        , Base::local, Base::async_write;
+        , Base::async_write;
     using Base::Base;
 
-    explicit BasicServer(const Endpoint& ep, Reactor* reactor=nullptr, io::PeerService* parent=nullptr)
-    :  Base(ep, reactor, parent)
-    {}
+    using Base::do_open;
 
-    void open() {
-        socket_.open(reactor(), local().protocol());
-        socket_.bind(local());
+    void configure(const core::Parameters& params) {
+        //assert(peers().empty());
+        std::string transport = params.str("transport");
+        for(auto pa: params["endpoints"]) {
+            auto& acpt = acceptors_.emplace_back(self());
+            acpt.configure(pa);
+        }
+    }
+    
+    void do_open() {
+        Base::do_open();
+        for(auto& acpt: acceptors_) {
+            acpt.open(reactor());
+            acpt.async_accept();
+        }
     }
 
     PeerService* parent() {
         return static_cast<PeerService*>(Base::parent());
     }
+
     using Base::parent; // setter
 
     /// @see SocketRef
-    void close() { socket_.close(); } 
-
-    ServerSocket& socket() { return socket_; }
-
-    Peer& next_peer() { assert(next_peer_); return *next_peer_; }
-    
-    Peer* emplace_next_peer() {
-        Peer* peer = next_peer_.get();
-        assert(peer->parent()==self());
-        emplace_peer(std::move(next_peer_));
-        next_peer_ = make_next_peer();
-        return peer;
-    }
-    
-    auto make_next_peer() {
-        TOOLBOX_DUMPV(5)<<"self:"<<self()<<", local:"<<local();
-        if constexpr(has_socket_accept()) {
-            return make_peer(ClientSocket());
-        } else {
-            return make_peer(std::ref(socket()));
+    void do_close() { 
+        for(auto& acpt: acceptors_) {
+            acpt.close();
         }
-    }
+    } 
 
-    void run() {
-        TOOLBOX_DUMPV(5)<<"self:"<<self()<<", local:"<<local();
-        assert(static_cast<Self*>(next_peer_->parent())==self());
-        // next possible peer
-        if constexpr(has_socket_accept()) { // tcp
-            socket().async_accept(next_peer().remote(), tb::bind(
-            [this](ClientSocket&& socket, std::error_code ec) {
-                if(!ec) {
-                    next_peer().socket(std::move(socket));
-                    parent()->newpeer()(next_peer().id(), ec);
-                    if(!ec) {
-                        next_peer().run([](Peer& peer, Packet& packet, tb::DoneSlot done) {
-                            auto* self = static_cast<Self*>(peer.parent());
-                            self->parent()->async_handle(peer, packet, done);
-                        });    // peer's loop
-                        run();    // accept again
-                    } else {
-                        on_error(next_peer(), ec, "not accepted", TOOLBOX_FILE_LINE);
-                    }
-                } else {
-                    on_error(next_peer(), ec, "not accepted", TOOLBOX_FILE_LINE);
-                }
-            }));
-        } else { // udp
-            next_peer().socket(std::move(std::ref(socket()))); // just ref to our socket
-            struct Handler {
-                void operator()(Peer& peer, Packet& packet, tb::DoneSlot done) {
-                    auto* self = static_cast<Self*>(peer.parent());                    
-                    TOOLBOX_DUMPV(5)<<"self="<<self<<", peer="<<&peer;
-                    self->async_accept_and_handle(peer, done);
-                }
-            };
-            next_peer().template run<Handler>(); // peer's loop
-        }
-    }
-    void async_accept_and_handle(Peer& peer, tb::DoneSlot done) {
+    Acceptors& acceptors() { return acceptors_; }
+
+
+    void async_accept_first(Peer& peer, tb::DoneSlot done) {
         TOOLBOX_DUMPV(5)<<"self:"<<self()<<" peer:"<<&peer<<",local:"<<peer.local()<<",remote:"<<peer.remote()<<", peer_id:"<<peer.id()<<", #peers:"<<peers_.size();
         auto it = peers_.find(peer.id());
         if(it==peers_.end()) {
-            parent()->newpeer()(peer.id(), {});
-            self()->async_handle(peer, peer.packet(), done);
+            self()->newpeer()(peer.id(), {});
         }
+        self()->async_handle(peer, peer.packet(), done);        
     }
 
     void on_error(Peer& peer, std::error_code ec, const char* what="error", const char* loc="") {
         TOOLBOX_ERROR << loc << what <<", ec:"<<ec<<", peer:"<<peer.remote();
     }
   protected:
-    ServerSocket socket_;
-    std::unique_ptr<Peer> next_peer_ = make_next_peer();
+    std::vector<Acceptor> acceptors_;
 };
 
 template<class PeerT, class ServerSocketT>
@@ -155,7 +204,7 @@ class BasicMultiServer : public io::BasicMultiService<Self, PeerService, Service
         bool was_open = is_open();
         if(was_open)
             close();
-        for(auto conn_p: parameters()["connections"]) {
+        for(auto conn_p: parameters()["endpoints"]) {
             auto ep = conn_p.strv("local");
             auto proto = conn_p.strv("transport");
             self()->get_service(proto, ep, reactor()); // will create service
@@ -177,13 +226,13 @@ class BasicMultiServer : public io::BasicMultiService<Self, PeerService, Service
 
     void do_open() {
         Base::do_open(); // will open services
-        self()->run();
+        self()->async_accept();
     }
     
     /// accepts clients, reads messages from them and apply protocol logic
-    void run() {
+    void async_accept() {
         for_each_service([](auto& svc) {
-            svc.run();
+            svc.async_accept();
         });
     }
 

@@ -169,12 +169,11 @@ public:
   std::unique_ptr<core::IServer> make_server(const core::Parameters& params) {
     auto transport = params.strv("transport");      
     if(transport=="udp") {
-      using Proxy = core::Proxy<
-        io::MdServer<
+      using MdServer = io::MdServer<
           ProtocolM
         , io::ServerConn<tb::DgramSocket<>> // PeerT
-        , tb::DgramSocket<> > // ServerSocketT 
-      , core::IServer::Impl>;
+        , tb::DgramSocket<> >; // ServerSocketT 
+      using Proxy = core::Proxy<MdServer, core::IServer::Impl>;      
       return make_proxy<core::IServer, Proxy>();
     } else {
       fail("unsupported server transport", transport, TOOLBOX_FILE_LINE);
@@ -240,13 +239,13 @@ public:
 
   void on_tick(const core::Tick& e) {
     //auto& ins = instruments_[e.venue_instrument_id()];
-    TOOLBOX_DEBUG << e;
+    TOOLBOX_DUMPV(5) << e;
     forward(mdservers_, e, nullptr);
     forward(mdsinks_, e, nullptr);
   }
 
   void on_instrument(const core::InstrumentUpdate& e) {
-    TOOLBOX_DEBUG << e;
+    TOOLBOX_DUMPV(5) << e;
     instruments_.update(e);
     //forward(mdservers_, e, nullptr);
     //instrument_csv_(e);
@@ -419,16 +418,14 @@ public:
 
   /// will call done when all subscribed
   void async_subscribe(core::IClient& client, const core::Parameters& params, tb::SizeSlot done) {
-    subscribe_done_.pending(0);
-    subscribe_done_.set_slot(done);
+    // TODO: migrate to ranges_v3
+    assert(async_subscribe_.empty());
     for(auto strm_pa: params) {
       for(auto sym_pa: strm_pa["symbols"]) {
-        subscribe_done_.inc_pending();
-        auto req = make_subscription_request(sym_pa.get_string());
-        // will serialize
-        client.async_write(req, subscribe_done_.get_slot());
+        async_subscribe_.emplace(client, make_subscription_request(sym_pa.get_string()));
       }
     }
+    async_subscribe_(done);
   }
 
   core::SubscriptionRequest make_subscription_request(std::string_view symbol) {
@@ -488,7 +485,8 @@ public:
   }
 
 private:
-  tb::PendingSlot<ssize_t, std::error_code> subscribe_done_;
+  tb::AsyncWrite<core::IClient, core::SubscriptionRequest> async_subscribe_;
+
   core::MutableParameters opts_;
   std::string mode_ {"prod"};
   tb::MonoTime start_timestamp_;

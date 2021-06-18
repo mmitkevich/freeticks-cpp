@@ -35,7 +35,7 @@ public:
     using typename Base::Peer;
     using Protocol = ProtocolM<Self>;
     
-    using Base::open, Base::close; // resolve ambiguity with Protocol::open
+    using Base::open, Base::close, Base::do_open; // resolve ambiguity with Protocol::open
 
     void do_open() {
         Base::do_open();

@@ -23,8 +23,8 @@ class NonMovable {
 public:
     NonMovable(const NonMovable&) = delete;
     NonMovable&operator=(const NonMovable&) = delete;
-    NonMovable(NonMovable&&) = default;
-    NonMovable&operator=(NonMovable&&) = default;
+    NonMovable(NonMovable&&) = delete;
+    NonMovable&operator=(NonMovable&&) = delete;
     NonMovable() = default;
 };
 
@@ -66,7 +66,7 @@ protected:
 };
 
 /// Component = HasParent<Component> + Identifiable + Moveable 
-class Component :  public Identifiable, public Movable {
+class Component :  public Identifiable, public NonMovable {
 public:
     using Parent = Component;
     using Base = Identifiable;
