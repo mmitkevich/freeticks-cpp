@@ -93,9 +93,16 @@ class BasicService: public Base
     }
     
     void on_parameters_updated(const core::Parameters& params) {
-        self()->configure(params);
-    }
+        auto was_open = self()->is_open();
+        if(was_open)
+            self()->close();
 
+        self()->configure(params);
+        
+        if(was_open)
+            self()->open();
+    }
+    
     void configure(const core::Parameters& params) {
         Base::configure(params);
     }
@@ -166,18 +173,7 @@ class BasicPeerService : public BasicService<Self, io::PeerService, O...>
     
     using Base::Base;
 
-    void on_parameters_updated(const core::Parameters& params) {
-        Base::on_parameters_updated(params);
-        auto was_open = self()->is_open();
-        if(was_open)
-            self()->close();
 
-        self()->configure(params);
-        
-        if(was_open)
-            self()->open();
-    }
-    
     // most basic configuration is to define local endpoint to listen on
     void configure(const core::Parameters& params) { }
 

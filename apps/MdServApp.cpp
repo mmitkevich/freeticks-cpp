@@ -302,14 +302,13 @@ public:
   std::unique_ptr<core::IService> make_mdsink(const core::Parameters& params) {
     std::unique_ptr<core::IService> svc;
     std::string_view protocol = params.strv("protocol");
-  #ifdef USE_CLICKHOUSE
+  #ifdef USE_CLICKHOUSECPP
     if(protocol=="clickhouse") {
       using ValuesL = mp::mp_list<core::Tick>;
       using Service = io::MultiSinkService<ValuesL, io::ClickHouseService, io::ClickHouseSink>;
       using Proxy = core::Proxy<Service, core::IService::Impl>;
       auto* proxy = new Proxy(&instruments_, reactor(), self());
       svc = std::unique_ptr<core::IService>(proxy);
-      svc->parameters(params);
       return svc;
     } else 
 #endif    
@@ -319,7 +318,6 @@ public:
       using Proxy = core::Proxy<Service, core::IService::Impl>;
       auto* proxy = new Proxy(&instruments_, reactor(), self());
       svc = std::unique_ptr<core::IService>(proxy);
-      svc->parameters(params);
       return svc;
     } else {
       fail("protocol not supported", protocol, TOOLBOX_FILE_LINE);
@@ -404,6 +402,7 @@ public:
         if(enabled) {
             auto s = make_mdsink(pa);
             auto* sink = s.get();
+            sink->parameters(pa);
             mdsinks_.emplace(sink->id(), std::move(s));
             sink->start();
         }

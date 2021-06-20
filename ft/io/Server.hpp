@@ -133,6 +133,7 @@ class BasicServer : public BasicPeerService<Self, PeerT, O...>
 
     void configure(const core::Parameters& params) {
         //assert(peers().empty());
+        assert(acceptors_.size()==0);
         std::string transport = params.str("transport");
         for(auto pa: params["endpoints"]) {
             auto& acpt = acceptors_.emplace_back(self());
