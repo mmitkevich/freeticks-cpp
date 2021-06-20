@@ -6,8 +6,15 @@ include_directories(PRIVATE
 set(app_LIBRARIES
   "${tb_core_LIBRARY}"
   "${ft_core_LIBRARY}"
-  "${PCAP_LIBRARY}"
+)
+if(PCAP_FOUND)
+set(app_LIBRARIES "${app_LIBRARIES}" 
+  "${PCAP_LIBRARY}")
+endif()
+if(CLICKHOUSECPP_FOUND)
+set(app_LIBRARIES "${app_LIBRARIES}"
   "${CLICKHOUSECPP_LIBRARY}")
+endif()
 
 add_executable(mdserv MdServApp.cpp)
 target_link_libraries(mdserv ${app_LIBRARIES})

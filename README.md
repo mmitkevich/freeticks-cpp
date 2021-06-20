@@ -1,30 +1,48 @@
 # Freeticks: C++ algorithmic trading framework
 
-## What is Freeticks?
-
-Freeticks is a collection of market connectivity components
-
 ## Prerequisites
 
 To build Freeticks from source, you will need:
 
-- [CMake](http://www.cmake.org/) for Makefile generation;
-- [GCC](http://gcc.gnu.org/) or [Clang](http://clang.llvm.org/) with support for C++17;
-- [Boost](http://www.boost.org/) for additional library dependencies.
+- [CMake >=3.13.2](http://www.cmake.org/) for Makefile generation;
+- [GCC >=8.2.0](http://gcc.gnu.org/) or [Clang](http://clang.llvm.org/) with support for C++17;
+- [Boost >=1.68.0](http://www.boost.org/) for additional library dependencies.
 - [toolbox-cpp](http://github.com/mmitkevich/toolbox-cpp) for Reactive toolbox library
-## Getting Started
+- [clickhouse-cpp] (http://github.com/clickhouse-cpp) for clickhouse sink
+- [aeron] (https://github.com/real-logic/aeron) optionally for aeron transport
+- [libpcap] 
 
-Clone the repository, build and run the unit-tests as follows:
+## Getting Started
 
 ```bash
 $ git clone git@github.com:mmitkevich/toolbox-cpp.git
 $ git clone git@github.com:mmitkevich/freeticks-cpp.git
-$ mkdir freeticks-cpp/build
-$ cd freeticks-cpp/build
-$ cmake ..
-$ make -j
+$ mkdir -p freeticks-cpp/build
+$ cd freeticks-cpp && cmake -H. -Bbuild/relwithdebinfo -DCMAKE_BUILD_TYPE=relwithdebinfo \
+                -DCMAKE_EXPORT_COMPILE_COMMANDS=YES \
+                 -DBoost_NO_SYSTEM_PATHS=ON -DBOOST_ROOT=/opt/boost_1_68_0 \
+                -DCMAKE_CXX_COMPILER=/opt/gcc-8.2.0/bin/g++ -DCMAKE_C_COMPILER=/opt/gcc-8.2.0/bin/gcc \
+                -DCLICKHOUSECPP_ROOT_DIR=/opt/tbricks/local
+                -DAERON_ROOT_DIR=/opt/aeron \                
 ```
 
+
+
+### install instrument definitions
+running requres instr-2020-11-02.xml definitions file from spbexchange ftp
+```bash
+# get 1Gb instrument definitions from FTP
+wget http://ftp.spbexchange.ru/TS/instruments/instr-archive.zip
+# extract instrument definitions xml
+unzip -p instr-archive.zip instr-2020-11-02.xml > instr-2020-11-02.xml
+```
+
+## Running
+
+### see run_sbp_mdserv.sh script for running details
+```bash
+LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH ./mdserv -l spb_mdserv.log -o spb_mdserv.out -v 5 -m pcap ./mdserv.json
+```
 ## License
 
 This project is licensed under the [Apache 2.0

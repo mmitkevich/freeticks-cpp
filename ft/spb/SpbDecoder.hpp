@@ -4,7 +4,7 @@
 #include "ft/core/Stream.hpp"
 #include "ft/core/StreamStats.hpp"
 #include "ft/core/Tick.hpp"
-#include "ft/io/PcapMdClient.hpp"
+//#include "ft/io/PcapMdClient.hpp"
 #include "ft/utils/Common.hpp"
 #include "toolbox/net/Endpoint.hpp"
 #include "toolbox/net/Packet.hpp"

@@ -39,8 +39,13 @@
 #include "toolbox/util/Json.hpp"
 #include "toolbox/util/Options.hpp"
 
+#ifdef USE_PCAP
 #include "ft/io/PcapMdClient.hpp"
+#endif
+
+#ifdef USE_QSH
 #include "ft/qsh/QshMdClient.hpp"
+#endif
 
 #include "ft/spb/SpbProtocol.hpp"
 
@@ -53,7 +58,9 @@
 #include "ft/tbricks/TbricksProtocol.hpp"
 #include "toolbox/util/RobinHood.hpp"
 #include "ft/io/Csv.hpp"
+#ifdef USE_CLICKHOUSECPP
 #include "ft/io/ClickHouse.hpp"
+#endif
 #include "toolbox/util/Slot.hpp"
 
 namespace tb = toolbox;
@@ -116,10 +123,14 @@ public:
       TOOLBOX_INFO<<"make_client, protocol:"<<protocol<<", transport:"<<this->transport(params);
       if (protocol=="SPB_MDB_MCAST") {
          return make_client<spb::SpbProtocol<tb::UdpEndpoint>::Mixin>(params);
-      } else if(protocol=="QSH") {
+      }
+    #ifdef USE_QSH 
+      else if(protocol=="QSH") {
           using Proxy = core::Proxy<qsh::QshMdClient, core::IClient::Impl>;
           return make_proxy<core::IClient, Proxy>();
-      } else if(protocol=="TB1") {
+      }
+    #endif 
+      else if(protocol=="TB1") {
           return make_client<tbricks::TbricksProtocol>(params);
       } else {
         fail("unsupported client protocol", protocol, TOOLBOX_FILE_LINE);
@@ -135,10 +146,14 @@ public:
     } else if(transport=="udp") {
       using Proxy = core::Proxy<io::MdClient<ProtocolM, io::DgramConn>, core::IClient::Impl>;
       return make_proxy<core::IClient, Proxy>();
-    } else if(transport=="pcap") {
+    } 
+#ifdef USE_PCAP
+    else if(transport=="pcap") {
       using Proxy = core::Proxy<io::PcapMdClient<ProtocolM>, core::IClient::Impl>;
       return make_proxy<core::IClient, Proxy>();
-    } else {
+    } 
+#endif  
+    else {
       fail("unsupported client transport", transport, TOOLBOX_FILE_LINE);
       return nullptr;
     }
@@ -287,6 +302,7 @@ public:
   std::unique_ptr<core::IService> make_mdsink(const core::Parameters& params) {
     std::unique_ptr<core::IService> svc;
     std::string_view protocol = params.strv("protocol");
+  #ifdef USE_CLICKHOUSE
     if(protocol=="clickhouse") {
       using ValuesL = mp::mp_list<core::Tick>;
       using Service = io::MultiSinkService<ValuesL, io::ClickHouseService, io::ClickHouseSink>;
@@ -295,7 +311,9 @@ public:
       svc = std::unique_ptr<core::IService>(proxy);
       svc->parameters(params);
       return svc;
-    } else if(protocol=="csv") {
+    } else 
+#endif    
+    if(protocol=="csv") {
       using ValuesL = mp::mp_list<core::Tick, core::InstrumentUpdate>;
       using Service = io::MultiSinkService<ValuesL, io::Service, io::CsvSink>;
       using Proxy = core::Proxy<Service, core::IService::Impl>;

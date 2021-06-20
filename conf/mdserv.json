@@ -54,8 +54,9 @@
 ]
 , "sinks": [ 
     {
-        "protocol": "clickhouse",
-        "enable": ["serv", "pcap"]
+        "protocol": "clickhouse"
+        //, "enable": []
+        , "enable": ["serv", "pcap"]
         , "url": "10.1.110.24:9000"
         , "endpoints" : [{
             // select * from spb_taq where LocalTime>(select addMinutes(max(LocalTime),-10) from spb_taq) limit 5
