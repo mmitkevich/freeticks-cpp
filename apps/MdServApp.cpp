@@ -464,9 +464,9 @@ public:
   int main(int argc, char *argv[]) {
     tb::Options parser{"mdserv [OPTIONS] config.json"};
     std::string config_file;
-    std::vector<std::string> pcaps;
     bool help = false;
     int log_level=tb::Log::Info;
+    std::vector<std::string> pcap_inputs;
     parser('h', "help", tb::Switch{help}, "print help")
       ('v', "verbose", tb::Value{log_level}, "log level")
       ('l', "logfile", tb::Value{parameters(), "logfile", std::string{}}, "log file")
@@ -481,7 +481,7 @@ public:
       }
       //TOOLBOX_CRIT<<"log_level:"<<log_level;
       tb::set_log_level(log_level);
-      tb::std_logger_set_file(parameters().strv("logfile"));
+      tb::std_logger_set_file(parameters().strv("logfile", "/dev/stderr"));
       if(!config_file.empty()) {
         Base::parameters_.parse_file(config_file);
       }

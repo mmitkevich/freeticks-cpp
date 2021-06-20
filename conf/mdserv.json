@@ -11,14 +11,14 @@
         ,   { "topic":"BestPrice", "type": "update", "local":"10.1.110.55"
                 , "remote": ["233.26.38.17:6017", "233.26.38.145:6145"],  "recovery": "BEX.TOB" }
         ,   { "topic":"Instrument", "type": "snapshot"
-                , "resource": ["/opt/tbricks/instr-2020-11-02.xml"]
+                , "resource": ["./instr-2020-11-02.xml"]
                 , "local":"10.1.110.55"
                 , "remote": ["233.26.38.36:6036", "233.26.38.164:6164"] }
         ,   { "topic":"Instrument", "type": "update", "local":"10.1.110.55"
                 , "remote": ["233.26.38.37:6037", "233.26.38.165:6165"] }
         ],
         "pcap": {
-            "inputs": ["/opt/tbricks/spb_20201012.pcap", "/opt/tbricks/spb_20201013.pcap"]
+            "inputs": ["spb/spb_20201012.tgz"]
             , "filter": {
                 "protocols": ["udp"]
                 ,"dst": [

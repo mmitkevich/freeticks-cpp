@@ -50,7 +50,7 @@ public:
 
     // dispatch parameters
     void on_parameters_updated(const core::Parameters& params) {
-        auto pcap_pa = params["pcap"];
+        auto& pcap_pa = params["pcap"];
 
         pcap_pa["inputs"].copy(inputs_);
 
