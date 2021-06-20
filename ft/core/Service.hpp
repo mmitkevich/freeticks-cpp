@@ -18,6 +18,8 @@ public:
     virtual void start() = 0;
     /// stop service
     virtual void stop() = 0;
+    
+    virtual bool supports(StreamTopic topic) = 0;
     /// get (input) stream associated with topic
     virtual Stream& signal(StreamTopic topic) = 0;
     /// get (output) stream associated with topic
@@ -41,6 +43,7 @@ public:
     void stop() override { impl()->stop(); }
     Stream& signal(StreamTopic topic) override { return impl()->signal(topic); }
     Stream& slot(StreamTopic topic) override { return impl()->slot(topic); }
+    bool supports(StreamTopic topic) override { return impl()->supports(topic); }
 };
 
 

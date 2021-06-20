@@ -32,7 +32,7 @@
     },
     {   "protocol":"TB1"
         , "transport" : "udp"        
-        , "enable": ["tb-clnt"]
+        , "enable": ["clnt"]
         , "endpoints":[
             {"topic":"BestPrice",  "type": "snapshot", "local": "127.0.0.1:10010"
             , "remote": ["127.0.0.1:10050"]}
@@ -45,7 +45,7 @@
 , "servers": [
     {   "protocol":"TB1"
         , "transport" : "udp"
-        , "enable": ["tb-serv"]
+        , "enable": ["serv"]
         , "endpoints" : [
             { "transport":"udp", "local": "0.0.0.0:10050" },    // A: many peers, MdServer1
             { "transport":"udp", "local": "0.0.0.0:10051" }     // B: many peers, MdServer2
@@ -54,13 +54,21 @@
 ]
 , "sinks": [ 
     {
-        "protocol": "ClickHouse",
-        "enable": ["pcap"]
+        "protocol": "clickhouse",
+        "enable": ["serv", "pcap"]
         , "url": "10.1.110.24:9000"
         , "endpoints" : [{
             // select * from spb_taq where LocalTime>(select addMinutes(max(LocalTime),-10) from spb_taq) limit 5
-            "topic":"BestPrice", "table": "spb_taq"
+            "topic":"BestPrice", "sink": "spb_taq"
             //, "fields": ["Time", "LocalTime", "Event", "Symbol", "InstrumentId", "VenueInstrumentId", "Price", "Qty", "Side"]
+        }]
+    }, {
+        "protocol": "csv"
+        , "enable": ["serv", "pcap"]
+        , "endpoints": [{
+            "topic": "BestPrice", "sink": "BestPrice.csv"
+        }, {
+            "topic": "Instrument", "sink" : "Instruments.csv"
         }]
     }
 ]

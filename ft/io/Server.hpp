@@ -217,9 +217,8 @@ class BasicMultiServer : public io::BasicMultiService<Self, PeerService, Service
     template<typename MessageT>
     void async_write(const MessageT& m, tb::SizeSlot done) {
         write_.set_slot(done);
-        write_.pending(0);
+        write_.pending(self()->services().size());
         for_each_service([&](auto& svc) {
-            write_.inc_pending();
             svc.async_write(m, write_.get_slot());
         });
     }

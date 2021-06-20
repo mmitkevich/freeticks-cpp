@@ -106,15 +106,19 @@ class BasicClient: public BasicPeerService<Self, PeerT>
     // connect all peers. Notifies when all done
     void async_connect(tb::DoneSlot done) {
         assert(connect_.empty());
-        connect_.pending(0);
+        connect_.pending(peers().size());
         connect_.set_slot(done);
+        assert(!connect_.empty());
+        assert(done!=nullptr);
+        TOOLBOX_DEBUG<<"async_connect this="<<this;
         Base::for_each_peer([this](auto& peer) {
             if(!peer.is_open() && !peer.is_connecting()) {
-                connect_.inc_pending();
+                TOOLBOX_DEBUG<<"async_connect this="<<this<<" peer="<<&peer;
                 peer.async_connect(tb::bind(
-                [&peer](std::error_code ec) {
-                    Self* self = static_cast<Self*>(peer.parent());
-                    self->on_peer_connected(peer, ec); // after connect
+                [p=&peer](std::error_code ec) {
+                    Self* self = static_cast<Self*>(p->parent());
+                    TOOLBOX_DEBUG<<"async_connect this="<<self<<" peer="<<p;
+                    self->on_peer_connected(*p, ec); // after connect
                     self->connect_(ec); // calls done when all done
                 }));
             }
@@ -149,9 +153,6 @@ class BasicClient: public BasicPeerService<Self, PeerT>
   protected:
     Endpoint local_;
     tb::PendingSlot<std::error_code>  connect_;    
-    tb::Signal<> connected_;
-
-
 }; // BasicClient
 
 
@@ -185,9 +186,8 @@ class BasicMultiClient : public io::BasicMultiService<Self, io::Service, Clients
     template<typename MessageT>
     void async_write(const MessageT& m, tb::SizeSlot done) {
         write_.set_slot(done);
-        write_.pending(0);
+        write_.pending(self()->services().size());
         for_each_service([&](auto& svc) {
-            write_.inc_pending();
             svc.async_write(m, write_.get_slot());
         });
     }

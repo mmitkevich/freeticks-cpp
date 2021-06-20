@@ -39,7 +39,10 @@ public:
         update(vi);
     }
     std::string_view symbol(const core::VenueInstrumentId id) {
-        return instruments_[id].symbol();
+        if(instruments_.find(id)!=instruments_.end())
+            return instruments_[id].symbol();
+        else 
+            return "";
     }
 private:
     ft::unordered_map<VenueInstrumentId, core::VenueInstrument> instruments_;

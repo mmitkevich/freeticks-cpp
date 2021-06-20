@@ -37,7 +37,9 @@ public:
     Service(Reactor* reactor, core::Component* parent=nullptr, core::Identifier id={})
     : Base(parent, id)
     , reactor_(reactor) {}
-
+    void open() {}
+    void close() {}
+    void configure(const core::Parameters& params) {}
     std::string_view protocol() { return protocol_; }
     void protocol(std::string_view val) { protocol_ = val; }
     Reactor* reactor() { return reactor_; }
@@ -90,6 +92,14 @@ class BasicService: public Base
         state(State::Open);
     }
     
+    void on_parameters_updated(const core::Parameters& params) {
+        self()->configure(params);
+    }
+
+    void configure(const core::Parameters& params) {
+        Base::configure(params);
+    }
+
     /// stops, throws only std::runtime_error
     void stop() {
         try {
@@ -157,6 +167,7 @@ class BasicPeerService : public BasicService<Self, io::PeerService, O...>
     using Base::Base;
 
     void on_parameters_updated(const core::Parameters& params) {
+        Base::on_parameters_updated(params);
         auto was_open = self()->is_open();
         if(was_open)
             self()->close();
@@ -249,11 +260,16 @@ class BasicPeerService : public BasicService<Self, io::PeerService, O...>
     }
     template<typename MessageT>
     void async_write(const MessageT& m, tb::SizeSlot done) {
-        write_.set_slot(done);
-        write_.pending(0);
+        std::size_t pending = 0;
+        for_each_peer([&](auto& peer) {
+            if(self()->route(peer, m.topic(), m.instrument_id())) {
+                pending++;
+            }
+        });
+        write_.set_slot(done);        
+        write_.pending(pending);
         for_each_peer([&](auto& peer) {
              if(self()->route(peer, m.topic(), m.instrument_id())) {
-              write_.inc_pending();
               /// delegate to derived (e.g. Protocol)
               self()->async_write_to(peer, m, write_.get_slot());
             }
@@ -270,10 +286,11 @@ class BasicPeerService : public BasicService<Self, io::PeerService, O...>
     tb::PendingSlot<ssize_t, std::error_code> write_; // when write is done
 };
 
-/// separate endpoint->svc maps for different svc types
-template<class Self, class BaseT, class ServicesL, typename...O>
-class BasicMultiService : public io::BasicService<Self, BaseT, O...> {
-    using Base = io::BasicService<Self, BaseT, O...>;
+
+/// TODO: Migrate to type-erased Proxy<IService>
+template<class Self, class MultiServiceT, class ServicesL, typename...O>
+class BasicMultiService : public io::BasicService<Self, MultiServiceT, O...> {
+    using Base = io::BasicService<Self, MultiServiceT, O...>;
     FT_SELF(Self);
 public:
     //using Base::Base;
@@ -301,6 +318,7 @@ public:
         });
         return count;
     }
+    const auto& services() { return services_; }
 
     template<class ServiceT, typename EndpointT, typename...ArgsT>
     std::unique_ptr<ServiceT> make_service(const EndpointT& endpoint, ArgsT...args) {
@@ -339,7 +357,6 @@ public:
                 }
             }
         });
-        assert(result);
         return result;
     }
     template<typename...ArgsT>

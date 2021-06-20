@@ -146,7 +146,7 @@ public:
     constexpr static tb::BitMask<Field> fields() {
         return tb::BitMask<Field>({
                 Field::Symbol,
-                Field::InsturmentId,
+                Field::InstrumentId,
                 Field::VenueInstrumentId,
                 Field::VenueSymbol,
                 Field::Exchange});

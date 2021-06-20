@@ -41,6 +41,8 @@ public:
         ss << "no slot for topic "<<topic;
         throw std::logic_error(ss.str());
     }
+    
+    bool supports(StreamTopic topic) { return false; }
 
     template<typename T>
     class Slot : public core::Stream::BasicSlot<Slot<T>, const T&, tb::SizeSlot> {

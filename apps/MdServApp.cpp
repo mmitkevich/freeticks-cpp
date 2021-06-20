@@ -232,23 +232,29 @@ public:
   void forward(ServicesT& services, const T& e, tb::DoneSlot done) {
     for(auto& it: services) {
       auto& svc = it.second;
-      auto& slot = Stream::Slot<const T&, tb::DoneSlot>::from(svc->slot(e.topic()));
-      slot(e, done);
+      if(svc->supports(e.topic())) {
+        auto& slot = Stream::Slot<const T&, tb::DoneSlot>::from(svc->slot(e.topic()));
+        slot(e, done);
+      }
     }
   }
 
   void on_tick(const core::Tick& e) {
     //auto& ins = instruments_[e.venue_instrument_id()];
-    TOOLBOX_DUMPV(5) << e;
+    TOOLBOX_DUMP << e;
+    if(out_.is_open())
+      out_ << e << std::endl;
     forward(mdservers_, e, nullptr);
     forward(mdsinks_, e, nullptr);
   }
 
   void on_instrument(const core::InstrumentUpdate& e) {
-    TOOLBOX_DUMPV(5) << e;
+    TOOLBOX_DUMP << e;
+    if(out_.is_open())
+      out_ << e << std::endl;
     instruments_.update(e);
-    //forward(mdservers_, e, nullptr);
-    //instrument_csv_(e);
+    forward(mdservers_, e, nullptr);
+    forward(mdsinks_, e, nullptr);
   }
   using ClientPtr = std::unique_ptr<core::IClient>;
 
@@ -279,21 +285,28 @@ public:
   }
 
   std::unique_ptr<core::IService> make_mdsink(const core::Parameters& params) {
-    std::unique_ptr<core::IService> sink;
+    std::unique_ptr<core::IService> svc;
     std::string_view protocol = params.strv("protocol");
-    if(protocol=="ClickHouse") {
-        using ClickHouseSinksL = mp::mp_list<core::Tick>;
-        using ClickHouseService = io::ClickHouseService<ClickHouseSinksL>;
-        using Proxy = core::Proxy<ClickHouseService, core::IService::Impl>;
-        auto* proxy = new Proxy(&instruments_, reactor(), self());
-        sink = std::unique_ptr<core::IService>(proxy);
-        sink->parameters(params);
-        return sink;
+    if(protocol=="clickhouse") {
+      using ValuesL = mp::mp_list<core::Tick>;
+      using Service = io::MultiSinkService<ValuesL, io::ClickHouseService, io::ClickHouseSink>;
+      using Proxy = core::Proxy<Service, core::IService::Impl>;
+      auto* proxy = new Proxy(&instruments_, reactor(), self());
+      svc = std::unique_ptr<core::IService>(proxy);
+      svc->parameters(params);
+      return svc;
+    } else if(protocol=="csv") {
+      using ValuesL = mp::mp_list<core::Tick, core::InstrumentUpdate>;
+      using Service = io::MultiSinkService<ValuesL, io::Service, io::CsvSink>;
+      using Proxy = core::Proxy<Service, core::IService::Impl>;
+      auto* proxy = new Proxy(&instruments_, reactor(), self());
+      svc = std::unique_ptr<core::IService>(proxy);
+      svc->parameters(params);
+      return svc;
     } else {
       fail("protocol not supported", protocol, TOOLBOX_FILE_LINE);
+      return nullptr;
     }
-    TOOLBOX_INFO << "created md sink '"<<protocol<<"'";
-    return sink;
   }
 
   void on_subscribe(core::IServer& serv, PeerId peer, const core::SubscriptionRequest& req) {
@@ -359,9 +372,10 @@ public:
   void run() {
       const auto& params = parameters();
       
-      std::string output_path = params.str("output", "/dev/stdout");
+      std::string output_path = params.str("outfile", "");
       
-      if(output_path!="/dev/null") {
+      if(output_path!="") {
+        out_.open(output_path, std::ofstream::out);
         //FIXME: back to universal output
         //bestprice_csv_.open(output_path+"-bbo.csv");
         //instrument_csv_.open(output_path+"-ins.csv");
@@ -455,7 +469,8 @@ public:
     int log_level=tb::Log::Info;
     parser('h', "help", tb::Switch{help}, "print help")
       ('v', "verbose", tb::Value{log_level}, "log level")
-      ('o', "output", tb::Value{parameters(), "output", std::string{}}, "output file")
+      ('l', "logfile", tb::Value{parameters(), "logfile", std::string{}}, "log file")
+      ('o', "outfile", tb::Value{parameters(), "outfile", std::string{}}, "out file")
       ('m', "mode", tb::Value{mode_}, "pcap, prod, test")
       (tb::Value{config_file}.required(), "config.json file");
     try {
@@ -464,8 +479,9 @@ public:
         std::cerr << parser << std::endl;
         return EXIT_SUCCESS;
       }
-      TOOLBOX_CRIT<<"log_level:"<<log_level;
+      //TOOLBOX_CRIT<<"log_level:"<<log_level;
       tb::set_log_level(log_level);
+      tb::std_logger_set_file(parameters().strv("logfile"));
       if(!config_file.empty()) {
         Base::parameters_.parse_file(config_file);
       }
@@ -493,13 +509,12 @@ private:
   core::InstrumentsCache instruments_;
   core::BestPriceCache bestprice_;
   // csv sink
-  //core::SymbolCsvSink<BestPrice> bestprice_csv_ {instruments_};
-  //core::CsvSink<InstrumentUpdate> instrument_csv_;
   tb::unordered_map<core::Identifier, std::unique_ptr<core::IService>> mdsinks_;
   tb::unordered_map<core::Identifier, std::unique_ptr<core::IClient>> mdclients_;
   tb::unordered_map<core::Identifier, std::unique_ptr<core::IServer>> mdservers_;
   MdClientFactory mdclient_factory_{this};
   MdServerFactory mdserver_factory_{this};
+  std::ofstream out_;
 };
 
 } // namespace ft::apps::serv

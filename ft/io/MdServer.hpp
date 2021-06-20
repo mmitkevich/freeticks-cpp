@@ -79,6 +79,15 @@ public:
       }
     }
 
+    bool supports(core::StreamTopic topic) const {
+      switch(topic) {
+        case core::StreamTopic::Instrument:
+        case core::StreamTopic::BestPrice:
+          return true;
+      }
+      return false;
+    }
+
 protected:
     template<class T>
     using Slot = typename Protocol::template Slot<T>;

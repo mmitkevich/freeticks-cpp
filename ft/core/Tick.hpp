@@ -110,7 +110,10 @@ public:
     auto& server_id(ExchangeId val) { ft_server_id = val; return *this; }
 };
 
-using TickElement = BasicTickElement<TickPolicy>;
+struct TickElement : BasicTickElement<TickPolicy> {
+    using Base = BasicTickElement<TickPolicy>;
+    using Base::Base;
+};
 
 #pragma pack(push, 1)
 template<typename T, std::size_t SizeI=1>

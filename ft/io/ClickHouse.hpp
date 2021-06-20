@@ -8,8 +8,10 @@
 #include "clickhouse/types/types.h"
 #include "ft/core/Component.hpp"
 #include "ft/core/Fields.hpp"
+#include "ft/core/Instrument.hpp"
 #include "ft/core/InstrumentsCache.hpp"
 #include "ft/core/Parameters.hpp"
+#include "ft/core/Serializer.hpp"
 #include "ft/core/State.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/Tick.hpp"
@@ -37,14 +39,16 @@ struct static_not_supported {
     constexpr static_not_supported() { static_assert(flag, "type not supported"); }
 };
 
-class ClickHouseConn : public io::Service  {
+class ClickHouseService : public io::Service  {
     using Base = io::Service;
 public:   
     using Base::Base;
 
-    void url(std::string_view url) {
-        url_ = tb::ParsedUrl(url);
+    void configure(const core::Parameters& params) {
+        Base::configure(params);
+        url_ = tb::ParsedUrl(params.strv("url"));
     }
+
     void open() {
         try {
             client_ =  std::make_unique<Client>(to_options(url_));
@@ -93,21 +97,15 @@ struct ClickHouseEnum<core::TickSide> {
         {"EMPTY",0 }, {"BUY",1}, {"SELL",-1}});
 };
 /// used to store
-template<class Self, class ValueT, class FieldsT, typename...O>
-class BasicClickHouseSink : public io::BasicSink<Self, ValueT, FieldsT, O...>
+template<class Self, class ValueT, class SerializerT, typename...O>
+class BasicClickHouseSink : public io::BasicSink<Self, ValueT, SerializerT, O...>
 {
     FT_SELF(Self);
-    using Base = io::BasicSink<Self, ValueT, FieldsT, O...>;
+    using Base = io::BasicSink<Self, ValueT, SerializerT, O...>;
 public:
     using typename Base::Type;
-    using Base::parent, Base::fields;
-    using Endpoint = core::StreamTopic;
-
-    template<typename...ArgsT>
-    BasicClickHouseSink(StreamTopic topic, ArgsT...args)
-    : Base(std::forward<ArgsT>(args)...) {
-        self()->topic(topic);
-    }
+    using Base::parent, Base::serializer, Base::path;
+    using Base::Base;
     
     template<class ColumnT, typename...A>
     ColumnT& get_column(Field field, A...args) {
@@ -126,13 +124,9 @@ public:
         return static_cast<ColumnT&>(*cols_[field]);
     }
 
-    void instruments(core::InstrumentsCache* ins) {
-        fields().instruments(ins);
-    }
-
     /// get or add column for type T
     template<typename T>
-    void append_column(Field field, const T& val) {
+    void write_field(Field field, const T& val) {
         if constexpr (std::is_same_v<T, Timestamp>) {
             //TOOLBOX_DUMP<<"append_column<fb::Timestamp> field:"<<field<<", val: "<<toolbox::sys::put_time<toolbox::Nanos>(val);                    
             get_column<ColumnDateTime64>(field, 9).Append(val.time_since_epoch().count());
@@ -177,13 +171,17 @@ public:
             static_not_supported<T>();
         }
     }
+    
+    void write_eol() {
+
+    }
 
     void close () {
         self()->flush(true);
     }
 
     void do_flush() {
-        auto* svc = static_cast<ClickHouseConn*>(self()->parent());
+        auto* svc = static_cast<ClickHouseService*>(self()->parent());
         auto& socket = svc->socket();
         Block block;
         std::size_t ncols = 0;
@@ -196,8 +194,8 @@ public:
             ncols++;
         }
         if(ncols>0 && nrows>0) {
-            TOOLBOX_INFO<<"Clickhouse: flushing nrows:"<<nrows<<", ncols:"<<ncols<<" into table:"<<table_;
-            socket.Insert(table_, block);
+            TOOLBOX_INFO<<"Clickhouse: flushing nrows:"<<nrows<<", ncols:"<<ncols<<" into table:"<<path();
+            socket.Insert(path(), block);
         }
         cols_.clear();        
     }
@@ -206,128 +204,22 @@ public:
         return val.time_since_epoch().count();
     }
 
-    template<typename T>
-    void write_field(const T& val, Field field, int index=-1) {
-        append_column(field, val);
-    }
-    
-    tb::BitMask<Field> to_mask(const core::Parameters& params) const {
-        tb::BitMask<Field> mask;
-        for(auto fld_pa: params) {
-            auto fld = fields().from_string(fld_pa.get_string());
-            mask.set(fld);
-            TOOLBOX_DEBUG<<"Clickhouse: field '"<<fld<<"' enabled for table '"<<table_<<"'";
-        }
-        return mask;
-    }
-    void on_parameters_updated(const core::Parameters& params) {
-        table_ = params.str("table");
-        if(params.find("fields")!=params.end())
-            fields().enabled() = fields().enabled() & to_mask(params["fields"]);
-    }
 protected:
-    std::string table_;
     tb::unordered_map<Field, ColumnRef> cols_;
     tb::unordered_map<Field, std::string> col_names_;
     tb::MonoTime last_flush_ = tb::MonoClock::now();
 };
 
-/// Multiple sinks
-template<class Self, class ValueL,  template<class...> class SinkM, typename...O>
-class BasicClickHouseService: public io::BasicMultiService<Self, ClickHouseConn,  mp::mp_transform<SinkM, ValueL>, O...>
-, public BasicSignalSlot<Self>
+
+template<class ValueT, class SerializerT=FlatSerializer<core::Field, BasicSerializer>, typename...O>
+class ClickHouseSink : public BasicClickHouseSink<ClickHouseSink<ValueT, SerializerT, O...>, ValueT, SerializerT, O...>
 {
-    FT_SELF(Self);
-    using Base = io::BasicMultiService<Self, ClickHouseConn, mp::mp_transform<SinkM, ValueL>, O...>;
-    using SignalSlot = BasicSignalSlot<Self>;
-  public:
-    using Base::Base;
-    using Base::url;
-    using Base::parent;
-    using Base::open, Base::close;
-    using Base::for_each_service;
-
-    template<typename...ArgsT>
-    BasicClickHouseService(core::InstrumentsCache* ins=nullptr, ArgsT...args)
-    : instruments_(ins)
-    , Base(std::forward<ArgsT>(args)...) {
-
-    }
-    template<class ServiceT>
-    void on_new_service(ServiceT& svc) {
-        svc.instruments(instruments_);
-    }
-
-    void instruments(core::InstrumentsCache* val) { instruments_ = val; }
-    core::InstrumentsCache* instruments() { return instruments_; }
-
-    template<class ValueT, typename...ArgsT>
-    auto* service(const typename SinkM<ValueT>::Endpoint& endpoint, ArgsT...args) {
-        return Base::template service<SinkM<ValueT>, ArgsT...>(endpoint, std::forward<ArgsT>(args)...);
-    }
-
-
-    core::Stream& slot(core::StreamTopic topic) { 
-      switch(topic) {
-        case core::StreamTopic::BestPrice:
-          return *service<core::Tick>(topic);
-        default: return SignalSlot::slot(topic);
-      }
-    }
-
-    void on_parameters_updated(const core::Parameters& params) {
-        url(params.value<std::string_view>("url"));
-        Base::on_parameters_updated(params);    // will set url
-        populate(params);
-    }
-
-    void populate(const core::Parameters& params) {
-        for(auto [id, pa]: params["endpoints"]) {
-            auto topic_str = pa.str("topic");
-            auto topic = topic_from_name(topic_str);
-            if(topic==StreamTopic::Empty) {
-                throw std::logic_error("no such topic");
-            }
-            slot(topic);  // will make_stream;
-            for_each_service([&topic, p=pa](auto& svc) {
-                //TOOLBOX_DUMP<<"svc.topic "<<svc.topic()<<", topic "<<topic;
-                if(svc.topic() == topic) {
-                    svc.on_parameters_updated(p);
-                }
-            });
-        }       
-    }
-
-    void do_open() {
-        Base::do_open();
-        ClickHouseConn::open();
-    }
-
-    void do_close() {
-        Base::do_close();
-        ClickHouseConn::close();
-    }
-protected:
-    core::InstrumentsCache* instruments_{};
-};
-
-template<class ValueT, class FieldsT=JoinFields<BasicFields<core::Field>>, typename...O>
-class ClickHouseSink : public BasicClickHouseSink<ClickHouseSink<ValueT, FieldsT, O...>, ValueT, FieldsT, O...>
-{
-    using Base = BasicClickHouseSink<ClickHouseSink<ValueT, FieldsT, O...>, ValueT, FieldsT, O...>;
+    using Base = BasicClickHouseSink<ClickHouseSink<ValueT, SerializerT, O...>, ValueT, SerializerT, O...>;
 public:
     using typename Base::Type;
     using Base::Base;
-    using Base::fields, Base::instruments;
-
+    using Base::serializer, Base::instruments;
 }; 
 
-template<class ValueL, template<class...> class SinkM=ClickHouseSink>
-class ClickHouseService: public BasicClickHouseService<ClickHouseService<ValueL, SinkM>,  ValueL, SinkM>
-{
-    using Base = BasicClickHouseService<ClickHouseService<ValueL, SinkM>, ValueL, SinkM>;
-public:
-    using Base::Base;
-};
 
 };
