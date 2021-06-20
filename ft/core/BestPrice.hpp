@@ -149,22 +149,6 @@ public:
     /// returns true if field is set
     bool test(core::Field field) const { return fields_.test(field); } 
     
-    /// enumerates all possible fields in Best Price
-    template<typename FieldT=core::Field>
-    constexpr static tb::BitMask<FieldT> fields() {
-        return {
-            Field::VenueInstrumentId,
-            Field::LocalTime,
-            Field::Time,
-            Field::BidPrice,
-            Field::BidQty,
-            Field::AskPrice,
-            Field::AskQty,
-            Field::LastPrice,
-            Field::LastQty,
-            Field::LastTime
-        };
-    }
 protected:
     InstrumentId instrument_id_ {};
     VenueInstrumentId venue_instrument_id_ {};

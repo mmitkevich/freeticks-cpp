@@ -142,15 +142,6 @@ public:
     const BasicInstrumentUpdate<NewSizeI>& as_size() const {
         return *reinterpret_cast<const BasicInstrumentUpdate<NewSizeI>*>(this);
     }
-    template<class Field=core::Field>
-    constexpr static tb::BitMask<Field> fields() {
-        return tb::BitMask<Field>({
-                Field::Symbol,
-                Field::InstrumentId,
-                Field::VenueInstrumentId,
-                Field::VenueSymbol,
-                Field::Exchange});
-    }
 private:
     ft_char_t data_[DataLength];
 };

@@ -179,24 +179,7 @@ public:
     const BasicTicks<T,NewSizeI>& as_size() const {
         return *reinterpret_cast<const BasicTicks<T, NewSizeI>*>(this);
     }
-    
-    template<typename Field>
-    constexpr static tb::BitMask<Field> fields() {
-        /*return {
-            Field::Topic,
-            Field::Event,
-            Field::Symbol,
-            Field::InstrumentId,
-            Field::VenueInstrumentId,
-            Field::LocalTime,
-            Field::Time,
-            Field::Seq,
-            Field::Side,
-            Field::Price,
-            Field::Qty
-        };*/
-        return tb::BitMask<Field>{}.set();
-    }
+
 private:
     T data_[SizeI];
 };
