@@ -70,7 +70,7 @@ public:
     void bytesize(std::size_t len) { Base::ft_hdr.ft_len = len; }
         
     StreamTopic topic() const { return StreamTopic(Base::ft_hdr.ft_type.ft_topic); }
-    void topic(ft_topic_t val) { Base::ft_hdr.ft_type.ft_topic = val; }
+    void topic(StreamTopic val) { Base::ft_hdr.ft_type.ft_topic = (ft_topic_t)val; }
     
     ft_seq_t sequence() const { return Base::ft_hdr.ft_seq; }
     void sequence(ft_seq_t seq) { Base::ft_hdr.ft_seq = seq; }

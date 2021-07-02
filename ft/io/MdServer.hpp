@@ -55,11 +55,16 @@ public:
     void on_subscribe(Peer& peer, core::SubscriptionRequest& req) {
         Protocol::on_subscribe(peer, req); // notifies on subscription
         peer.subscription().set(req.topic(), req.instrument_id()); // modify peers' subscription
+        TOOLBOX_INFO<<"on_subscribe peer: "<<peer.id()<<", remote: "<<peer.remote()<<",topic: '"<<req.topic()<<"', ins: "<<req.instrument_id()<<", sym: "<<req.symbol();
     }
 
     bool route(Peer& peer, StreamTopic topic, InstrumentId instrument) {
+    #if 0
       bool result = peer.subscription().test(topic, instrument);
       return result;
+    #else
+      return true;
+    #endif
     }
 
     template<class MessageT>

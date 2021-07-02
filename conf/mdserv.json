@@ -11,7 +11,7 @@
         ,   { "topic":"BestPrice", "type": "update", "local":"10.1.110.55"
                 , "remote": ["233.26.38.17:6017", "233.26.38.145:6145"],  "recovery": "BEX.TOB" }
         ,   { "topic":"Instrument", "type": "snapshot"
-                , "resource": ["./instr-2020-11-02.xml"]
+                , "resource": ["../instr-2020-11-02.xml"]
                 , "local":"10.1.110.55"
                 , "remote": ["233.26.38.36:6036", "233.26.38.164:6164"] }
         ,   { "topic":"Instrument", "type": "update", "local":"10.1.110.55"
@@ -38,7 +38,7 @@
             , "remote": ["127.0.0.1:10050"]}
         ]
         , "subscriptions":[
-            { "topic":"BestPrice", "symbols": ["BABA", "JD"] }
+            { "topic":"BestPrice", "symbols": ["BABA", "JD","WTFC"] }
         ]
     }
 ]
@@ -65,7 +65,7 @@
         }]
     }, {
         "protocol": "csv"
-        , "enable": ["serv", "pcap"]
+        , "enable": ["serv", "pcap", "clnt"]
         , "endpoints": [{
             "topic": "BestPrice", "sink": "BestPrice.csv"
         }, {

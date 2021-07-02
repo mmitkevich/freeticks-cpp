@@ -2,8 +2,8 @@
 
 /// CRTP boilerplate
 #define FT_SELF(SelfT) \
-    constexpr auto* self() { return static_cast<SelfT*>(this); } \
-    constexpr const auto* self() const { return static_cast<const SelfT*>(this); } 
+    constexpr SelfT* self() { return static_cast<SelfT*>(this); } \
+    constexpr const SelfT* self() const { return static_cast<const SelfT*>(this); } 
 
 #define FT_IFACE(SelfT) \
     FT_SELF(SelfT); \

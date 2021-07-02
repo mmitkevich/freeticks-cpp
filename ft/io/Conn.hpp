@@ -27,6 +27,7 @@
 #include "ft/io/Protocol.hpp"
 #include "toolbox/util/ByteTraits.hpp"
 #include "ft/utils/Compat.hpp"
+#include <cstring>
 
 namespace ft::io {
 
@@ -157,38 +158,15 @@ class BasicConn : public io::Service
     
     core::Subscription& subscription() { return sub_;}
 
-    // subscription handled by connection
-    //const Subscription& subscription() const  { return sub_; }
-    //Subscription& subscription() { return sub_; }
-
     /// connection stats
     Stats& stats() { return stats_; }
 
     bool can_write()  { return socket().can_write(); }
     bool can_read()  { return socket().can_read(); }
 
-    void on_written(ssize_t size, std::error_code ec) {
-        TOOLBOX_DUMPV(5)<<"Conn::on_written wq_size="<<wqueue_.size() <<" self="<<self()<<", size="<< size <<"), local:"<<local()<<", remote:"<<remote();
-        assert(!wqueue_.empty());
-        
-        // complete head
-        auto [wsize, done] = wqueue_.front();
-        wqueue_.pop_front();
-        assert(size==wsize);
-        done(size, ec);
-        wbuf_.consume(size);
-        
-        // prepare next
-        if(!wqueue_.empty()) {
-            auto [wsize, done] = wqueue_.front();
-            self()->async_write_unbuf({wbuf_.data(), (std::size_t)wsize}, tb::bind<&Self::on_written>(self()));
-        }
-    }
-
     /// async_write no queueing
     void async_write(tb::ConstBuffer buf, tb::SizeSlot slot) {
         assert(can_write());
-        TOOLBOX_DUMPV(5)<<"Conn::async_write_nq wq_size="<<wqueue_.size() <<" self="<<self()<<", buf(size="<< buf.size() <<"), local:"<<local()<<", remote:"<<remote();
         // immediate write
         if constexpr(tb::SocketTraits::is_dgram<Socket>) { // FIXME: tb::SocketTraits<Socket>::is_dgram
             // udp
@@ -266,9 +244,6 @@ protected:
     tb::SizeSlot write_;
     Endpoint local_;
     tb::Buffer rbuf_;
-    tb::Buffer wbuf_;
-    std::deque<std::tuple<ssize_t,tb::SizeSlot>> wqueue_;
-    //Subscription sub_;
     Transport transport_ = Transport::v4();
 };
 

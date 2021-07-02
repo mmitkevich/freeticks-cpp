@@ -1,4 +1,5 @@
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -244,7 +245,9 @@ public:
   };
 
   template<class ServicesT, class T>
-  void forward(ServicesT& services, const T& e, tb::DoneSlot done) {
+  void forward(ServicesT& services, const T& e, tb::PendingSlot<std::error_code>& done) {
+    std::size_t pending = std::count_if(services.begin(), services.end(), [&](auto& svc) { return svc.second->supports(e.topic()); });
+    done.pending(pending);
     for(auto& it: services) {
       auto& svc = it.second;
       if(svc->supports(e.topic())) {
@@ -259,8 +262,8 @@ public:
     TOOLBOX_DUMP << e;
     if(out_.is_open())
       out_ << e << std::endl;
-    forward(mdservers_, e, nullptr);
-    forward(mdsinks_, e, nullptr);
+    forward(mdservers_, e, forward_tick_to_servers_);
+    forward(mdsinks_, e, forward_tick_to_sinks_);
   }
 
   void on_instrument(const core::InstrumentUpdate& e) {
@@ -268,8 +271,8 @@ public:
     if(out_.is_open())
       out_ << e << std::endl;
     instruments_.update(e);
-    forward(mdservers_, e, nullptr);
-    forward(mdsinks_, e, nullptr);
+    forward(mdservers_, e, forward_ins_to_servers_);
+    forward(mdsinks_, e, forward_ins_to_sinks_);
   }
   using ClientPtr = std::unique_ptr<core::IClient>;
 
@@ -291,6 +294,7 @@ public:
     ServerPtr server = mdserver_factory_.make_server(params);
     auto &s = *server;
     s.parameters(params);
+    s.instruments_cache(&instruments_);
     s.subscription()
       .connect(tb::bind([serv=&s](PeerId peer, const core::SubscriptionRequest& req) {
             Self* self = static_cast<Self*>(serv->parent());
@@ -451,12 +455,13 @@ public:
   void async_subscribe(core::IClient& client, const core::Parameters& params, tb::SizeSlot done) {
     // TODO: migrate to ranges_v3
     assert(async_subscribe_.empty());
+    async_subscribe_.set_slot(done);
     for(auto strm_pa: params) {
       for(auto sym_pa: strm_pa["symbols"]) {
-        async_subscribe_.emplace(client, make_subscription_request(sym_pa.get_string()));
+        async_subscribe_.inc_pending();
+        client.async_write(make_subscription_request(sym_pa.get_string()), async_subscribe_);
       }
     }
-    async_subscribe_(done);
   }
 
   core::SubscriptionRequest make_subscription_request(std::string_view symbol) {
@@ -516,9 +521,15 @@ public:
       return EXIT_FAILURE;
     }
   }
+  void on_forwarded(std::error_code ec) {
 
+  }
 private:
-  tb::AsyncWrite<core::IClient, core::SubscriptionRequest> async_subscribe_;
+  tb::PendingSlot<std::error_code>  forward_tick_to_servers_{tb::bind<&Self::on_forwarded>(self())};
+  tb::PendingSlot<std::error_code>  forward_tick_to_sinks_{tb::bind<&Self::on_forwarded>(self())};
+  tb::PendingSlot<std::error_code>  forward_ins_to_servers_{tb::bind<&Self::on_forwarded>(self())};
+  tb::PendingSlot<std::error_code>  forward_ins_to_sinks_{tb::bind<&Self::on_forwarded>(self())};
+  tb::PendingSlot<ssize_t,std::error_code> async_subscribe_;
 
   core::MutableParameters opts_;
   std::string mode_ {"prod"};

@@ -10,7 +10,7 @@
             }
         ]
         , "subscriptions":[
-            { "stream":"BestPrice", "symbols": ["BABA", "JD"] }
+            { "stream":"BestPrice", "symbols": ["BABA", "JD","WTFC"] }
         ]
     }
 }

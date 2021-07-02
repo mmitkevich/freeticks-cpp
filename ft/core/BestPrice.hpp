@@ -95,6 +95,7 @@ public:
                 break;
             case Side::Sell:
                 ask_price(val);
+                break;
         }
         return *this;
     }
@@ -105,6 +106,7 @@ public:
                 break;
             case Side::Sell:
                 ask_qty(val);
+                break;
         }
         return *this;
     }

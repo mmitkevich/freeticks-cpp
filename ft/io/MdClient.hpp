@@ -58,16 +58,18 @@ public:
     using typename Protocol::InstrumentSignal;
     
 
-    void open() {
-        Base::open();
+    using Base::open, Base::close, Base::do_open, Base::do_close;
+    
+    void do_open() {
+        Base::do_open();
         IdleTimer::open();
         Protocol::open();
     }
 
-    void close() {
+    void do_close() {
         Protocol::close();
         IdleTimer::close();
-        Base::close();
+        Base::do_close();
     }
 
     void on_parameters_updated(const core::Parameters& params) {

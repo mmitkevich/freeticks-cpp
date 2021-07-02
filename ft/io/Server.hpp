@@ -33,7 +33,7 @@ class BasicServer : public BasicPeerService<Self, PeerT, O...>
     using ServerSocket = ServerSocketT;
     using ClientSocket = typename ServerSocket::ClientSocket;
 
-    struct Acceptor  {
+    struct Acceptor : Component {
         Acceptor(Self* self)
         : self_(self)
         {
@@ -61,7 +61,7 @@ class BasicServer : public BasicPeerService<Self, PeerT, O...>
 
         void async_accept() {
             TOOLBOX_DUMPV(5)<<"self:"<<self()<<", local:"<<local();
-            assert(static_cast<Self*>(next_peer_->parent())==self());
+            assert(static_cast<Acceptor*>(next_peer_->parent())==this);
             // next possible peer
             if constexpr(has_accept()) { // tcp
                 async_accept(next_peer().remote(), tb::bind(
@@ -71,8 +71,8 @@ class BasicServer : public BasicPeerService<Self, PeerT, O...>
                         self()->parent()->newpeer()(next_peer().id(), ec);
                         if(!ec) {
                             next_peer().run([](Peer& peer, Packet& packet, tb::DoneSlot done) {
-                                auto* self = static_cast<Self*>(peer.parent());
-                                self->parent()->async_handle(peer, packet, done);
+                                auto* thisptr = static_cast<Acceptor*>(peer.parent());
+                                thisptr->self()->async_handle(peer, packet, done);
                             });    // peer's loop
                             self()->async_accept();    // accept again
                         } else {
@@ -86,29 +86,48 @@ class BasicServer : public BasicPeerService<Self, PeerT, O...>
                 next_peer().socket(std::move(std::ref(socket_))); // just ref to our socket
                 struct Handler {
                     void operator()(Peer& peer, Packet& packet, tb::DoneSlot done) {
-                        auto* self = static_cast<Self*>(peer.parent());                    
-                        TOOLBOX_DUMPV(5)<<"self="<<self<<", peer="<<&peer;
-                        self->async_accept_first(peer, done);
+                        auto* thisptr = static_cast<Acceptor*>(peer.parent());                    
+                        TOOLBOX_DUMPV(5)<<"acceptor="<<thisptr<<", peer="<<&peer<<", self="<<thisptr->self_;
+                        thisptr->async_accept_first(peer, done);
                     }
                 };
                 next_peer().template async_recv<Handler>(); // peer's loop
             }
         }
 
+        void async_accept_first(Peer& peer, tb::DoneSlot done) {
+            TOOLBOX_DUMPV(5)<<"self:"<<self()<<" peer:"<<&peer<<",local:"<<peer.local()<<",remote:"<<peer.remote()<<", peer_id:"<<peer.id()<<", #peers:"<<self()->peers_.size();
+            auto& peers = self()->peers_;
+            auto it = peers.find(peer.id());
+            if(it==peers.end()) {
+                emplace_next_peer();
+                self()->newpeer()(peer.id(), {});
+            }else {
+            }
+            self()->async_handle(peer, peer.packet(), done);        
+        }
+
         Peer* emplace_next_peer() {
             Peer* peer = next_peer_.get();
-            assert(peer->parent()==self());
+            assert(peer->parent()==this);
             self()->emplace_peer(std::move(next_peer_));
             next_peer_ = make_next_peer();
             return peer;
         }
         
+        template<typename ...ArgsT>
+        auto make_peer(ArgsT... args) { 
+            auto peer = std::unique_ptr<Peer>(new Peer(std::forward<ArgsT>(args)..., this)); 
+            return peer;
+        };
+
+
         auto make_next_peer() {
             TOOLBOX_DUMPV(5)<<"self:"<<self()<<", local:"<<local();
             if constexpr(has_accept()) {
-                return self()->make_peer(ClientSocket(), local());
+                return make_peer(ClientSocket(), local());
             } else {
-                return self()->make_peer(std::ref(socket_), local());
+                return make_peer(std::ref(socket_), local());
             }
         }
         Endpoint& local() { return local_; }
@@ -122,7 +141,7 @@ class BasicServer : public BasicPeerService<Self, PeerT, O...>
         static constexpr bool has_accept() { return tb::SocketTraits::has_accept<ServerSocket>; }    
     };
 
-    using Acceptors = std::vector<Acceptor>;
+    using Acceptors = std::vector<std::unique_ptr<Acceptor>>;
   public:
     using Base::peers, Base::peers_, Base::reactor
         , Base::make_peer, Base::emplace_peer
@@ -136,16 +155,16 @@ class BasicServer : public BasicPeerService<Self, PeerT, O...>
         assert(acceptors_.size()==0);
         std::string transport = params.str("transport");
         for(auto pa: params["endpoints"]) {
-            auto& acpt = acceptors_.emplace_back(self());
-            acpt.configure(pa);
+            acceptors_.push_back(std::make_unique<Acceptor>(self()));
+            acceptors_.back()->configure(pa);
         }
     }
     
     void do_open() {
         Base::do_open();
         for(auto& acpt: acceptors_) {
-            acpt.open(reactor());
-            acpt.async_accept();
+            acpt->open(reactor());
+            acpt->async_accept();
         }
     }
 
@@ -158,27 +177,17 @@ class BasicServer : public BasicPeerService<Self, PeerT, O...>
     /// @see SocketRef
     void do_close() { 
         for(auto& acpt: acceptors_) {
-            acpt.close();
+            acpt->close();
         }
     } 
 
     Acceptors& acceptors() { return acceptors_; }
 
-
-    void async_accept_first(Peer& peer, tb::DoneSlot done) {
-        TOOLBOX_DUMPV(5)<<"self:"<<self()<<" peer:"<<&peer<<",local:"<<peer.local()<<",remote:"<<peer.remote()<<", peer_id:"<<peer.id()<<", #peers:"<<peers_.size();
-        auto it = peers_.find(peer.id());
-        if(it==peers_.end()) {
-            self()->newpeer()(peer.id(), {});
-        }
-        self()->async_handle(peer, peer.packet(), done);        
-    }
-
     void on_error(Peer& peer, std::error_code ec, const char* what="error", const char* loc="") {
         TOOLBOX_ERROR << loc << what <<", ec:"<<ec<<", peer:"<<peer.remote();
     }
   protected:
-    std::vector<Acceptor> acceptors_;
+    Acceptors acceptors_;
 };
 
 template<class PeerT, class ServerSocketT>

@@ -256,30 +256,20 @@ class BasicPeerService : public BasicService<Self, io::PeerService, O...>
     }
     template<typename MessageT>
     void async_write(const MessageT& m, tb::SizeSlot done) {
-        std::size_t pending = 0;
         for_each_peer([&](auto& peer) {
             if(self()->route(peer, m.topic(), m.instrument_id())) {
-                pending++;
-            }
-        });
-        write_.set_slot(done);        
-        write_.pending(pending);
-        for_each_peer([&](auto& peer) {
-             if(self()->route(peer, m.topic(), m.instrument_id())) {
-              /// delegate to derived (e.g. Protocol)
-              self()->async_write_to(peer, m, write_.get_slot());
+               self()->async_write_to(peer, m, done);
             }
         });
     }
 
     /// route everythere by default
-    bool route(Peer& peer, StreamTopic topic, InstrumentId instrument) {
+    bool route(Peer& peer, StreamTopic topic , InstrumentId instrument) {
         return true;
     }
 
   protected:
     PeersMap peers_;
-    tb::PendingSlot<ssize_t, std::error_code> write_; // when write is done
 };
 
 

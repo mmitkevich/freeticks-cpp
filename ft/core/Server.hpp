@@ -1,6 +1,7 @@
 #pragma once
 #include "ft/utils/Common.hpp"
 #include "ft/core/Instrument.hpp"
+#include "ft/core/InstrumentsCache.hpp"
 #include "ft/core/Requests.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/StreamStats.hpp"
@@ -28,6 +29,8 @@ public:
     /// force close peer
     virtual void shutdown(PeerId peer) = 0;
 
+    virtual void instruments_cache(core::InstrumentsCache* cache) = 0;
+
     /// typed slot
     template<typename...ArgsT>
     Stream::Slot<ArgsT...>& slot_of(StreamTopic topic) {
@@ -44,6 +47,8 @@ public:
 
     NewPeerSignal& newpeer() override { return impl()->newpeer(); }
     void shutdown(PeerId peer) override { impl()->shutdown(peer); }
+
+    void instruments_cache(core::InstrumentsCache* cache) override { impl()->instruments_cache(cache); }
 
     void url(std::string_view url) { impl()->url(url);}
     std::string_view url() const { return impl()->url(); }

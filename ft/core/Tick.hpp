@@ -216,7 +216,8 @@ inline std::ostream & operator<<(std::ostream& os, const BasicTicks<DataT, SizeI
     //os << ", s:"<<e.sequence();
     os << ", time:'" << toolbox::sys::put_time<toolbox::Nanos>(e.send_time())<<"'";
     //os << ", clt:" << (e.recv_time()-e.send_time()).count();
-    os << ", viid:" << e.venue_instrument_id();
+    os << ", viid:" << e.venue_instrument_id() 
+    <<", iid:" << e.instrument_id() ;
 
     os << ", d:[";
     for(std::size_t i=0;i<e.size(); i++) {

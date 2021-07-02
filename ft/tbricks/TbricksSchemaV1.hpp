@@ -71,19 +71,36 @@ template<std::size_t PadSizeI=0>
 struct Message {
     MessageType msgtype_;
     union {
-        SubscriptionPayload subscription;
-        MarketDataPayload marketdata;
-        SequencePayload sequence;
+        SubscriptionPayload subscription_;
+        MarketDataPayload marketdata_;
+        SequencePayload sequence_;
     };
     char data_[PadSizeI];
 
     auto& msgtype() { return msgtype_; }
     const auto& msgtype() const { return msgtype_; }
 
-
     Message(MessageType msgtype = MessageType::NotAMessage)
     : msgtype_(msgtype)
     {}
+
+    const MarketDataPayload& marketdata() const {
+        assert(msgtype_==MessageType::MarketData);
+        return marketdata_;
+    }
+    MarketDataPayload& marketdata() {
+        assert(msgtype_==MessageType::MarketData);
+        return marketdata_;
+    }
+
+    const SubscriptionPayload& subscription() const {
+        assert(msgtype_==MessageType::SubscriptionRequest || msgtype_==MessageType::SubscriptionCancelRequest);
+        return subscription_;
+    }
+    SubscriptionPayload& subscription() {
+        assert(msgtype_==MessageType::SubscriptionRequest || msgtype_==MessageType::SubscriptionCancelRequest);
+        return subscription_;
+    }
 
     template<std::size_t NewSizeI>
     Message<NewSizeI>& as_size() {
@@ -95,13 +112,13 @@ struct Message {
             case MessageType::SubscriptionRequest: 
             case MessageType::SubscriptionRequestBBO:
             case MessageType::SubscriptionCancelRequest:
-                return sizeof(msgtype()) + subscription.bytesize();
+                return sizeof(msgtype()) + subscription_.bytesize();
             case MessageType::MarketData:
             case MessageType::MarketDataBBO:
-                return sizeof(msgtype()) + marketdata.bytesize();
+                return sizeof(msgtype()) + marketdata_.bytesize();
             case MessageType::HeartBeat:
             case MessageType::ClosingEvent:            
-                return sizeof(msgtype()) + sequence.bytesize();
+                return sizeof(msgtype()) + sequence_.bytesize();
             default: 
                 assert(false);
                 return sizeof(msgtype_);
@@ -112,6 +129,7 @@ struct Message {
             case MessageType::SubscriptionRequest:
             case MessageType::SubscriptionCancelRequest: 
             case MessageType::MarketData: 
+            case MessageType::MarketDataBBO:            
             case MessageType::ClosingEvent: 
             case MessageType::HeartBeat:
                 return true;
@@ -123,12 +141,13 @@ struct Message {
         switch(msgtype_) {
             case MessageType::SubscriptionRequest: 
             case MessageType::SubscriptionCancelRequest: 
-                return subscription.seq();
+                return subscription_.seq();
             case MessageType::MarketData:
-                return marketdata.seq();
+            case MessageType::MarketDataBBO:
+                return marketdata_.seq();
             case MessageType::ClosingEvent: 
             case MessageType::HeartBeat:
-                return sequence.seq();
+                return sequence_.seq();
             default: throw std::runtime_error("bad_msgtype");
         }
     });
@@ -138,12 +157,15 @@ struct Message {
             case MessageType::SubscriptionRequest: 
             case MessageType::SubscriptionRequestBBO:
             case MessageType::SubscriptionCancelRequest:
-                return subscription.symbol();
+                return subscription_.symbol();
                 break;
+            case MessageType::MarketData:
+            case MessageType::MarketDataBBO:
+                return marketdata_.symbol();
             default:
                 throw std::runtime_error("bad_msgtype");
         }
-    });
+    }); 
 };
 
 #pragma pack(pop)

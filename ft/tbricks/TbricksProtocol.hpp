@@ -1,5 +1,7 @@
 #pragma once
 #include "boost/mp11/bind.hpp"
+#include "ft/core/InstrumentsCache.hpp"
+#include "ft/matching/OrderBook.hpp"
 #include "ft/utils/Common.hpp"
 #include "ft/core/Requests.hpp"
 #include "ft/core/Stream.hpp"
@@ -15,7 +17,7 @@
 #include <stdexcept>
 #include <system_error>
 #include "ft/utils/StringUtils.hpp"
-
+#include "ft/core/BestPriceCache.hpp"
 namespace ft::tbricks {
 
 // plugin mixin
@@ -56,6 +58,36 @@ public:
             }
         }
     }
+
+    template<typename ConnT, typename DoneT>
+    void async_write_to(ConnT& conn, const core::Tick& ticks, DoneT done) {
+        core::BestPrice& bp = bestprice_cache_.update(ticks);
+
+        MessageOut msg(MessageType::MarketData);
+        assert(this->instruments_cache());
+        msg.symbol() = this->instruments_cache()->symbol(ticks.venue_instrument_id());
+        for(auto& e: ticks) {
+            switch(e.side()) {
+                case core::TickSide::Buy: {
+                    double price = bp.price_conv().to_double(bp.bid_price());
+                    bool empty = !bp.test(core::Field::BidPrice);
+                    msg.marketdata().bid().value = empty ? NAN:price;
+                    msg.marketdata().bid().empty = empty;
+                } break;
+                case core::TickSide::Sell:
+                    double price = bp.price_conv().to_double(bp.ask_price());
+                    bool empty = !bp.test(core::Field::AskPrice);
+                    msg.marketdata().ask().value = empty ? NAN: price;
+                    msg.marketdata().ask().empty = empty;
+                    break;
+            }
+        }
+        msg.seq() = ++out_seq_;
+        auto buf = tb::to_const_buffer(msg);
+        TOOLBOX_INFO << name()<<": out["<<msg.bytesize()<<"]: seq="<<msg.seq()<<"; sym="<<msg.symbol().str()<<"\n" << ft::to_hex_dump(std::string_view{(const char*)buf.data(), buf.size()});
+        conn.async_write(buf, done);
+    }
+
     constexpr std::string_view name() { return "TB1"; }
     
     template<class ConnT, class PacketT, class DoneT>
@@ -73,6 +105,9 @@ public:
                     core::SubscriptionRequest req {};
                     req.symbol(msg.symbol().str());
                     req.request(Request::Subscribe);
+                    req.topic(StreamTopic::BestPrice);
+                    std::size_t id = std::hash<std::string_view>{}(msg.symbol().str());
+                    req.instrument_id(InstrumentId(id));
                     self()->on_subscribe(conn, req);
                 //}
             } break;
@@ -98,9 +133,14 @@ public:
                 }
             } break;
             case MessageType::MarketData: {
-                if constexpr(io::HeartbeatsTraits::has_heartbeats<ConnT>) {
-                    conn.on_heartbeats();
-                }
+                //core::Ticks<2> ticks;
+                //bestprice().invoke();
+                TOOLBOX_INFO<<"MarketData bid:"<<(msg.marketdata().bid().empty ? NAN: msg.marketdata().bid().value)
+                    << " ask:"<<(msg.marketdata().ask().empty ? NAN : msg.marketdata().ask().value)
+                    << " symbol:"<<msg.symbol().str();
+            } break;
+            case MessageType::MarketDataBBO: {
+                
             } break;
             default:
                 TOOLBOX_ERROR << "TbricksV1: unknown msgtype "<<tb::unbox(msg.msgtype());
@@ -114,6 +154,7 @@ public:
     auto& bestprice() { return bestprice_signal_; }
     auto& instruments() { return instruments_signal_; }
 protected:
+    core::BestPriceCache bestprice_cache_;
     // from server to client
     BestPriceSignal bestprice_signal_;
     InstrumentSignal instruments_signal_;

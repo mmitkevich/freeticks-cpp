@@ -6,6 +6,7 @@
 #include "toolbox/sys/Log.hpp"
 #include "ft/core/Stream.hpp"
 #include "ft/core/Requests.hpp"
+#include "ft/core/InstrumentsCache.hpp"
 
 namespace ft::io {
 
@@ -68,7 +69,8 @@ public:
     /// write to peer as POD
     template<class PeerT, typename MessageT, typename DoneT>
     void async_write_to(PeerT& peer, const MessageT& m, DoneT done) {
-        self()->async_write_to(peer, tb::to_const_buffer(m), std::forward<DoneT>(done));
+        auto buf =  tb::to_const_buffer(m);
+        peer.async_write(buf, std::forward<DoneT>(done));
     }
     /// write to peer
     template<class PeerT, typename MessageT, typename DoneT>
@@ -134,5 +136,9 @@ class BasicMdProtocol : public BasicProtocol<Self, O...> {
             default: return Base::signal(topic);
         } 
     }
+    void instruments_cache(core::InstrumentsCache* instruments_cache) { instruments_cache_ = instruments_cache; }
+    core::InstrumentsCache* instruments_cache() { return instruments_cache_; }
+  protected:
+      core::InstrumentsCache* instruments_cache_ {};
 };
 } // ft::io
