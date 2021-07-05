@@ -22,15 +22,18 @@ set(TOOLBOX_BUILD_SHARED "${REACTIVE_BUILD_SHARED}")
 set(TOOLBOX_VERSION      "${REACTIVE_VERSION}")
 set(TOOLBOX_TOOLCHAIN    "${REACTIVE_TOOLCHAIN}")
 
+option(USE_ASAN "use libasan" ON)
+
+
 if (NOT "${TOOLBOX_TOOLCHAIN}" STREQUAL "")
   get_filename_component(TOOLBOX_TOOLCHAIN "${TOOLBOX_TOOLCHAIN}" REALPATH)
   set(CMAKE_PREFIX_PATH "${TOOLBOX_TOOLCHAIN}")
   message(STATUS "TOOLBOX_TOOLCHAIN: ${TOOLBOX_TOOLCHAIN}")
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+#if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
   add_definitions(-DTOOLBOX_BUILD_DEBUG=1)
-endif()
+#endif()
 
 #add_definitions(--gcc-toolchain=/opt/gcc-8.2.0 -stdlib=libstdc++)
 
@@ -48,12 +51,15 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -march=${T
 set(CMAKE_C_FLAGS_MINSIZEREL       "${CMAKE_C_FLAGS_MINSIZEREL} -march=${TOOLBOX_BUILD_ARCH}")
 set(CMAKE_CXX_FLAGS_MINSIZEREL     "${CMAKE_CXX_FLAGS_MINSIZEREL} -march=${TOOLBOX_BUILD_ARCH}")
 
-#set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+if(USE_ASAN)
+message("USE ASAN: ON")
+set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+endif()
 
 # Intended for use with Linux Perf.
-set(CMAKE_C_FLAGS_PERF   "${CMAKE_C_FLAGS_RELEASE} -fno-omit-frame-pointer")
-set(CMAKE_CXX_FLAGS_PERF "${CMAKE_CXX_FLAGS_RELEASE} -fno-omit-frame-pointer")
+#set(CMAKE_C_FLAGS_PERF   "${CMAKE_C_FLAGS_RELEASE} -fno-omit-frame-pointer")
+#set(CMAKE_CXX_FLAGS_PERF "${CMAKE_CXX_FLAGS_RELEASE} -fno-omit-frame-pointer")
 
 # Coverage build
 set(CMAKE_C_FLAGS_COVERAGE "${CMAKE_C_FLAGS_DEBUG} -fprofile-arcs -ftest-coverage")
@@ -74,9 +80,9 @@ message(STATUS "Build architecture: ${TOOLBOX_BUILD_ARCH}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Build version: ${TOOLBOX_VERSION}")
 
-if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+#if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
   add_definitions(-DTOOLBOX_BUILD_DEBUG=1)
-endif()
+#endif()
 
 find_package(Boost 1.67 REQUIRED COMPONENTS unit_test_framework)
 if(NOT "${Boost_UNIT_TEST_FRAMEWORK_LIBRARY_RELEASE}" MATCHES "\\.a$")

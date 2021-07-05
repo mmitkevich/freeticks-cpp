@@ -16,6 +16,9 @@ set(app_LIBRARIES "${app_LIBRARIES}"
   "${CLICKHOUSECPP_LIBRARY}")
 endif()
 
+file(MAKE_DIRECTORY serv)
+file(MAKE_DIRECTORY clnt)
+
 add_executable(mdserv MdServApp.cpp)
 target_link_libraries(mdserv ${app_LIBRARIES})
-
+#target_link_libraries(mdserv -fsanitize=address)
