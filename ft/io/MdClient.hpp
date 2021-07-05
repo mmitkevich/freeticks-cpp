@@ -79,9 +79,9 @@ public:
     }
 
     void on_idle() {
-        std::stringstream ss;
-        stats().report(ss);
-        TOOLBOX_INFO << ss.str();
+        //std::stringstream ss;
+        //sstats().report(ss);
+        //TOOLBOX_INFO << ss.str();
     }
 protected:
 

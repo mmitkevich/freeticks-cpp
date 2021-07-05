@@ -66,6 +66,7 @@ public:
         MessageOut msg(MessageType::MarketData);
         assert(this->instruments_cache());
         msg.symbol() = this->instruments_cache()->symbol(ticks.venue_instrument_id());
+        msg.marketdata().time() = tbricks::v1::Timestamp { ticks.send_time() };
         for(auto& e: ticks) {
             switch(e.side()) {
                 case core::TickSide::Buy: {
@@ -96,11 +97,11 @@ public:
 
         auto& buf = e.buffer();
         const Message& msg = *reinterpret_cast<const Message*>(buf.data());        
-        TOOLBOX_INFO << name()<<": in["<<e.buffer().size()<<"]: t="<<(int64_t)tb::unbox(msg.msgtype())<<"\n"<<
+        TOOLBOX_DEBUG << name()<<": in["<<e.buffer().size()<<"]: t="<<(int64_t)tb::unbox(msg.msgtype())<<"\n"<<
             ft::to_hex_dump(std::string_view{(const char*)buf.data(), buf.size()});
         switch(msg.msgtype()) {
             case MessageType::SubscriptionRequest: {
-                TOOLBOX_INFO << name()<<": in: t:"<<(int)tb::unbox(msg.msgtype())<<", sym:'"<<msg.symbol().str()<<"', seq:"<<msg.seq();
+                TOOLBOX_DEBUG << name()<<": in: t:"<<(int)tb::unbox(msg.msgtype())<<", sym:'"<<msg.symbol().str()<<"', seq:"<<msg.seq();
                 //if constexpr(TB_IS_VALID(self(), self()->subscription())) {
                     core::SubscriptionRequest req {};
                     req.symbol(msg.symbol().str());
@@ -135,9 +136,33 @@ public:
             case MessageType::MarketData: {
                 //core::Ticks<2> ticks;
                 //bestprice().invoke();
-                TOOLBOX_INFO<<"MarketData bid:"<<(msg.marketdata().bid().empty ? NAN: msg.marketdata().bid().value)
+                TOOLBOX_DEBUG<<"MarketData bid:"<<(msg.marketdata().bid().empty ? NAN: msg.marketdata().bid().value)
                     << " ask:"<<(msg.marketdata().ask().empty ? NAN : msg.marketdata().ask().value)
                     << " symbol:"<<msg.symbol().str();
+                core::Ticks<2> ticks;
+                std::size_t i = 0;
+                ticks.topic(StreamTopic::BestPrice);
+                std::size_t id = std::hash<std::string_view>{}(msg.symbol().str());
+                ticks.instrument_id(InstrumentId{id});
+                ticks.venue_instrument_id(VenueInstrumentId{id});
+                ticks.send_time(msg.marketdata().time().to_core_timestamp());
+                ticks.event(core::Event::Update);
+                if(!msg.marketdata().bid().empty) {
+                    ticks[i] = {};
+                    ticks[i].side(TickSide::Buy);
+                    ticks[i].event(TickEvent::Modify);
+                    ticks[i].price(TickElement::price_conv().from_double(msg.marketdata().bid().value));
+                    i++;
+                }
+                if(!msg.marketdata().ask().empty) {
+                    ticks[i] = {};
+                    ticks[i].side(TickSide::Sell);
+                    ticks[i].event(TickEvent::Modify);
+                    ticks[i].price(TickElement::price_conv().from_double(msg.marketdata().ask().value));
+                    i++;
+                }
+                ticks.resize(i);
+                bestprice().invoke(ticks.as_size<1>(), nullptr);
             } break;
             case MessageType::MarketDataBBO: {
                 

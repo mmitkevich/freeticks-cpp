@@ -57,9 +57,9 @@ public:
         peer.subscription().set(req.topic(), req.instrument_id()); // modify peers' subscription
         TOOLBOX_INFO<<"on_subscribe peer: "<<peer.id()<<", remote: "<<peer.remote()<<",topic: '"<<req.topic()<<"', ins: "<<req.instrument_id()<<", sym: "<<req.symbol();
     }
-
+#define FT_DEBUG_SUBSCRIBE_ALL_SYMBOLS
     bool route(Peer& peer, StreamTopic topic, InstrumentId instrument) {
-    #if 0
+    #ifndef FT_DEBUG_SUBSCRIBE_ALL_SYMBOLS
       bool result = peer.subscription().test(topic, instrument);
       return result;
     #else

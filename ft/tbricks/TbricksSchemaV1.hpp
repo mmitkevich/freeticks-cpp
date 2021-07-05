@@ -2,8 +2,10 @@
 #include <boost/type_traits/is_detected.hpp>
 #include <cstdint>
 #include <stdexcept>
+#include "ft/core/Fields.hpp"
 #include "ft/core/Requests.hpp"
 #include "ft/sbe/SbeTypes.hpp"
+#include "toolbox/sys/Time.hpp"
 
 namespace ft::tbricks::v1 {
 
@@ -33,6 +35,11 @@ struct Price {
 
 struct Timestamp {
     std::uint64_t value;
+    Timestamp(core::Timestamp ts)
+    : value(ts.time_since_epoch().count()/1000ul) {}
+    core::Timestamp to_core_timestamp() const {
+        return core::Timestamp{toolbox::Nanos{value*1000ul}};
+    }
 };
 
 struct SubscriptionPayload {
