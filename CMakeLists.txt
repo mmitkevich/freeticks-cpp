@@ -31,9 +31,9 @@ if (NOT "${TOOLBOX_TOOLCHAIN}" STREQUAL "")
   message(STATUS "TOOLBOX_TOOLCHAIN: ${TOOLBOX_TOOLCHAIN}")
 endif()
 
-#if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
   add_definitions(-DTOOLBOX_BUILD_DEBUG=1)
-#endif()
+endif()
 
 #add_definitions(--gcc-toolchain=/opt/gcc-8.2.0 -stdlib=libstdc++)
 
@@ -80,9 +80,9 @@ message(STATUS "Build architecture: ${TOOLBOX_BUILD_ARCH}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Build version: ${TOOLBOX_VERSION}")
 
-#if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+if(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
   add_definitions(-DTOOLBOX_BUILD_DEBUG=1)
-#endif()
+endif()
 
 find_package(Boost 1.67 REQUIRED COMPONENTS unit_test_framework)
 if(NOT "${Boost_UNIT_TEST_FRAMEWORK_LIBRARY_RELEASE}" MATCHES "\\.a$")
