@@ -366,7 +366,7 @@ public:
     assert(reactor());
     auto mod = mode();
     if(mod != "pcap") {
-      tb::BasicRunner runner(*reactor(), [this] {
+      tb::BasicRunner runner(*reactor(), tb::ThreadConfig{"reactor"}, [this] {
         run();
         return true;
       });

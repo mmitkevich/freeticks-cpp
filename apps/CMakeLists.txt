@@ -11,10 +11,11 @@ if(PCAP_FOUND)
 set(app_LIBRARIES "${app_LIBRARIES}" 
   "${PCAP_LIBRARY}")
 endif()
-if(CLICKHOUSECPP_FOUND)
+#if(CLICKHOUSECPP_FOUND)
 set(app_LIBRARIES "${app_LIBRARIES}"
   "${CLICKHOUSECPP_LIBRARY}")
-endif()
+#endif()
+message("app_LIBRARIES:${app_LIBRARIES}")
 
 file(MAKE_DIRECTORY serv)
 file(MAKE_DIRECTORY clnt)
